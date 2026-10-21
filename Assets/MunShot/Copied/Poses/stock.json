@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "poses": [
+    { "id": "amazed",       "name": "Amazed",       "ground": { "clip": "kerbal_emote_amazed",            "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_amazed",            "time": 0 } },
+    { "id": "confused",     "name": "Confused",     "ground": { "clip": "kerbal_emote_confused",          "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_confused",          "time": 0 } },
+    { "id": "frustrated",   "name": "Frustrated",   "ground": { "clip": "kerbal_emote_frustrated_loop",   "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_frustrated_loop",   "time": 0 } },
+    { "id": "gimme",        "name": "Gimme",        "ground": { "clip": "kerbal_emote_gimmie",            "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_gimmie",            "time": 0 } },
+    { "id": "happy",        "name": "Happy",        "ground": { "clip": "kerbal_emote_happy",             "time": 0.5 },  "jetpack": { "clip": "kerbal_jp_emote_happy",             "time": 0.5 } },
+    { "id": "existential-crisis", "name": "Existential Crisis", "ground": { "clip": "kerbal_emote_no",                "time": 0.6 },  "jetpack": { "clip": "kerbal_jp_emote_no",                "time": 0.6 } },
+    { "id": "point",        "name": "Point",        "ground": { "clip": "kerbal_emote_point_loop",        "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_point_loop",        "time": 0 } },
+    { "id": "shrug",        "name": "Shrug",        "ground": { "clip": "kerbal_emote_shrug",             "time": 0.5 },  "jetpack": { "clip": "kerbal_jp_emote_shrug",             "time": 0.5 } },
+    { "id": "wave",         "name": "Wave",         "ground": { "clip": "kerbal_emote_wave",              "time": 0 },    "jetpack": { "clip": "kerbal_jp_emote_wave",              "time": 0 } },
+    { "id": "butt-scratch", "name": "Butt scratch", "ground": { "clip": "kerbal_idle_fidget_buttscratch", "time": 3.75 } },
+    { "id": "thinking",     "name": "Thinking",     "ground": { "clip": "kerbal_idle_fidget_thinking",    "time": 3.12 }, "jetpack": { "clip": "kerbal_jp_idle_fidget_thinking",    "time": 3.12 } },
+    { "id": "fly-back",     "name": "Fly back",     "jetpack": { "clip": "kerbal_jp_fly_b", "time": 0 } },
+    { "id": "fly-down",     "name": "Fly down",     "jetpack": { "clip": "kerbal_jp_fly_d", "time": 0 } },
+    { "id": "fly-forward",  "name": "Fly forward",  "jetpack": { "clip": "kerbal_jp_fly_f", "time": 0 } },
+    { "id": "fly-left",     "name": "Fly left",     "jetpack": { "clip": "kerbal_jp_fly_l", "time": 0 } },
+    { "id": "fly-right",    "name": "Fly right",    "jetpack": { "clip": "kerbal_jp_fly_r", "time": 0 } },
+    { "id": "fly-up",       "name": "Fly up",       "jetpack": { "clip": "kerbal_jp_fly_u", "time": 0 } }
+  ]
+}

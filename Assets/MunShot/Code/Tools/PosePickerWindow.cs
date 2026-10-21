@@ -15,8 +15,8 @@ namespace MunShot.Tools
     /// <summary>
     /// Developer window for picking poses out of the game's animation clips: lists the active EVA kerbal's clips,
     /// scrubs through the selected one and holds the kerbal at that frame, showing the result as a
-    /// <see cref="ClipPose"/> to copy into a preset. It also hosts the rig diagnostics. Built in code, so it needs
-    /// no assets.
+    /// <see cref="ClipPose"/> to copy into a preset. The Preset dropdown holds any version of the loaded presets, to
+    /// check them on a kerbal. It also hosts the rig diagnostics. Built in code, so it needs no assets.
     /// </summary>
     public sealed class PosePickerWindow : IDisposable
     {
@@ -26,6 +26,9 @@ namespace MunShot.Tools
         private readonly ILogger _logger;
         private readonly PosePlayer _player;
         private readonly PanelRenderer _renderer;
+
+        // One entry per preset version, e.g. "Wave (jetpack)"
+        private readonly List<(string label, ClipPose pose)> _presetChoices = new List<(string, ClipPose)>();
 
         private readonly List<AnimationClip> _allClips = new List<AnimationClip>();
         private readonly List<AnimationClip> _shownClips = new List<AnimationClip>();
@@ -50,10 +53,17 @@ namespace MunShot.Tools
         /// </summary>
         public bool IsAlive => _renderer != null;
 
-        public PosePickerWindow(ILogger logger, PosePlayer player)
+        public PosePickerWindow(ILogger logger, PosePlayer player, IReadOnlyList<PosePreset> presets)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _player = player ?? throw new ArgumentNullException(nameof(player));
+            foreach (PosePreset preset in presets ?? Array.Empty<PosePreset>())
+                foreach (PoseVariant variant in new[] { PoseVariant.Ground, PoseVariant.Jetpack })
+                {
+                    ClipPose? pose = preset.Get(variant);
+                    if (pose.HasValue)
+                        _presetChoices.Add(($"{preset.Name} ({(variant == PoseVariant.Jetpack ? "jetpack" : "ground")})", pose.Value));
+                }
 
             var options = new WindowOptions
             {
@@ -118,6 +128,12 @@ namespace MunShot.Tools
             _status = new Label { style = { whiteSpace = WhiteSpace.Normal, marginBottom = 4 } };
             shell.Add(_status);
             shell.Add(new Button(RefreshKerbal) { text = "Refresh" });
+
+            // Picking a preset holds it straight away
+            var presetPicker = new DropdownField("Preset", _presetChoices.Select(c => c.label).ToList(), -1);
+            presetPicker.RegisterValueChangedCallback(_ => HoldPreset(presetPicker.index));
+            presetPicker.SetEnabled(_presetChoices.Count > 0);
+            shell.Add(presetPicker);
 
             _search = new TextField("Search");
             _search.RegisterValueChangedCallback(_ => ApplyFilter());
@@ -218,17 +234,22 @@ namespace MunShot.Tools
             AnimationClip clip = selection.OfType<AnimationClip>().FirstOrDefault();
             if (clip == null) return;
 
+            ShowClip(clip);
+            _timeSlider.SetValueWithoutNotify(0f);
+
+            // Switching clips while holding shows the new clip straight away
+            if (_player.IsHolding) HoldSelected();
+            else UpdateReadout();
+        }
+
+        private void ShowClip(AnimationClip clip)
+        {
             _selectedClip = clip;
             _clipInfo.text = $"{clip.name}: {Format(clip.length)}s, "
                              + $"{clip.frameRate.ToString("0", CultureInfo.InvariantCulture)} fps, "
                              + $"{(clip.isLooping ? "looping" : "not looping")}";
             _timeSlider.highValue = Mathf.Max(clip.length, SliderStep);
-            _timeSlider.SetValueWithoutNotify(0f);
             _timeSlider.SetEnabled(true);
-
-            // Switching clips while holding shows the new clip straight away
-            if (_player.IsHolding) HoldSelected();
-            else UpdateReadout();
         }
 
         private void OnTimeChanged(float time)
@@ -250,6 +271,33 @@ namespace MunShot.Tools
             if (!_player.Hold(_animator, pose))
                 ShowStatus($"Could not hold {pose}; see the log.");
             UpdateReadout();
+        }
+
+        // Shows the preset's clip and time in the list and slider, then holds it
+        private void HoldPreset(int index)
+        {
+            if (index < 0 || index >= _presetChoices.Count) return;
+            (string label, ClipPose pose) = _presetChoices[index];
+            if (!EnsureKerbal()) return;
+
+            AnimationClip clip = _allClips.FirstOrDefault(c => c.name == pose.ClipName);
+            if (clip == null)
+            {
+                string message = $"Preset '{label}' uses clip '{pose.ClipName}', which '{_kerbalName}' doesn't have.";
+                ShowStatus(message);
+                _logger.LogWarning($"Pose picker: {message}");
+                return;
+            }
+
+            _search.SetValueWithoutNotify(string.Empty);
+            ApplyFilter();
+            int row = _shownClips.IndexOf(clip);
+            _clipList.SetSelectionWithoutNotify(new[] { row });
+            _clipList.ScrollToItem(row);
+            ShowClip(clip);
+            _timeSlider.SetValueWithoutNotify(Mathf.Min(pose.Time, clip.length));
+            HoldSelected();
+            ShowStatus($"Holding preset '{label}'.");
         }
 
         private void ReleasePose()
