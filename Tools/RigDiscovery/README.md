@@ -17,15 +17,20 @@ Tools/RigDiscovery/run.sh find '^(body|head|eyes|hair|helm)_'
 
 # Dump one prefab's rig to Tools/RigDiscovery/out/<address>.txt (gitignored)
 Tools/RigDiscovery/run.sh dump body_spacesuit_01.prefab
+
+# Read Animator layers, parameters and clips to out/<address>.animator.txt
+Tools/RigDiscovery/run.sh animator eva_kerbal.prefab
 ```
 
 The dump lists component types, game behaviours by path, Animators (avatar, controller, layers and parameters when available), skinned meshes (readability, blend shapes, weighted bones), other renderers, and the full transform tree.
+
+The Animator probe instantiates a hidden, unsaved copy of the prefab, initializes its Animators by hand (`Rebind()` + `Update(0)`), and reports layer names and weights, parameters with defaults, and clips with length and event count. It works where the dump's Animator section comes back empty.
 
 ## How a kerbal is built (26w43a)
 
 `eva_kerbal.prefab` holds the Animator and the driver scripts but no body. At runtime `KSP.Game.Kerbal3DModel` assembles the character from variety attributes: a `body_*` prefab with the `bone_kerbal_*` skeleton, plus `head_*`, `eyes_*`, `hair_*` and `helm_*` prefabs attached to named bones. Dump those parts to see the rig.
 
-Animator controllers loaded from bundles come back without layers or parameters in the editor; read those in the running game.
+Animator controllers loaded from bundles come back without layers or parameters when read as assets; use `run.sh animator` instead. Clip curves are stripped too, so which bones a clip moves (and which `iEmote` index plays which emote) has to be checked in the running game.
 
 ## Notes
 
