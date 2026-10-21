@@ -10,6 +10,7 @@
     "com.unity.memoryprofiler": "1.1.12",
     "com.unity.multiplayer.center": "2.0.1",
     "com.unity.nuget.newtonsoft-json": "3.2.2",
+    "com.unity.pipeline": "0.8.0-exp.1",
     "com.unity.postprocessing": "3.5.4",
     "com.unity.shadergraph": "17.6.0",
     "com.unity.timeline": "6.6.0",
