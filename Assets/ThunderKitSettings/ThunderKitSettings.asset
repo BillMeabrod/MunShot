@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: ThunderKit.Core::ThunderKit.Core.Data.ThunderKitSettings
   FirstLoad: 0
   ShowOnStartup: 1
-  GameExecutable: 
-  GamePath: 
+  GameExecutable: KSP2_x64.exe
+  GamePath: D:\SteamLibrary\steamapps\common\Kerbal Space Program 2
   Is64Bit: 0
   DateTimeFormat: HH:mm:ss:fff
   CreatedDateFormat: MMM/dd HH:mm:ss
