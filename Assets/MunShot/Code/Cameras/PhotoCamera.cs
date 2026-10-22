@@ -110,7 +110,20 @@ namespace MunShot.Cameras
         public Vector CameraForward => ToVector(PhysicsRotation() * Vector3.forward);
         public Vector CameraUp => ToVector(PhysicsRotation() * Vector3.up);
         public bool IsOrthographic => false;
-        public double FieldOfView => _fieldOfView;
+        double ICameraShot.FieldOfView => _fieldOfView;
+
+        /// <summary>
+        /// The camera's vertical field of view in degrees, between <see cref="MinFieldOfView"/> and
+        /// <see cref="MaxFieldOfView"/>: narrow to zoom in, wide for a wide-angle shot. Starts at the game camera's.
+        /// </summary>
+        public float FieldOfView
+        {
+            get => (float)_fieldOfView;
+            set => _fieldOfView = Mathf.Clamp(value, MinFieldOfView, MaxFieldOfView);
+        }
+
+        public const float MinFieldOfView = 10f;
+        public const float MaxFieldOfView = 100f;
         public double OrthographicSize => 5.0;
         public float NearClipPlane => NearClip;
 
@@ -150,7 +163,7 @@ namespace MunShot.Cameras
             _cameraManager = cameraManager;
             _physicsSpace = physicsSpace;
             _position = current.CameraPosition;
-            _fieldOfView = current.FieldOfView > 0 ? current.FieldOfView : 60.0;
+            _fieldOfView = current.FieldOfView > 0 ? Mathf.Clamp((float)current.FieldOfView, MinFieldOfView, MaxFieldOfView) : 60.0;
             StartFrom(physicsSpace.RotationToPhysics(current.CameraRotation));
 
             _gameInputWasEnabled = cameraManager.InputEnabled;

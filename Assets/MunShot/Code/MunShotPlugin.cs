@@ -3,14 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using KSP.Animation;
 using KSP.Game;
-using KSP.Input;
 using KSP.Messages;
 using MunShot.Cameras;
 using MunShot.Capture;
 using MunShot.Posing;
 using MunShot.Tools;
+using MunShot.UI;
 using Redux.ExtraModTypes;
-using UnityEngine.InputSystem;
+using SpaceWarp2.API.Loading;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace MunShot
 {
@@ -20,37 +22,54 @@ namespace MunShot
         private const string StockPresetsFile = "stock.json";
         private const string PresetsFolder = "Poses";
 
-        private PosePlayer _posePlayer;
-        private PhotoSession _photoSession;
-        private GamePause _pause;
-        private UiHider _uiHider;
-        private PhotoModeInputLock _inputLock;
-        private PhotoCamera _camera;
-        private PhotoCapture _capture;
-        private InputAction _screenshotKey;
-        private PosePickerWindow _posePicker;
-        private IReadOnlyList<PosePreset> _presets = Array.Empty<PosePreset>();
+        // Addressable keys, set on the assets in the MunShot Addressables group
+        private const string WindowAddress = "MunShot/PhotoModeWindow.uxml";
+        // App tray icon: 48px like the stock toolbar icons (drawn by Tools/Icons/make_toolbar_icon.py)
+        private const string ToolbarIconAddress = "MunShot/toolbar.png";
+
+        private const string LoadAssetsStep = "MunShot: Loading photo mode";
+        // A stock campaign-load step to load after, as K.E.R.N.E.L does: early enough that the app tray button is
+        // registered before the flight app tray is built
+        private const string LoadAssetsAfter = "Loading Celestial Body Data";
+
+        private PhotoMode _photoMode;
+        private PosePlayer _evaPlayer;
+        private PhotoModeWindow _window;
+        private PoseLabWindow _poseLab;
+        private PauseMenuButton _pauseMenuButton;
+        private VisualTreeAsset _windowUxml;
+        private bool _assetsRequested;
 
         public override void OnPreInitialized()
         {
             // The game only gives a mod its settings page if its settings exist when the menu is set up
             MunShotSettings.Bind(SWConfiguration);
+
+            // Redux only lets a mod load its own assets in a campaign that has it switched on. Loading them in a step of
+            // the campaign load, rather than OnCampaignLoaded, registers the app tray button before the flight app
+            // tray is built
+            SaveLoad.AddStepAfter(SWMetadata.Guid, LoadAssetsStep, StockFlow.CampaignLoad, LoadAssetsAfter,
+                (resolve, reject) => LoadAssets(resolve));
         }
 
         public override void OnInitialized()
         {
-            _posePlayer = NewPosePlayer();
-            _photoSession = new PhotoSession(new PhotoDoubleFactory(message => SWLogger.LogError(message)), NewPosePlayer,
+            // The window binds show and hide through these, so they're registered before it loads
+            MunShotConverters.Register();
+
+            var session = new PhotoSession(new PhotoDoubleFactory(message => SWLogger.LogError(message)), NewPosePlayer,
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
-            _pause = new GamePause(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
-            _uiHider = new UiHider(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
-            _inputLock = new PhotoModeInputLock(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
-            _camera = new PhotoCamera(new KeyboardMouseCameraInput(),
+            var camera = new PhotoCamera(new KeyboardMouseCameraInput(),
                 new GamepadCameraInput(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message)),
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
-            _capture = new PhotoCapture(message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
+            var capture = new PhotoCapture(message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
+            _photoMode = new PhotoMode(SWLogger, session, camera, capture, LoadPresets());
+            _photoMode.OpenChanged += AppBarButton.SetPressed;
+            _evaPlayer = NewPosePlayer();
+            _pauseMenuButton = new PauseMenuButton(OpenPhotoMode, SWLogger);
+
             Messages?.PersistentSubscribe<GameStateChangedMessage>(OnGameStateChanged);
-            _presets = LoadPresets();
+            Messages?.PersistentSubscribe<EscapeMenuOpenedMessage>(_ => _pauseMenuButton.OnPauseMenuOpened());
         }
 
         // After a freeze, a kerbal's Animator gets the speed the game gives it for the current time warp
@@ -71,91 +90,119 @@ namespace MunShot
             return presets;
         }
 
-        // Lets go of the campaign before the game tears it down: doubles go, originals come back, no kerbal stays
-        // posed, and the picker closes
+        private void LoadAssets(Action done)
+        {
+            if (_assetsRequested)
+            {
+                done();
+                return;
+            }
+
+            _assetsRequested = true;
+            int pending = 2;
+            void Loaded()
+            {
+                if (--pending == 0) done();
+            }
+
+            Assets.Load<VisualTreeAsset>(WindowAddress, uxml =>
+            {
+                _windowUxml = uxml;
+                if (uxml == null) SWLogger.LogError($"Could not load the photo mode window '{WindowAddress}'; photo mode will open without it.");
+                Loaded();
+            });
+            Assets.Load<Texture2D>(ToolbarIconAddress, texture =>
+            {
+                if (texture == null)
+                {
+                    SWLogger.LogError($"Could not load the app tray icon '{ToolbarIconAddress}'; there's no photo mode button in the app tray. "
+                                      + "Use the pause menu or the keyboard shortcut.");
+                }
+                else
+                {
+                    Sprite icon = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                    AppBarButton.Register(SWMetadata.Guid, icon, open =>
+                    {
+                        if (open) OpenPhotoMode();
+                        else _photoMode.Close();
+                    });
+                }
+                Loaded();
+            });
+        }
+
+        // Lets go of the campaign before the game tears it down: photo mode closes (doubles go, originals come back)
+        // and no kerbal stays posed
         public override void OnCampaignUnloading() => EndPhotoMode();
 
         private void EndPhotoMode()
         {
-            _photoSession?.Close();
-            _posePlayer?.Release();
-            if (_posePicker != null && _posePicker.IsAlive) _posePicker.SetOpen(false);
-            // Also when the window is already gone with the game's UI, which wouldn't report closing
-            ListenToScreenshotKey(false);
-            _capture?.Dispose();
-            _camera?.Release();
-            _uiHider?.Release();
-            _inputLock?.Release();
-            _pause?.Release();
+            _photoMode?.Close();
+            if (_poseLab != null && _poseLab.IsAlive) _poseLab.SetOpen(false);
+            _evaPlayer?.Release();
+        }
+
+        private void OpenPhotoMode()
+        {
+            EnsureWindow();
+            // Opening can be refused (not in flight); the app tray button then pops back up
+            if (!_photoMode.Open()) AppBarButton.SetPressed(false);
+        }
+
+        // The window is made when photo mode first opens in a campaign, and again if the game has torn down the UI it
+        // lived in
+        private void EnsureWindow()
+        {
+            if (_window != null && _window.IsAlive) return;
+            _window?.Dispose();
+            _window = null;
+            if (_windowUxml == null)
+            {
+                SWLogger.LogError($"Photo mode: no window to show; '{WindowAddress}' isn't loaded. Close photo mode with the keyboard shortcut.");
+                return;
+            }
+            _window = new PhotoModeWindow(_photoMode, _windowUxml, SWLogger);
         }
 
         private void Update()
         {
-            if (_posePlayer == null) return;
+            if (_photoMode == null) return;
 
             bool inFlight = Enabled && Game?.GlobalGameState != null && Game.GlobalGameState.GetState() == GameState.FlightView;
-            if (inFlight && MunShotSettings.TogglePosePicker.Down)
+            if (inFlight && MunShotSettings.TogglePhotoMode.Down)
             {
-                PosePickerWindow picker = GetOrCreatePosePicker();
-                picker.SetOpen(!picker.IsOpen);
+                if (_photoMode.IsOpen) _photoMode.Close();
+                else OpenPhotoMode();
+            }
+            if (_photoMode.IsOpen && MunShotSettings.HideUi.Down && !(_window != null && _window.IsAlive && _window.IsTyping))
+                _photoMode.ToggleUiHidden();
+            if (inFlight && MunShotSettings.TogglePoseLab.Down)
+            {
+                PoseLabWindow lab = GetOrCreatePoseLab();
+                lab.SetOpen(!lab.IsOpen);
             }
 
-            _pause.Tick();
-            _uiHider.Tick();
-            _capture.Tick();
-            _posePlayer.Tick();
-            _photoSession.Tick();
-            if (_posePicker != null && _posePicker.IsAlive) _posePicker.Tick();
+            // Clicks and typing in photo mode's windows aren't for the scene or the camera
+            Vector2 mouse = global::Mouse.Position;
+            bool labAlive = _poseLab != null && _poseLab.IsAlive;
+            bool windowAlive = _window != null && _window.IsAlive;
+            bool pointerOverUi = (windowAlive && _window.IsPointerOver(mouse)) || (labAlive && _poseLab.IsPointerOver(mouse));
+            bool typing = (windowAlive && _window.IsTyping) || (labAlive && _poseLab.IsTyping);
+            _photoMode.Tick(pointerOverUi, typing);
+
+            _evaPlayer.Tick();
+            if (labAlive) _poseLab.Tick();
         }
 
-        private PosePickerWindow GetOrCreatePosePicker()
+        private PoseLabWindow GetOrCreatePoseLab()
         {
-            if (_posePicker == null || !_posePicker.IsAlive)
+            if (_poseLab == null || !_poseLab.IsAlive)
             {
-                _posePicker = new PosePickerWindow(SWLogger, _posePlayer, _photoSession, _camera, _capture, _presets);
-                // Photo mode is open while the window is: the game stays paused, its UI hidden and its camera ours for
-                // all of it
-                _posePicker.OpenChanged += open =>
-                {
-                    if (open)
-                    {
-                        _pause.Engage();
-                        _inputLock.Engage();
-                        _uiHider.Engage();
-                        _camera.Engage();
-                        ListenToScreenshotKey(true);
-                    }
-                    else
-                    {
-                        ListenToScreenshotKey(false);
-                        _capture.Dispose();
-                        _camera.Release();
-                        _uiHider.Release();
-                        _inputLock.Release();
-                        _pause.Release();
-                    }
-                };
+                _poseLab?.Dispose();
+                _poseLab = new PoseLabWindow(SWLogger, _evaPlayer, _photoMode);
             }
-            return _posePicker;
+            return _poseLab;
         }
-
-        // In photo mode the game's screenshot key takes the photo without photo mode's UI. Redux takes the screenshot
-        // for the key itself; PhotoCapture joins that capture and hides the UI for it
-        private void ListenToScreenshotKey(bool listen)
-        {
-            if (_screenshotKey != null)
-            {
-                _screenshotKey.performed -= OnScreenshotKey;
-                _screenshotKey = null;
-            }
-            if (!listen) return;
-            GameInput input = Game?.Input;
-            _screenshotKey = input != null ? input.Global.TakeScreenshot : null;
-            if (_screenshotKey != null) _screenshotKey.performed += OnScreenshotKey;
-            else SWLogger.LogWarning("Photo mode: the game's screenshot key isn't available; use Take photo in the picker.");
-        }
-
-        private void OnScreenshotKey(InputAction.CallbackContext context) => _capture.Take();
 
         private void OnGameStateChanged(MessageCenterMessage message)
         {

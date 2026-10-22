@@ -68,6 +68,46 @@ namespace MunShot.Posing
             return true;
         }
 
+        /// <summary>Whether the helmet is on (it is when a double is built, as for any kerbal outside).</summary>
+        public bool HelmetOn { get; private set; } = true;
+
+        /// <summary>Whether the visor glass is shown on the helmet.</summary>
+        public bool VisorOn { get; private set; } = true;
+
+        /// <summary>
+        /// Puts the helmet on or takes it off, the game's own way (<see cref="Kerbal3DModel.SetHelmetVisible"/>, as
+        /// the IVA helmet toggle does): the helmet, its visor and the neck ring all go together.
+        /// </summary>
+        public void SetHelmet(bool on)
+        {
+            HelmetOn = on;
+            if (Model != null) Model.SetHelmetVisible(on);
+        }
+
+        /// <summary>
+        /// Shows or hides the visor glass, so the face can be seen without reflections. The game has no visor switch,
+        /// so the visor's renderers are hidden the way originals are (forceRenderingOff); the helmet stays on.
+        /// </summary>
+        public void SetVisor(bool on)
+        {
+            VisorOn = on;
+            if (Model == null) return;
+            int found = 0;
+            foreach (Renderer renderer in Model.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer.gameObject.name.IndexOf(VisorName, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                renderer.forceRenderingOff = !on;
+                found++;
+            }
+            if (found == 0) VisorWarning = $"Photo double of {Source.Name}: no visor found (no renderer named '*{VisorName}*').";
+        }
+
+        /// <summary>Set when <see cref="SetVisor"/> found no visor to show or hide.</summary>
+        public string VisorWarning { get; private set; }
+
+        // The helmet's glass is "mesh_helmet_01_visor" on the kerbal rig
+        private const string VisorName = "visor";
+
         /// <summary>Removes the double from the scene and from the game's update list.</summary>
         public void Destroy()
         {

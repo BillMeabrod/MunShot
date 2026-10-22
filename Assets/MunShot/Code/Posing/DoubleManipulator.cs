@@ -5,12 +5,14 @@ namespace MunShot.Posing
 {
     /// <summary>
     /// Moving and rotating photo doubles with the mouse, VAB style. Clicking a double selects it and shows the handles
-    /// on it; clicking empty space puts the handles away, but the double stays selected (it's still the one being posed).
-    /// Selecting it again, by clicking it or in the UI, brings them back. With the move tool, dragging the double slides it along the ground plane (the plane across its up), and
+    /// on it; clicking empty space puts the handles away, but the double stays selected (it's still the one being
+    /// posed). Selecting it again, by clicking it or in the UI, brings them back. With the move tool, dragging the
+    /// double moves it across the screen (up, down and sideways as seen, keeping its distance from the camera), and
     /// dragging an arrow moves it along that axis; with the rotate tool, dragging a ring turns it about that axis,
     /// around the middle of its body. With angle snap on (as the VAB starts), a ring turns in 15° steps from where the
-    /// drag began, or 5° steps with the fine modifier held, as the VAB's widget does. Hovering a double outlines it and plays a sound, as hovering a part does in the
-    /// VAB (<see cref="HoverFeedback"/>). The UI feeds it the mouse each frame, so this class has no input or UI code.
+    /// drag began, or 5° steps with the fine modifier held, as the VAB's widget does. Hovering a double outlines it and
+    /// plays a sound, as hovering a part does in the VAB (<see cref="HoverFeedback"/>). The UI feeds it the mouse each
+    /// frame, so this class has no input or UI code.
     /// </summary>
     public sealed class DoubleManipulator : IDisposable
     {
@@ -96,7 +98,7 @@ namespace MunShot.Posing
             if (camera == null) return;
 
             Ray ray = camera.ScreenPointToRay(mouse);
-            if (pressed && !overUi) BeginDrag(ray, selected);
+            if (pressed && !overUi) BeginDrag(ray, selected, camera);
             else if (held && _drag != Drag.None) ContinueDrag(ray, camera);
             if (released || !held) _drag = Drag.None;
 
@@ -105,10 +107,10 @@ namespace MunShot.Posing
         }
 
         /// <summary>
-        /// Keeps the handles and hover outline out of sight (call every frame while a photo is taken, instead of
-        /// <see cref="Tick"/>), and drops any drag. The next Tick shows them again as they were.
+        /// Keeps the handles and hover outline out of sight (call every frame instead of <see cref="Tick"/> while a
+        /// photo is taken or photo mode's UI is hidden), and drops any drag. The next Tick shows them again as they were.
         /// </summary>
-        public void HideForCapture()
+        public void HideAll()
         {
             _handles?.SetVisible(false);
             _hover.Clear();
@@ -125,7 +127,7 @@ namespace MunShot.Posing
             _handlesOn = _lastSelected = null;
         }
 
-        private void BeginDrag(Ray ray, PhotoSession.Entry selected)
+        private void BeginDrag(Ray ray, PhotoSession.Entry selected, Camera camera)
         {
             // A shown handle takes the click before any double does
             if (selected != null && _handlesOn == selected && selected.IsReady && _handles != null && _handles.TryPick(ray, out HandleHit hit))
@@ -167,8 +169,10 @@ namespace MunShot.Posing
             }
             if (Mode == HandleMode.Move)
             {
+                // The plane facing the camera through where it was grabbed: the mouse moves it as it's seen, never
+                // nearer or further
                 _drag = Drag.Body;
-                _dragPlane = new Plane(clicked.Up, point);
+                _dragPlane = new Plane(-camera.transform.forward, point);
                 _dragStartPoint = point;
                 _dragStartPosition = clicked.Root.position;
             }

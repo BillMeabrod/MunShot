@@ -32,7 +32,7 @@ namespace MunShot.Posing
         public override bool Equals(object obj) => obj is ClipPose other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(ClipName, Time);
 
-        /// <summary>"clip @ 1.350s", the form shown in the pose picker.</summary>
+        /// <summary>"clip @ 1.350s", the form shown in the pose lab.</summary>
         public override string ToString() => $"{ClipName} @ {Time.ToString("0.000", CultureInfo.InvariantCulture)}s";
     }
 }

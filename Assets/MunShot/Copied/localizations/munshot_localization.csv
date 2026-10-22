@@ -1,0 +1,36 @@
+Key,Type,Desc,English,German,French,Italian,Spanish,Japanese,Korean,Polish,Russian,Chinese (Simplified),Portuguese (Brazil),Chinese (Traditional)
+MunShot/UI/Title,Text,Overlay title and app tray tooltip,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode
+Menu/Escape/MunShotPhotoMode,Text,Pause menu button that opens photo mode (the game looks pause menu text up under Menu/Escape/),Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode,Photo Mode
+MunShot/UI/Kerbals,Text,Tab: the kerbals in the shot,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals,Kerbals
+MunShot/UI/Pose,Text,Tab: posing and moving the selected kerbal,Pose,Pose,Pose,Pose,Pose,Pose,Pose,Pose,Pose,Pose,Pose,Pose
+MunShot/UI/Camera,Text,Tab: the photo camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera,Camera
+MunShot/UI/BringInKerbal,Text,Button: opens the list of kerbals to put in front of the camera,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal,Bring in a kerbal
+MunShot/UI/InThisScene,Text,Kerbal list section: kerbals in the scene when photo mode opened,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene,In this scene
+MunShot/UI/Elsewhere,Text,Kerbal list section: every other kerbal in the roster,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere,Elsewhere
+MunShot/UI/NoKerbals,Text,Kerbal list when no kerbals were found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found,No kerbals found
+MunShot/UI/EveryoneIsIn,Text,Kerbal list when every kerbal has been brought in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in,Everyone is in
+MunShot/UI/NobodyIn,Text,Shown when no kerbal has been brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet,Nobody brought in yet
+MunShot/UI/NoPose,Text,"Pose list entry: the kerbal's own animation, no held pose",None,None,None,None,None,None,None,None,None,None,None,None
+MunShot/UI/JetpackPose,Text,"Pose list entry for a pose's jetpack version; {0} is the pose's name","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)","{0} (jetpack)"
+MunShot/UI/Helmet,Text,Toggle: the selected kerbal wears their helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet,Helmet
+MunShot/UI/Visor,Text,Toggle: the helmet's visor glass is shown,Visor,Visor,Visor,Visor,Visor,Visor,Visor,Visor,Visor,Visor,Visor,Visor
+MunShot/UI/Move,Text,Tool button: move the selected kerbal with the VAB's arrows,Move,Move,Move,Move,Move,Move,Move,Move,Move,Move,Move,Move
+MunShot/UI/Rotate,Text,Tool button: rotate the selected kerbal with the VAB's rings,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate,Rotate
+MunShot/UI/AngleSnap,Text,"Toggle: rings turn in steps, as the VAB's angle snap",Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap,Angle snap
+MunShot/UI/SnapToSurface,Text,Button: stand the selected kerbal on the surface just below,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface,Snap to surface
+MunShot/UI/StandUpright,Text,Button: turn the selected kerbal back to standing straight up,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright,Stand upright
+MunShot/UI/Free,Text,Camera mode button: fly the camera freely,Free,Free,Free,Free,Free,Free,Free,Free,Free,Free,Free,Free
+MunShot/UI/Orbit,Text,Camera mode button: circle a vessel or kerbal,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit,Orbit
+MunShot/UI/OrbitAround,Text,Caption above the list of things the camera can orbit,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around,Orbit around
+MunShot/UI/FieldOfView,Text,Caption above the camera's field of view slider,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view,Field of view
+MunShot/UI/KeyRightMouse,Text,Hint bar: the key part for holding the right mouse button,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse,Hold right mouse
+MunShot/UI/KeyWheel,Text,Hint bar: the key part for the mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel,Mouse wheel
+MunShot/UI/HintFly,Text,Hint bar: what the fly keys do,Fly,Fly,Fly,Fly,Fly,Fly,Fly,Fly,Fly,Fly,Fly,Fly
+MunShot/UI/HintLook,Text,Hint bar: what holding right mouse does in free camera,Look,Look,Look,Look,Look,Look,Look,Look,Look,Look,Look,Look
+MunShot/UI/HintUpDown,Text,Hint bar: what the mouse wheel does in free camera,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down,Up/down
+MunShot/UI/HintCircle,Text,Hint bar: what holding right mouse does in orbit camera,Circle,Circle,Circle,Circle,Circle,Circle,Circle,Circle,Circle,Circle,Circle,Circle
+MunShot/UI/HintCloser,Text,Hint bar: what the mouse wheel does in orbit camera,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further,Closer/further
+MunShot/UI/HintRoll,Text,Hint bar: what the roll keys do,Roll,Roll,Roll,Roll,Roll,Roll,Roll,Roll,Roll,Roll,Roll,Roll
+MunShot/UI/HintHideUi,Text,Hint bar: what the hide UI key does,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI,Hide UI
+MunShot/UI/HintTakePhoto,Text,Hint bar: what the screenshot key does,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo,Take photo
+MunShot/UI/HintExit,Text,Hint bar: what the photo mode key does,Exit,Exit,Exit,Exit,Exit,Exit,Exit,Exit,Exit,Exit,Exit,Exit

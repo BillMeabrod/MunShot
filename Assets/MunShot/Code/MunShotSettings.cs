@@ -13,18 +13,28 @@ namespace MunShot
     /// </summary>
     public static class MunShotSettings
     {
+        private const string PhotoModeSection = "Photo Mode";
         private const string DeveloperSection = "Developer";
         private const string CameraSection = "Photo Camera";
 
-        private static readonly KeyboardShortcut DefaultTogglePosePicker = new(KeyCode.P, KeyCode.LeftAlt);
+        private static readonly KeyboardShortcut DefaultTogglePhotoMode = new(KeyCode.P, KeyCode.LeftAlt);
+        private static readonly KeyboardShortcut DefaultTogglePoseLab = new(KeyCode.L, KeyCode.LeftAlt);
         private const float DefaultFlySpeed = 5f;
 
-        private static ConfigValue<KeyboardShortcut> _togglePosePicker;
+        private static ConfigValue<KeyboardShortcut> _togglePhotoMode;
+        private static ConfigValue<KeyboardShortcut> _togglePoseLab;
         private static ConfigValue<float> _flySpeed;
+        private static ConfigValue<KeyBind> _hideUi;
         private static ConfigValue<KeyBind> _forward, _back, _left, _right, _rollLeft, _rollRight, _level, _fast, _slow;
 
-        /// <summary>Opens and closes the pose picker in flight. Left Alt+P by default.</summary>
-        public static KeyboardShortcut TogglePosePicker => _togglePosePicker?.Value ?? DefaultTogglePosePicker;
+        /// <summary>Opens and closes photo mode in flight. Left Alt+P by default.</summary>
+        public static KeyboardShortcut TogglePhotoMode => _togglePhotoMode?.Value ?? DefaultTogglePhotoMode;
+
+        /// <summary>Opens and closes the developer pose lab in flight. Left Alt+L by default.</summary>
+        public static KeyboardShortcut TogglePoseLab => _togglePoseLab?.Value ?? DefaultTogglePoseLab;
+
+        /// <summary>Hides and shows photo mode's own UI, to frame the shot. H by default.</summary>
+        public static KeyBind HideUi => _hideUi?.Value ?? new KeyBind(KeyCode.H);
 
         /// <summary>How fast the free camera flies, in metres per second, before Fast or Slow.</summary>
         public static float FlySpeed => _flySpeed?.Value ?? DefaultFlySpeed;
@@ -41,12 +51,18 @@ namespace MunShot
 
         public static void Bind(IConfigFile config)
         {
-            if (config == null || _togglePosePicker != null) return;
+            if (config == null || _togglePhotoMode != null) return;
+
+            IConfigSection photoMode = config.GetOrCreateSection(PhotoModeSection);
+            _togglePhotoMode = new ConfigValue<KeyboardShortcut>(photoMode.BindEntry("Toggle Photo Mode",
+                DefaultTogglePhotoMode,
+                "Opens and closes photo mode in flight. It's also in the app tray and the pause menu."));
+            _hideUi = Key(photoMode, "Hide Photo Mode UI", KeyCode.H, "Hides photo mode's panels and handles to frame the shot; press again to bring them back.");
 
             IConfigSection developer = config.GetOrCreateSection(DeveloperSection);
-            _togglePosePicker = new ConfigValue<KeyboardShortcut>(developer.BindEntry("Toggle Pose Picker",
-                DefaultTogglePosePicker,
-                "Opens and closes the developer pose picker in flight, for picking poses from the game's animations."));
+            _togglePoseLab = new ConfigValue<KeyboardShortcut>(developer.BindEntry("Toggle Pose Lab",
+                DefaultTogglePoseLab,
+                "Opens and closes the developer pose lab in flight, for picking poses from the game's animations."));
 
             IConfigSection camera = config.GetOrCreateSection(CameraSection);
             _flySpeed = new ConfigValue<float>(camera.BindEntry("Fly Speed", DefaultFlySpeed,

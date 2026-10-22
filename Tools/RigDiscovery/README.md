@@ -34,7 +34,7 @@ Animator controllers loaded from bundles come back without layers or parameters 
 
 ## Findings (26w43a, 2026-10-21)
 
-From these scripts and the in-game pose picker (`Alt+P` on an EVA kerbal).
+From these scripts and the in-game pose lab (`Alt+L`, on an EVA kerbal or photo mode's selected kerbal).
 
 **Rig**
 - One skeleton. At runtime the head, eyes and helmet are re-parented onto the body prefab's `bone_kerbal_*` bones (`body_spacesuit_01(Clone)` under the Animator), so one set of bones drives everything.

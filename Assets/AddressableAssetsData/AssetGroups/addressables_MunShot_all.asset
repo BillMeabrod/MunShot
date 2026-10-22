@@ -14,7 +14,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.AddressableAssetGroup
   m_GroupName: addressables_MunShot_all
   m_GUID: b8588653fba43df4e9c9a0e5a2fc9d7e
-  m_SerializeEntries: []
+  m_SerializeEntries:
+  - m_GUID: 0bfacfe07722ade4180d9685072814a7
+    m_Address: MunShot/PhotoModeWindow.uxml
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 647ebd296a910d44aa558aab2c4b00f4
+    m_Address: MunShot/toolbar.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c1213a880ce6f44459b7cf788ef3550f
+    m_Address: MunShot/PhotoModeWindow.uss
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   m_ReadOnly: 0
   m_Settings: {fileID: 11400000, guid: d2e9389a927173b4599160efbb1a25f4, type: 2}
   m_SchemaSet:

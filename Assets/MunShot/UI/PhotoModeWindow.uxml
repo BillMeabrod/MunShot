@@ -1,0 +1,154 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uitk="UitkForKsp2.Controls" editor-extension-mode="False">
+    <!-- MunShot's photo mode: a full-screen overlay. The scene fills the screen; a flight panel on the left edge (opened
+         and closed by its bar toggle, as Redux's orbital info panel is), a shutter and a hint bar sit on its edges, and
+         the Hide UI key hides them all. Built from the KerbalUI theme's own pieces, as Redux's panels are: flight-panel,
+         bar-toggle, InvertedCornerBox, OabButton, switch toggles; PhotoModeWindow.uss only places them. Only the
+         panels take clicks: the rest of the screen is the scene. Its data source is a PhotoModeViewModel;
+         PhotoModeWindow fills the lists and wires the controls. Texts starting with # are localization keys
+         (Copied/localizations/munshot_localization.csv); "uppercase" elements are shown in capitals. -->
+    <Style src="PhotoModeWindow.uss" />
+    <ui:VisualElement name="photo-mode" class="pm-root" picking-mode="Ignore">
+        <ui:VisualElement name="chrome" class="pm-chrome" picking-mode="Ignore">
+
+            <ui:VisualElement name="sidebar" class="pm-sidebar">
+                <!-- Opens and closes the panel -->
+                <ui:Toggle name="panel-toggle" value="true" class="dark bar-toggle bar-toggle-vertical">
+                    <ui:VisualElement class="bar-toggle-arrow" />
+                    <ui:VisualElement class="bar-toggle-dot" />
+                    <ui:VisualElement class="bar-toggle-dot bar-toggle-dot-open" />
+                    <ui:VisualElement class="bar-toggle-arrow" />
+                </ui:Toggle>
+
+                <ui:VisualElement name="side-panel" class="root flight-panel pm-panel">
+                    <ui:VisualElement class="flight-panel-outer-container">
+                        <ui:VisualElement class="flight-panel-inner-container pm-panel-inner">
+                            <ui:VisualElement class="pm-title-row">
+                                <ui:Label text="// " class="pm-title pm-dim" />
+                                <ui:Label text="#MunShot/UI/Title" class="pm-title uppercase" />
+                            </ui:VisualElement>
+
+                            <ui:VisualElement class="pm-tabs">
+                                <uitk:OabButton name="tab-kerbals" text="#MunShot/UI/Kerbals" class="pm-tab" />
+                                <uitk:OabButton name="tab-pose" text="#MunShot/UI/Pose" class="pm-tab" />
+                                <uitk:OabButton name="tab-camera" text="#MunShot/UI/Camera" class="pm-tab" />
+                            </ui:VisualElement>
+                            <ui:Label text="................................................" class="pm-divider" />
+
+                            <!-- Kerbals: who's in the shot (click to select, x to take out), bring someone in, helmet and visor -->
+                            <ui:VisualElement name="page-kerbals" class="pm-page">
+                                <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                    <ui:ScrollView name="kerbal-list" class="pm-list" />
+                                    <ui:Label text="#MunShot/UI/NobodyIn" class="pm-empty">
+                                        <Bindings>
+                                            <ui:DataBinding property="style.display" data-source-path="HasKerbals" binding-mode="ToTarget" source-to-ui-converters="MunShotInvertedBoolToDisplay" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </uitk:InvertedCornerBox>
+                                <uitk:OabButton name="bring-in" text="#MunShot/UI/BringInKerbal" class="pm-wide" />
+
+                                <ui:VisualElement name="kerbal-gear">
+                                    <Bindings>
+                                        <ui:DataBinding property="style.display" data-source-path="HasKerbals" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                    </Bindings>
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label class="pm-heading uppercase">
+                                            <Bindings>
+                                                <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" />
+                                            </Bindings>
+                                        </ui:Label>
+                                    </ui:VisualElement>
+                                    <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                        <ui:Toggle name="helmet" label="#MunShot/UI/Helmet" class="switch" />
+                                        <ui:Toggle name="visor" label="#MunShot/UI/Visor" class="switch" />
+                                    </uitk:InvertedCornerBox>
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+
+                            <!-- Pose: the selected kerbal's pose, and moving them -->
+                            <ui:VisualElement name="page-pose" class="pm-page">
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label class="pm-heading uppercase">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                    <ui:ScrollView name="pose-list" class="pm-list pm-list--tall" />
+                                </uitk:InvertedCornerBox>
+                                <ui:VisualElement class="pm-row">
+                                    <uitk:OabButton name="tool-move" text="#MunShot/UI/Move" class="pm-grow" />
+                                    <uitk:OabButton name="tool-rotate" text="#MunShot/UI/Rotate" class="pm-grow" />
+                                </ui:VisualElement>
+                                <ui:Toggle name="angle-snap" label="#MunShot/UI/AngleSnap" class="switch" />
+                                <ui:VisualElement class="pm-row">
+                                    <uitk:OabButton name="snap-to-surface" text="#MunShot/UI/SnapToSurface" class="pm-grow" />
+                                    <uitk:OabButton name="stand-upright" text="#MunShot/UI/StandUpright" class="pm-grow" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+
+                            <!-- Camera: fly free or circle something, and how wide it sees -->
+                            <ui:VisualElement name="page-camera" class="pm-page">
+                                <ui:VisualElement class="pm-row">
+                                    <uitk:OabButton name="camera-free" text="#MunShot/UI/Free" class="pm-grow" />
+                                    <uitk:OabButton name="camera-orbit" text="#MunShot/UI/Orbit" class="pm-grow" />
+                                </ui:VisualElement>
+                                <!-- What Orbit circles: only while orbiting -->
+                                <ui:VisualElement name="orbit-section">
+                                    <Bindings>
+                                        <ui:DataBinding property="style.display" data-source-path="IsOrbiting" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                    </Bindings>
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label text="#MunShot/UI/OrbitAround" class="pm-heading uppercase" />
+                                    </ui:VisualElement>
+                                    <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                        <ui:ScrollView name="orbit-list" class="pm-list" />
+                                    </uitk:InvertedCornerBox>
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/FieldOfView" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="field-of-view" low-value="10" high-value="100" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="FieldOfViewText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Shutter: takes the photo (as the screenshot key does), with all of this hidden -->
+            <ui:Button name="shutter" class="pm-shutter">
+                <ui:VisualElement class="pm-shutter__inner" picking-mode="Ignore" />
+            </ui:Button>
+
+            <!-- What the keys do right now: keycaps and what they do, filled by PhotoModeWindow from the bound keys -->
+            <ui:VisualElement name="hints" class="pm-hints" />
+        </ui:VisualElement>
+
+        <!-- A short note about what just happened; fades out on its own -->
+        <ui:VisualElement name="toast" class="root flight-panel pm-toast" picking-mode="Ignore">
+            <Bindings>
+                <ui:DataBinding property="style.display" data-source-path="ToastVisible" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+            </Bindings>
+            <ui:VisualElement class="flight-panel-outer-container" picking-mode="Ignore">
+                <ui:VisualElement class="flight-panel-inner-container pm-toast-inner" picking-mode="Ignore">
+                    <ui:Label class="pm-toast-text" picking-mode="Ignore">
+                        <Bindings>
+                            <ui:DataBinding property="text" data-source-path="Toast" binding-mode="ToTarget" />
+                        </Bindings>
+                    </ui:Label>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

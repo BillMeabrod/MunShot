@@ -1,0 +1,242 @@
+/* MunShot's photo mode overlay. The look comes from the KerbalUI theme's own pieces (flight-panel, bar-toggle,
+   InvertedCornerBox, OabButton, switch), as Redux's panels' does; these rules only place them, and add the few things
+   Redux styles in its own sheets: the "// TITLE" and "## HEADING" lines, the dotted divider, list rows, keycaps. Fonts
+   and colours are the theme's (its --font-* variables, #c0c7d5 text, #707580 dim text). */
+.pm-root,
+.pm-chrome {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* The flight panel and its bar toggle, on the left edge */
+.pm-sidebar {
+    position: absolute;
+    left: 10px;
+    top: 60px;
+    flex-direction: row;
+    align-items: stretch;
+    max-height: 75%;
+}
+
+.pm-sidebar > .bar-toggle {
+    margin-right: 4px;
+}
+
+.pm-panel {
+    width: 300px;
+}
+
+.pm-panel-inner {
+    padding: 10px 12px 12px 12px;
+    justify-content: flex-start;
+}
+
+.pm-title-row,
+.pm-heading-row {
+    flex-direction: row;
+}
+
+.pm-title {
+    -unity-font-definition: var(--font-title-small);
+    color: rgb(255, 255, 255);
+    font-size: 14px;
+    letter-spacing: 3px;
+    padding: 0;
+    margin: 0;
+}
+
+.pm-heading {
+    margin-top: 10px;
+    padding: 0;
+    color: rgb(255, 255, 255);
+}
+
+.pm-dim {
+    color: rgb(112, 117, 128);
+}
+
+.pm-divider {
+    color: rgb(112, 117, 128);
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 0;
+    margin: 2px 0 6px 0;
+}
+
+.pm-tabs {
+    flex-direction: row;
+    margin-top: 8px;
+}
+
+.pm-tab {
+    flex-grow: 1;
+    height: 26px;
+    margin: 0 2px;
+}
+
+.pm-box {
+    margin-top: 4px;
+    padding: 6px 8px;
+}
+
+.pm-list {
+    max-height: 180px;
+    background-color: rgba(0, 0, 0, 0);
+    padding: 0;
+}
+
+.pm-list--tall {
+    max-height: 240px;
+}
+
+/* List rows: plain text, as Redux's lists are; the chosen one bright */
+.pm-item {
+    -unity-text-align: middle-left;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    margin: 0;
+    padding: 3px 4px;
+    color: rgb(192, 199, 213);
+}
+
+.pm-item:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.pm-item.selected {
+    color: rgb(255, 255, 255);
+    -unity-font-definition: var(--font-bold);
+}
+
+.pm-item-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.pm-item-row > .pm-item {
+    flex-grow: 1;
+}
+
+.pm-remove {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    color: rgb(112, 117, 128);
+    width: 24px;
+}
+
+.pm-remove:hover {
+    color: rgb(255, 255, 255);
+}
+
+.pm-empty {
+    color: rgb(112, 117, 128);
+    white-space: normal;
+}
+
+.pm-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.pm-grow {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.pm-row > .oab-button {
+    height: 28px;
+    margin: 0 2px;
+}
+
+.pm-wide {
+    height: 28px;
+    margin-top: 6px;
+}
+
+.pm-value {
+    min-width: 40px;
+    -unity-text-align: middle-right;
+}
+
+/* Bottom middle, just above the hint bar */
+.pm-shutter {
+    position: absolute;
+    left: 50%;
+    margin-left: -32px;
+    bottom: 52px;
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    border-width: 3px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0);
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.pm-shutter__inner {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    background-color: rgb(255, 255, 255);
+}
+
+.pm-shutter:hover .pm-shutter__inner {
+    background-color: rgb(214, 224, 255);
+}
+
+/* The hint bar: the flight panels' black, keycaps and what they do */
+.pm-hints {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 7px 16px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.85);
+}
+
+.pm-hint {
+    flex-direction: row;
+    align-items: center;
+    margin: 2px 12px;
+}
+
+.pm-key {
+    padding: 0 5px;
+    margin-right: 4px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgb(87, 95, 111);
+    color: rgb(255, 255, 255);
+    -unity-font-definition: var(--font-bold);
+}
+
+.pm-action {
+    padding: 0;
+    color: rgb(112, 117, 128);
+}
+
+/* A note at the top middle, in a flight panel */
+.pm-toast {
+    position: absolute;
+    top: 16px;
+    left: 30%;
+    right: 30%;
+}
+
+.pm-toast-inner {
+    padding: 6px 12px;
+}
+
+.pm-toast-text {
+    -unity-text-align: middle-center;
+    white-space: normal;
+}

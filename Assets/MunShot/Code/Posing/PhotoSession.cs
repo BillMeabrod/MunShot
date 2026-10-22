@@ -269,8 +269,10 @@ namespace MunShot.Posing
 
         public void Dispose() => Close();
 
-        private void Remove(Entry entry)
+        /// <summary>Takes one double out: it's destroyed and its original shown again.</summary>
+        public void Remove(Entry entry)
         {
+            if (entry == null || !_entries.Contains(entry)) return;
             entry.Player.Release();
             entry.Double.Destroy();
             entry.Hider?.Restore();

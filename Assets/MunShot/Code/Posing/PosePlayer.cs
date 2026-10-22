@@ -104,7 +104,7 @@ namespace MunShot.Posing
             }
             if (_clip != clip) SetClip(clip);
 
-            // Held past the end means held on the last frame, as the picker's slider allows the full length
+            // Held past the end means held on the last frame, as the pose lab's slider allows the full length
             float time = Mathf.Min(pose.Time, clip.length);
             _clipPlayable.SetTime(time);
             Current = new ClipPose(clip.name, time);

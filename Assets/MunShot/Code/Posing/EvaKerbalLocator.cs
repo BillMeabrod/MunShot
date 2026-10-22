@@ -26,7 +26,7 @@ namespace MunShot.Posing
 
         /// <summary>
         /// Finds the active EVA kerbal. When there isn't one, <paramref name="reason"/> says which step came up
-        /// empty, for the picker to show and the log to record.
+        /// empty, for the pose lab to show and the log to record.
         /// </summary>
         public static bool TryFind(GameInstance game, out Result result, out string reason)
         {
