@@ -65,7 +65,7 @@ namespace MunShot
             _photoMode = new PhotoMode(SWLogger, session, camera, capture, LoadPresets());
             _photoMode.OpenChanged += AppBarButton.SetPressed;
             _evaPlayer = NewPosePlayer();
-            _pauseMenuButton = new PauseMenuButton(OpenPhotoMode, SWLogger);
+            _pauseMenuButton = new PauseMenuButton(OpenPhotoMode, () => Enabled, SWLogger);
 
             Messages?.PersistentSubscribe<GameStateChangedMessage>(OnGameStateChanged);
             Messages?.PersistentSubscribe<EscapeMenuOpenedMessage>(_ => _pauseMenuButton.OnPauseMenuOpened());

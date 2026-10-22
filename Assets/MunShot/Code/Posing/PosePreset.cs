@@ -18,8 +18,14 @@ namespace MunShot.Posing
         /// <summary>Unique within its file, e.g. "wave".</summary>
         public string Id { get; }
 
-        /// <summary>Shown to the player, e.g. "Wave".</summary>
+        /// <summary>The name in the preset file, e.g. "Wave": English, and the fallback for <see cref="DisplayName"/>.</summary>
         public string Name { get; }
+
+        /// <summary>
+        /// What the player sees: the translation under "MunShot/Pose/&lt;id&gt;" in MunShot's localization file, or
+        /// <see cref="Name"/> when there's none (a preset someone added without a translation).
+        /// </summary>
+        public string DisplayName => Localization.Translate("MunShot/Pose/" + Id, Name);
 
         public ClipPose? Ground { get; }
         public ClipPose? Jetpack { get; }

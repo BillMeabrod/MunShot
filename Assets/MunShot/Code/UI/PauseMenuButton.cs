@@ -10,10 +10,11 @@ namespace MunShot.UI
 {
     /// <summary>
     /// A "Photo Mode" button in the game's pause menu, in flight. The pause menu has no API for mods' buttons; this
-    /// adds one the way Redux adds its own (Report Bugs, Game Statistics in ESCMenuActionElementsController): a copy
-    /// of an existing button, renamed, with a localized name and a <see cref="DelegateAction"/> bound to it. It's made
-    /// when the pause menu first opens and shown only in flight. Pressing it resumes the game and opens photo mode
-    /// (which pauses it again). Everything that could go missing in a game update is checked and logged.
+    /// adds one the way Redux adds its own (Report Bugs, Game Statistics in ESCMenuActionElementsController): a copy of
+    /// an existing button, renamed, with a localized name and a <see cref="DelegateAction"/> bound to it. It's made
+    /// when the pause menu first opens and shown only in flight, in campaigns with MunShot switched on. Pressing it
+    /// resumes the game and opens photo mode (which pauses it again). Everything that could go missing in a game update
+    /// is checked and logged.
     /// </summary>
     internal sealed class PauseMenuButton : IDisposable
     {
@@ -23,23 +24,27 @@ namespace MunShot.UI
         private const string ActionKey = "munShotPhotoMode";
 
         private readonly Action _openPhotoMode;
+        private readonly Func<bool> _modEnabled;
         private readonly ILogger _logger;
         private GameObject _button;
         private bool _reportedMissing;
 
-        public PauseMenuButton(Action openPhotoMode, ILogger logger)
+        /// <param name="modEnabled">Whether MunShot is switched on in this campaign; the button only shows when it is.</param>
+        public PauseMenuButton(Action openPhotoMode, Func<bool> modEnabled, ILogger logger)
         {
             _openPhotoMode = openPhotoMode ?? throw new ArgumentNullException(nameof(openPhotoMode));
+            _modEnabled = modEnabled ?? throw new ArgumentNullException(nameof(modEnabled));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <summary>Call when the pause menu opens (<see cref="EscapeMenuOpenedMessage"/>).</summary>
         public void OnPauseMenuOpened()
         {
-            bool inFlight = GameManager.Instance?.Game?.GlobalGameState?.GetState() == GameState.FlightView;
-            if (_button == null && inFlight) _button = Create();
+            // In flight, in campaigns with MunShot switched on (Redux's app bar hides mods' buttons the same way)
+            bool show = _modEnabled() && GameManager.Instance?.Game?.GlobalGameState?.GetState() == GameState.FlightView;
+            if (_button == null && show) _button = Create();
             if (_button == null) return;
-            _button.SetActive(inFlight);
+            _button.SetActive(show);
             Renumber(_button.transform.parent);
         }
 

@@ -457,8 +457,8 @@ namespace MunShot.UI
         private static string PoseLabel((PosePreset preset, PoseVariant variant) choice)
         {
             if (choice.preset == null) return Localization.Translate(Localization.NoPose, "None");
-            if (choice.variant == PoseVariant.Ground) return choice.preset.Name;
-            return string.Format(Localization.Translate(Localization.JetpackPose, "{0} (jetpack)"), choice.preset.Name);
+            if (choice.variant == PoseVariant.Ground) return choice.preset.DisplayName;
+            return Localization.Format(Localization.JetpackPose, "{0} (jetpack)", choice.preset.DisplayName);
         }
 
         // ---- Hints ----

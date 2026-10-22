@@ -253,12 +253,12 @@ namespace MunShot
             if (!pose.HasValue)
             {
                 Status?.Invoke(variant == PoseVariant.Jetpack
-                    ? Localization.Format("MunShot/Status/NoJetpackVersion", "{0} has no jetpack version.", preset.Name)
-                    : Localization.Format("MunShot/Status/NoGroundVersion", "{0} has no ground version.", preset.Name));
+                    ? Localization.Format("MunShot/Status/NoJetpackVersion", "{0} has no jetpack version.", preset.DisplayName)
+                    : Localization.Format("MunShot/Status/NoGroundVersion", "{0} has no ground version.", preset.DisplayName));
                 return;
             }
             if (!selected.Player.Hold(selected.Double.Animator, pose.Value))
-                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", "Couldn't hold {0}; see the log.", preset.Name));
+                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", "Couldn't hold {0}; see the log.", preset.DisplayName));
             RaiseChanged();
         }
 
