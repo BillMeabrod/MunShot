@@ -21,6 +21,7 @@ namespace MunShot
         private PhotoSession _photoSession;
         private GamePause _pause;
         private UiHider _uiHider;
+        private FlightInputLock _inputLock;
         private PosePickerWindow _posePicker;
         private IReadOnlyList<PosePreset> _presets = Array.Empty<PosePreset>();
 
@@ -37,6 +38,7 @@ namespace MunShot
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
             _pause = new GamePause(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
             _uiHider = new UiHider(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
+            _inputLock = new FlightInputLock(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
             Messages?.PersistentSubscribe<GameStateChangedMessage>(OnGameStateChanged);
             _presets = LoadPresets();
         }
@@ -70,6 +72,7 @@ namespace MunShot
             if (_posePicker != null && _posePicker.IsAlive) _posePicker.SetOpen(false);
             // Also when the window is already gone with the game's UI, which wouldn't report closing
             _uiHider?.Release();
+            _inputLock?.Release();
             _pause?.Release();
         }
 
@@ -102,11 +105,13 @@ namespace MunShot
                     if (open)
                     {
                         _pause.Engage();
+                        _inputLock.Engage();
                         _uiHider.Engage();
                     }
                     else
                     {
                         _uiHider.Release();
+                        _inputLock.Release();
                         _pause.Release();
                     }
                 };

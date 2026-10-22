@@ -80,6 +80,7 @@
   "references": [
     "Unity.Addressables",
     "Unity.ResourceManager",
+    "Unity.InputSystem",
     "uitkforksp2.controls.Runtime"
   ]
 }

@@ -9,8 +9,9 @@ namespace MunShot.Posing
     /// <summary>
     /// The kerbals brought into photo mode. Bringing a kerbal in builds a <see cref="PhotoDouble"/> in front of the
     /// camera and, once it's built, hides the original (<see cref="KerbalHider"/>); each double has its own
-    /// <see cref="PosePlayer"/>. The real kerbals are never moved, so <see cref="Close"/> only has to destroy the doubles
-    /// and un-hide the originals for everything to be exactly as it was.
+    /// <see cref="PosePlayer"/>. Doubles are moved and rotated with a <see cref="DoubleManipulator"/>, and dropped onto
+    /// the surface below with <see cref="DropToSurface"/>. The real kerbals are never moved, so <see cref="Close"/> only
+    /// has to destroy the doubles and un-hide the originals for everything to be exactly as it was.
     /// </summary>
     public sealed class PhotoSession : IDisposable
     {
@@ -22,12 +23,21 @@ namespace MunShot.Posing
             public PosePlayer Player { get; }
             public bool IsReady => Double.State == PhotoDouble.BuildState.Ready;
 
-            internal Entry(PhotoDouble photoDouble, KerbalHider hider, PosePlayer player)
+            /// <summary>Which way is up where the double stands: away from the body the original's vessel orbits.</summary>
+            public Vector3 Up { get; }
+
+            internal Transform[] Bones;
+            internal KerbalHitShape HitShape;
+
+            internal Entry(PhotoDouble photoDouble, KerbalHider hider, PosePlayer player, Vector3 up)
             {
                 Double = photoDouble;
                 Hider = hider;
                 Player = player;
+                Up = up;
             }
+
+            internal Transform Root => Double.Model != null ? Double.Model.transform : null;
         }
 
         // Where a double appears: this far in front of the camera, on whatever surface is below within reach
@@ -35,11 +45,15 @@ namespace MunShot.Posing
         private const float GroundSearchAbove = 3f;
         private const float GroundSearchBelow = 30f;
 
+        // How far below a double a surface can be for Drop to surface
+        private const float DropReach = 100f;
+
         private readonly PhotoDoubleFactory _factory;
         private readonly Func<PosePlayer> _newPlayer;
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logError;
         private readonly List<Entry> _entries = new List<Entry>();
+        private Transform _ignoredInSurfaceSearch;
 
         public IReadOnlyList<Entry> Entries => _entries;
 
@@ -93,9 +107,10 @@ namespace MunShot.Posing
                     return;
                 }
 
-                Place(candidate, camera, out Vector3 position, out Quaternion rotation, out Transform parent, out string placement);
+                Vector3 up = SurfaceSnap.PlanetUp(candidate.Model, camera.transform.up);
+                Place(candidate, camera, up, out Vector3 position, out Quaternion rotation, out Transform parent, out string placement);
                 PhotoDouble photoDouble = _factory.Create(candidate, position, rotation, parent);
-                var entry = new Entry(photoDouble, new KerbalHider(candidate.Model.gameObject), _newPlayer());
+                var entry = new Entry(photoDouble, new KerbalHider(candidate.Model.gameObject), _newPlayer(), up);
                 _entries.Add(entry);
                 Select(entry);
                 _logInfo($"Photo mode: building a double of {candidate}, {placement}.");
@@ -107,6 +122,77 @@ namespace MunShot.Posing
         {
             if (entry != null && !_entries.Contains(entry)) throw new ArgumentException("That kerbal isn't in this session.", nameof(entry));
             Selected = entry;
+        }
+
+        /// <summary>
+        /// The nearest built double under <paramref name="ray"/>, and where the ray meets it. Only the kerbal's body
+        /// counts (<see cref="KerbalHitShape"/>), so a kerbal behind and just beside another can still be picked.
+        /// </summary>
+        public Entry PickDouble(Ray ray, out Vector3 point)
+        {
+            point = default;
+            Entry nearest = null;
+            float nearestDistance = float.MaxValue;
+            foreach (Entry entry in _entries)
+            {
+                if (!entry.IsReady || entry.Root == null) continue;
+                entry.HitShape ??= new KerbalHitShape(entry.Root);
+                if (entry.HitShape.IsEmpty)
+                {
+                    _logError($"Photo mode: {entry.Double.Source.Name}'s double has no kerbal skeleton to click on.");
+                    continue;
+                }
+                if (entry.HitShape.Raycast(ray, out float distance) && distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = entry;
+                }
+            }
+            if (nearest != null) point = ray.GetPoint(nearestDistance);
+            return nearest;
+        }
+
+        /// <summary>
+        /// Drops (or raises) a double straight along its up until its lowest point rests on the first surface below,
+        /// keeping its rotation. The lowest point is its lowest bone in the current pose and rotation, so a kerbal lying
+        /// down or tipped over lands as well as one standing.
+        /// </summary>
+        /// <returns>False, with <paramref name="message"/> saying why, when there's nothing below within reach.</returns>
+        public bool DropToSurface(Entry entry, out string message)
+        {
+            if (entry == null || !entry.IsReady || entry.Root == null)
+            {
+                message = "Bring a kerbal in first; Snap to surface drops the selected double.";
+                return false;
+            }
+
+            entry.Bones ??= SurfaceSnap.FindBones(entry.Root);
+            if (!SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch()))
+            {
+                message = $"Nothing to stand on within {DropReach:0} m below {entry.Double.Source.Name}.";
+                return false;
+            }
+            message = $"{entry.Double.Source.Name} is standing on the surface.";
+            return true;
+        }
+
+        /// <summary>Something surface searches should look through, e.g. the manipulation handles.</summary>
+        public void SetIgnoredInSurfaceSearch(Transform ignored) => _ignoredInSurfaceSearch = ignored;
+
+        /// <summary>The box around a double's visible body, if it has one yet.</summary>
+        public static bool BoundsOf(Entry entry, out Bounds bounds)
+        {
+            bounds = default;
+            bool any = false;
+            if (entry?.Root == null) return false;
+            foreach (Renderer renderer in entry.Root.GetComponentsInChildren<Renderer>())
+            {
+                if (!renderer.enabled || renderer is ParticleSystemRenderer) continue;
+                if (!any) bounds = renderer.bounds;
+                else bounds.Encapsulate(renderer.bounds);
+                any = true;
+            }
+            return any;
         }
 
         /// <summary>Called every frame: finishes doubles being built (hiding their originals) and keeps poses held.</summary>
@@ -160,40 +246,52 @@ namespace MunShot.Posing
             return null;
         }
 
-        // In front of the camera, standing on the first surface below that isn't the kerbal's own EVA body, facing the
-        // camera. "Up" is the EVA kerbal's own up (they stand on the local surface), or the camera's for seated crew.
-        // Parented to the physics space the original lives in, so the double moves with the floating origin.
-        private static void Place(KerbalCandidate candidate, Camera camera, out Vector3 position, out Quaternion rotation,
-                                  out Transform parent, out string placement)
+        // In front of the camera, standing on the first surface below that isn't a hidden kerbal's own body, facing the
+        // camera. Parented to the physics space the original lives in, so the double moves with the floating origin.
+        private void Place(KerbalCandidate candidate, Camera camera, Vector3 up, out Vector3 position, out Quaternion rotation,
+                           out Transform parent, out string placement)
         {
             Transform cam = camera.transform;
-            Vector3 up = candidate.Model.IsEVAKerbal ? candidate.Model.transform.up : cam.up;
             position = cam.position + cam.forward * DistanceInFront;
 
-            Transform ownBody = candidate.Model.IsEVAKerbal ? candidate.Model.GetComponentInParent<VesselBehavior>()?.transform : null;
-            bool grounded = false;
-            RaycastHit[] hits = Physics.RaycastAll(position + up * GroundSearchAbove, -up, GroundSearchAbove + GroundSearchBelow,
-                                                   Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            float nearest = float.MaxValue;
-            foreach (RaycastHit hit in hits)
-            {
-                if (ownBody != null && hit.transform.IsChildOf(ownBody)) continue;
-                if (hit.distance < nearest)
-                {
-                    nearest = hit.distance;
-                    position = hit.point;
-                    grounded = true;
-                }
-            }
+            List<Transform> ignore = IgnoredInSurfaceSearch();
+            Transform ownBody = BodyOf(candidate);
+            if (ownBody != null) ignore.Add(ownBody);
+            bool grounded = SurfaceSnap.TryFindSurface(position + up * GroundSearchAbove, -up, GroundSearchAbove + GroundSearchBelow,
+                                                       ignore, null, out RaycastHit hit);
+            if (grounded) position = hit.point;
 
-            Vector3 toCamera = Vector3.ProjectOnPlane(cam.position - position, up);
-            if (toCamera.sqrMagnitude < 1e-6f) toCamera = Vector3.ProjectOnPlane(-cam.forward, up);
-            rotation = Quaternion.LookRotation(toCamera.normalized, up);
-
+            rotation = FacingCamera(position, cam, up);
             parent = PhysicsSpaceOf(candidate.Model.transform);
             placement = $"{(grounded ? "standing on the surface" : "floating")} {DistanceInFront:0}m in front of the camera, "
                         + $"under '{(parent != null ? parent.name : "<scene root>")}'";
         }
+
+        private static Quaternion FacingCamera(Vector3 position, Transform camera, Vector3 up)
+        {
+            Vector3 toCamera = Vector3.ProjectOnPlane(camera.position - position, up);
+            if (toCamera.sqrMagnitude < 1e-6f) toCamera = Vector3.ProjectOnPlane(-camera.forward, up);
+            return Quaternion.LookRotation(toCamera.normalized, up);
+        }
+
+        // What surface searches look through: the bodies of the kerbals in the session who are on EVA (hidden, but
+        // their colliders are still there; seated crew's vessels are real surfaces), and the handles
+        private List<Transform> IgnoredInSurfaceSearch()
+        {
+            var ignored = new List<Transform>();
+            foreach (Entry entry in _entries)
+            {
+                Transform body = BodyOf(entry.Double.Source);
+                if (body != null) ignored.Add(body);
+            }
+            if (_ignoredInSurfaceSearch != null) ignored.Add(_ignoredInSurfaceSearch);
+            return ignored;
+        }
+
+        private static Transform BodyOf(KerbalCandidate candidate) =>
+            candidate.Model != null && candidate.Model.IsEVAKerbal
+                ? candidate.Model.GetComponentInParent<VesselBehavior>()?.transform
+                : null;
 
         // The object the original's vessel lives under: the vessel's own parent, which the game moves when the
         // floating origin shifts

@@ -28,6 +28,7 @@ namespace MunShot.Tools
         private readonly ILogger _logger;
         private readonly PosePlayer _evaPlayer;
         private readonly PhotoSession _session;
+        private readonly DoubleManipulator _manipulator;
         private readonly PanelRenderer _renderer;
 
         // One entry per preset version, e.g. "Wave (jetpack)"
@@ -37,7 +38,10 @@ namespace MunShot.Tools
         private readonly List<AnimationClip> _shownClips = new List<AnimationClip>();
         private List<KerbalCandidate> _candidates = new List<KerbalCandidate>();
 
+        private AppShell _shell;
         private Label _status;
+        private Button _moveTool;
+        private Button _rotateTool;
         private DropdownField _candidatePicker;
         private DropdownField _posingPicker;
         private Label _target;
@@ -72,6 +76,8 @@ namespace MunShot.Tools
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _evaPlayer = evaPlayer ?? throw new ArgumentNullException(nameof(evaPlayer));
             _session = session ?? throw new ArgumentNullException(nameof(session));
+            _manipulator = new DoubleManipulator(session, message => logger.LogInfo(message), message => logger.LogError(message));
+            _manipulator.Selected += OnDoubleClicked;
             foreach (PosePreset preset in presets ?? Array.Empty<PosePreset>())
                 foreach (PoseVariant variant in new[] { PoseVariant.Ground, PoseVariant.Jetpack })
                 {
@@ -94,6 +100,7 @@ namespace MunShot.Tools
             };
             _renderer = Window.Create(options, BuildContent());
             _renderer.Hide();
+            ShowToolState();
 
             _session.EntryChanged += OnSessionEntryChanged;
         }
@@ -127,6 +134,7 @@ namespace MunShot.Tools
         /// </summary>
         public void Tick()
         {
+            if (IsOpen) TickManipulator();
             if (_session.Selected == null && _evaPlayer.Current.HasValue && !_evaPlayer.IsHolding)
             {
                 _logger.LogInfo($"Pose picker: the posed kerbal '{_targetName}' is gone; releasing the pose.");
@@ -140,6 +148,7 @@ namespace MunShot.Tools
         public void Dispose()
         {
             _session.EntryChanged -= OnSessionEntryChanged;
+            _manipulator.Selected -= OnDoubleClicked;
             CloseSession();
             _evaPlayer.Release();
             if (_renderer != null) UnityEngine.Object.Destroy(_renderer.gameObject);
@@ -147,7 +156,7 @@ namespace MunShot.Tools
 
         private VisualElement BuildContent()
         {
-            var shell = new AppShell { Title = "MunShot: Pose Picker" };
+            var shell = _shell = new AppShell { Title = "MunShot: Pose Picker" };
             shell.CloseClicked += () => SetOpen(false);
             shell.style.width = 400;
 
@@ -169,6 +178,15 @@ namespace MunShot.Tools
             posingRow.Add(_posingPicker);
             posingRow.Add(new Button(CloseSession) { text = "Close session" });
             shell.Add(posingRow);
+
+            // Tools for the selected double: click a double to select it, then drag it or its handles
+            var toolRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            _moveTool = new Button(() => SetTool(HandleMode.Move)) { text = "Move" };
+            _rotateTool = new Button(() => SetTool(HandleMode.Rotate)) { text = "Rotate" };
+            toolRow.Add(_moveTool);
+            toolRow.Add(_rotateTool);
+            toolRow.Add(new Button(DropSelectedToSurface) { text = "Snap to surface" });
+            shell.Add(toolRow);
 
             // Posing
             _target = new Label { style = { marginTop = 6, unityFontStyleAndWeight = FontStyle.Bold } };
@@ -297,6 +315,8 @@ namespace MunShot.Tools
         {
             bool hadDoubles = _session.Entries.Count > 0;
             _session.Close();
+            // The handles go with the doubles; they're made again when the next double is in
+            _manipulator.Dispose();
             if (_posingPicker == null) return;
             RefreshPosingChoices();
             if (hadDoubles)
@@ -306,6 +326,54 @@ namespace MunShot.Tools
                 FindCandidates();
                 RefreshTarget();
             }
+        }
+
+        // ---- Moving and rotating doubles ----
+
+        private void SetTool(HandleMode mode)
+        {
+            _manipulator.SetMode(mode);
+            ShowToolState();
+        }
+
+        // The active tool's button is marked, as the VAB marks its active tool
+        private void ShowToolState()
+        {
+            _moveTool.text = _manipulator.Mode == HandleMode.Move ? "[Move]" : "Move";
+            _rotateTool.text = _manipulator.Mode == HandleMode.Rotate ? "[Rotate]" : "Rotate";
+        }
+
+        private void DropSelectedToSurface()
+        {
+            _session.DropToSurface(_session.Selected, out string message);
+            ShowStatus(message);
+        }
+
+        // Feeds the mouse to the manipulator through the game's own cursor (which is the virtual cursor when playing
+        // with a gamepad); presses over this window are the window's, not the world's
+        private void TickManipulator()
+        {
+            global::Mouse.MouseButton left = global::Mouse.Left;
+            if (left == null) return;
+            Vector2 screen = global::Mouse.Position;
+            _manipulator.Tick(CurrentCamera(), screen, left.WasPressedThisFrame(), left.IsPressed(), left.WasReleasedThisFrame(),
+                              IsOverWindow(screen));
+        }
+
+        private void OnDoubleClicked(PhotoSession.Entry entry)
+        {
+            RefreshPosingChoices();
+            RefreshTarget();
+            ShowStatus($"Selected {entry.Double.Source.Name}.");
+        }
+
+        private bool IsOverWindow(Vector2 screen)
+        {
+            IPanel panel = _shell?.panel;
+            if (panel == null) return false;
+            // Screen positions count up from the bottom, panel positions down from the top
+            Vector2 inPanel = RuntimePanelUtils.ScreenToPanel(panel, new Vector2(screen.x, Screen.height - screen.y));
+            return _shell.worldBound.Contains(inPanel);
         }
 
         private static Camera CurrentCamera() => GameManager.Instance?.Game?.GraphicsManager?.GetCurrentUnityCamera();
