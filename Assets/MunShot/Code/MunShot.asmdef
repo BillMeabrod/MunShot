@@ -78,6 +78,8 @@
   "autoReferenced": true,
   "noEngineReferences": false,
   "references": [
+    "Unity.Addressables",
+    "Unity.ResourceManager",
     "uitkforksp2.controls.Runtime"
   ]
 }

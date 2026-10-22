@@ -4,6 +4,7 @@ using System.IO;
 using KSP.Animation;
 using KSP.Game;
 using KSP.Messages;
+using MunShot.Capture;
 using MunShot.Posing;
 using MunShot.Tools;
 using Redux.ExtraModTypes;
@@ -17,6 +18,9 @@ namespace MunShot
         private const string PresetsFolder = "Poses";
 
         private PosePlayer _posePlayer;
+        private PhotoSession _photoSession;
+        private GamePause _pause;
+        private UiHider _uiHider;
         private PosePickerWindow _posePicker;
         private IReadOnlyList<PosePreset> _presets = Array.Empty<PosePreset>();
 
@@ -28,12 +32,18 @@ namespace MunShot
 
         public override void OnInitialized()
         {
-            // After a freeze, the kerbal's Animator gets the speed the game gives it for the current time warp
-            _posePlayer = new PosePlayer(message => SWLogger.LogError(message),
-                _ => AnimationManager.GetAnimSpeedForTimeWarpRate(Game?.ViewController?.TimeWarp?.CurrentRate ?? 1f));
+            _posePlayer = NewPosePlayer();
+            _photoSession = new PhotoSession(new PhotoDoubleFactory(message => SWLogger.LogError(message)), NewPosePlayer,
+                message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
+            _pause = new GamePause(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
+            _uiHider = new UiHider(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message));
             Messages?.PersistentSubscribe<GameStateChangedMessage>(OnGameStateChanged);
             _presets = LoadPresets();
         }
+
+        // After a freeze, a kerbal's Animator gets the speed the game gives it for the current time warp
+        private PosePlayer NewPosePlayer() => new PosePlayer(message => SWLogger.LogError(message),
+            _ => AnimationManager.GetAnimSpeedForTimeWarpRate(Game?.ViewController?.TimeWarp?.CurrentRate ?? 1f));
 
         private IReadOnlyList<PosePreset> LoadPresets()
         {
@@ -49,11 +59,18 @@ namespace MunShot
             return presets;
         }
 
-        // Lets go of the campaign before the game tears it down: no kerbal stays posed, and the picker closes
-        public override void OnCampaignUnloading()
+        // Lets go of the campaign before the game tears it down: doubles go, originals come back, no kerbal stays
+        // posed, and the picker closes
+        public override void OnCampaignUnloading() => EndPhotoMode();
+
+        private void EndPhotoMode()
         {
+            _photoSession?.Close();
             _posePlayer?.Release();
-            _posePicker?.SetOpen(false);
+            if (_posePicker != null && _posePicker.IsAlive) _posePicker.SetOpen(false);
+            // Also when the window is already gone with the game's UI, which wouldn't report closing
+            _uiHider?.Release();
+            _pause?.Release();
         }
 
         private void Update()
@@ -67,25 +84,41 @@ namespace MunShot
                 picker.SetOpen(!picker.IsOpen);
             }
 
+            _pause.Tick();
+            _uiHider.Tick();
             _posePlayer.Tick();
+            _photoSession.Tick();
             if (_posePicker != null && _posePicker.IsAlive) _posePicker.Tick();
         }
 
         private PosePickerWindow GetOrCreatePosePicker()
         {
             if (_posePicker == null || !_posePicker.IsAlive)
-                _posePicker = new PosePickerWindow(SWLogger, _posePlayer, _presets);
+            {
+                _posePicker = new PosePickerWindow(SWLogger, _posePlayer, _photoSession, _presets);
+                // Photo mode is open while the window is: the game stays paused and its UI hidden for all of it
+                _posePicker.OpenChanged += open =>
+                {
+                    if (open)
+                    {
+                        _pause.Engage();
+                        _uiHider.Engage();
+                    }
+                    else
+                    {
+                        _uiHider.Release();
+                        _pause.Release();
+                    }
+                };
+            }
             return _posePicker;
         }
 
         private void OnGameStateChanged(MessageCenterMessage message)
         {
-            // Posing is for flight; leaving it (map view, KSC, VAB) gives the kerbal back and closes the picker
+            // Photo mode is for flight; leaving it (map view, KSC, VAB) puts everything back
             if (message is GameStateChangedMessage { CurrentState: not GameState.FlightView })
-            {
-                _posePlayer?.Release();
-                if (_posePicker != null && _posePicker.IsAlive) _posePicker.SetOpen(false);
-            }
+                EndPhotoMode();
         }
     }
 }

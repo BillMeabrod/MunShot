@@ -13,10 +13,12 @@ using ILogger = SpaceWarp2.API.Logging.ILogger;
 namespace MunShot.Tools
 {
     /// <summary>
-    /// Developer window for picking poses out of the game's animation clips: lists the active EVA kerbal's clips,
-    /// scrubs through the selected one and holds the kerbal at that frame, showing the result as a
-    /// <see cref="ClipPose"/> to copy into a preset. The Preset dropdown holds any version of the loaded presets, to
-    /// check them on a kerbal. It also hosts the rig diagnostics. Built in code, so it needs no assets.
+    /// Developer window for photo mode's posing. The photo session part brings on-screen kerbals in front of the camera
+    /// as photo doubles and picks which one to pose; closing the window (or the session) puts everything back. The
+    /// posing part lists the target's animation clips, scrubs through the selected one and holds the kerbal at that
+    /// frame, shown as a <see cref="ClipPose"/> to copy into a preset; the Preset dropdown holds any version of the
+    /// loaded presets. The target is the selected double, or the active EVA kerbal when no double is in. It also hosts
+    /// the rig diagnostics. Built in code, so it needs no assets.
     /// </summary>
     public sealed class PosePickerWindow : IDisposable
     {
@@ -24,7 +26,8 @@ namespace MunShot.Tools
         private const float SliderStep = 1f / 60f;
 
         private readonly ILogger _logger;
-        private readonly PosePlayer _player;
+        private readonly PosePlayer _evaPlayer;
+        private readonly PhotoSession _session;
         private readonly PanelRenderer _renderer;
 
         // One entry per preset version, e.g. "Wave (jetpack)"
@@ -32,20 +35,28 @@ namespace MunShot.Tools
 
         private readonly List<AnimationClip> _allClips = new List<AnimationClip>();
         private readonly List<AnimationClip> _shownClips = new List<AnimationClip>();
+        private List<KerbalCandidate> _candidates = new List<KerbalCandidate>();
 
         private Label _status;
+        private DropdownField _candidatePicker;
+        private DropdownField _posingPicker;
+        private Label _target;
         private TextField _search;
         private ListView _clipList;
         private Label _clipInfo;
         private Slider _timeSlider;
+        private Toggle _freeze;
         private Label _readout;
 
         private Animator _animator;
-        private string _kerbalName;
+        private string _targetName;
         private AnimationClip _selectedClip;
         private RigDiagnostics.RigSnapshot _snapshot;
 
         public bool IsOpen { get; private set; }
+
+        /// <summary>Raised after the window opens or closes; the window being open is photo mode being open.</summary>
+        public event Action<bool> OpenChanged;
 
         /// <summary>
         /// False once the game has torn down the UI the window lived in (it builds its UI afresh for each campaign);
@@ -53,10 +64,14 @@ namespace MunShot.Tools
         /// </summary>
         public bool IsAlive => _renderer != null;
 
-        public PosePickerWindow(ILogger logger, PosePlayer player, IReadOnlyList<PosePreset> presets)
+        // The selected double's player, or the one for the active EVA kerbal when no double is in
+        private PosePlayer Player => _session.Selected?.Player ?? _evaPlayer;
+
+        public PosePickerWindow(ILogger logger, PosePlayer evaPlayer, PhotoSession session, IReadOnlyList<PosePreset> presets)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _player = player ?? throw new ArgumentNullException(nameof(player));
+            _evaPlayer = evaPlayer ?? throw new ArgumentNullException(nameof(evaPlayer));
+            _session = session ?? throw new ArgumentNullException(nameof(session));
             foreach (PosePreset preset in presets ?? Array.Empty<PosePreset>())
                 foreach (PoseVariant variant in new[] { PoseVariant.Ground, PoseVariant.Jetpack })
                 {
@@ -69,8 +84,8 @@ namespace MunShot.Tools
             {
                 WindowId = WindowId,
                 Parent = null,
-                // F2 hides it with the rest of the UI
-                IsHidingEnabled = true,
+                // Photo mode's own window: it stays up when photo mode hides the rest of the UI
+                IsHidingEnabled = false,
                 UseStockScale = true,
                 DisableGameInputForTextFields = true,
                 BringToFrontOnPointerDown = true,
@@ -79,9 +94,14 @@ namespace MunShot.Tools
             };
             _renderer = Window.Create(options, BuildContent());
             _renderer.Hide();
+
+            _session.EntryChanged += OnSessionEntryChanged;
         }
 
-        /// <summary>Opens or closes the window. Opening reads the clips of the kerbal on EVA at that moment.</summary>
+        /// <summary>
+        /// Opens or closes the window. Opening finds the on-screen kerbals and the pose target; closing ends the photo
+        /// session, so every double goes and every original comes back.
+        /// </summary>
         public void SetOpen(bool open)
         {
             if (open == IsOpen) return;
@@ -89,24 +109,28 @@ namespace MunShot.Tools
             if (open)
             {
                 _renderer.Show();
-                RefreshKerbal();
+                FindCandidates();
+                RefreshTarget();
             }
             else
             {
+                CloseSession();
+                _evaPlayer.Release();
                 _renderer.Hide();
             }
+            OpenChanged?.Invoke(open);
         }
 
         /// <summary>
-        /// Called every frame by the plugin: notices when the kerbal being posed is gone (EVA ended, vessel switched)
-        /// and lets the pose go.
+        /// Called every frame by the plugin: notices when the EVA kerbal being posed is gone (EVA ended, vessel
+        /// switched) and lets the pose go.
         /// </summary>
         public void Tick()
         {
-            if (_player.Current.HasValue && !_player.IsHolding)
+            if (_session.Selected == null && _evaPlayer.Current.HasValue && !_evaPlayer.IsHolding)
             {
-                _logger.LogInfo($"Pose picker: the posed kerbal '{_kerbalName}' is gone; releasing the pose.");
-                _player.Release();
+                _logger.LogInfo($"Pose picker: the posed kerbal '{_targetName}' is gone; releasing the pose.");
+                _evaPlayer.Release();
                 _animator = null;
                 ShowStatus("The posed kerbal is gone. Press Refresh on another EVA kerbal.");
                 UpdateReadout();
@@ -115,7 +139,9 @@ namespace MunShot.Tools
 
         public void Dispose()
         {
-            _player.Release();
+            _session.EntryChanged -= OnSessionEntryChanged;
+            CloseSession();
+            _evaPlayer.Release();
             if (_renderer != null) UnityEngine.Object.Destroy(_renderer.gameObject);
         }
 
@@ -123,11 +149,31 @@ namespace MunShot.Tools
         {
             var shell = new AppShell { Title = "MunShot: Pose Picker" };
             shell.CloseClicked += () => SetOpen(false);
-            shell.style.width = 380;
+            shell.style.width = 400;
 
             _status = new Label { style = { whiteSpace = WhiteSpace.Normal, marginBottom = 4 } };
             shell.Add(_status);
-            shell.Add(new Button(RefreshKerbal) { text = "Refresh" });
+
+            // Photo session: bring on-screen kerbals in as doubles, choose which one to pose, put everything back
+            shell.Add(new Label("Photo session") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginTop = 4 } });
+            var findRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            _candidatePicker = new DropdownField("On screen", new List<string>(), -1) { style = { flexGrow = 1 } };
+            findRow.Add(_candidatePicker);
+            findRow.Add(new Button(FindCandidates) { text = "Find" });
+            findRow.Add(new Button(BringCandidate) { text = "Bring in" });
+            shell.Add(findRow);
+
+            var posingRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            _posingPicker = new DropdownField("Posing", new List<string>(), -1) { style = { flexGrow = 1 } };
+            _posingPicker.RegisterValueChangedCallback(_ => OnPosingPicked());
+            posingRow.Add(_posingPicker);
+            posingRow.Add(new Button(CloseSession) { text = "Close session" });
+            shell.Add(posingRow);
+
+            // Posing
+            _target = new Label { style = { marginTop = 6, unityFontStyleAndWeight = FontStyle.Bold } };
+            shell.Add(_target);
+            shell.Add(new Button(RefreshTarget) { text = "Refresh" });
 
             // Picking a preset holds it straight away
             var presetPicker = new DropdownField("Preset", _presetChoices.Select(c => c.label).ToList(), -1);
@@ -146,7 +192,7 @@ namespace MunShot.Tools
                 selectionType = SelectionType.Single,
                 makeItem = () => new Label(),
                 bindItem = (element, index) => ((Label)element).text = _shownClips[index].name,
-                style = { height = 260, marginTop = 4, marginBottom = 4 }
+                style = { height = 220, marginTop = 4, marginBottom = 4 }
             };
             _clipList.selectionChanged += OnClipSelected;
             shell.Add(_clipList);
@@ -166,9 +212,9 @@ namespace MunShot.Tools
             shell.Add(buttons);
 
             // Off: bones the held clip doesn't animate keep playing the game's animation. On: everything stops.
-            var freeze = new Toggle("Freeze game animation") { value = _player.FreezeBaseAnimation };
-            freeze.RegisterValueChangedCallback(evt => _player.SetFreezeBaseAnimation(evt.newValue));
-            shell.Add(freeze);
+            _freeze = new Toggle("Freeze game animation");
+            _freeze.RegisterValueChangedCallback(evt => Player.SetFreezeBaseAnimation(evt.newValue));
+            shell.Add(_freeze);
 
             // Diagnostics: results go to the game log (and the dump to a file next to it)
             var diagnostics = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4 } };
@@ -185,39 +231,142 @@ namespace MunShot.Tools
             return shell;
         }
 
-        private void RefreshKerbal()
+        // ---- Photo session ----
+
+        private void FindCandidates()
         {
+            Camera camera = CurrentCamera();
+            _candidates = KerbalCandidates.FindOnScreen(camera).Where(c => !_session.Contains(c.Info)).ToList();
+            _candidatePicker.choices = _candidates.Select(c => c.ToString()).ToList();
+            _candidatePicker.index = _candidates.Count > 0 ? 0 : -1;
+            if (_candidates.Count == 0)
+                _candidatePicker.SetValueWithoutNotify(camera == null ? "(no camera)" : "(no kerbals on screen)");
+        }
+
+        private void BringCandidate()
+        {
+            int index = _candidatePicker.index;
+            if (index < 0 || index >= _candidates.Count)
+            {
+                ShowStatus("Find a kerbal on screen first.");
+                return;
+            }
+
+            KerbalCandidate candidate = _candidates[index];
+            _session.Bring(candidate, CurrentCamera(), message =>
+            {
+                ShowStatus(message);
+                RefreshPosingChoices();
+                FindCandidates();
+            });
+        }
+
+        private void OnSessionEntryChanged(PhotoSession.Entry entry)
+        {
+            RefreshPosingChoices();
+            if (entry.IsReady)
+            {
+                ShowStatus($"{entry.Double.Source.Name} is in front of the camera.");
+                if (_session.Selected == entry) RefreshTarget();
+            }
+            else
+            {
+                ShowStatus(entry.Double.Failure + " See the log.");
+                RefreshTarget();
+            }
+        }
+
+        private void OnPosingPicked()
+        {
+            int index = _posingPicker.index;
+            if (index < 0 || index >= _session.Entries.Count) return;
+            _session.Select(_session.Entries[index]);
+            RefreshTarget();
+        }
+
+        private void RefreshPosingChoices()
+        {
+            _posingPicker.choices = _session.Entries
+                .Select(e => e.Double.Source.Name + (e.IsReady ? string.Empty : " (building…)"))
+                .ToList();
+            int selected = _session.Selected != null ? _session.Entries.ToList().IndexOf(_session.Selected) : -1;
+            _posingPicker.SetValueWithoutNotify(selected >= 0 ? _posingPicker.choices[selected] : string.Empty);
+        }
+
+        private void CloseSession()
+        {
+            bool hadDoubles = _session.Entries.Count > 0;
+            _session.Close();
+            if (_posingPicker == null) return;
+            RefreshPosingChoices();
+            if (hadDoubles)
+            {
+                _logger.LogInfo("Photo mode: session closed; doubles removed and originals shown again.");
+                ShowStatus("Session closed: everyone is back where they were.");
+                FindCandidates();
+                RefreshTarget();
+            }
+        }
+
+        private static Camera CurrentCamera() => GameManager.Instance?.Game?.GraphicsManager?.GetCurrentUnityCamera();
+
+        // ---- Pose target ----
+
+        // The selected double when there is one, else the active EVA kerbal
+        private void RefreshTarget()
+        {
+            PhotoSession.Entry selected = _session.Selected;
+            if (selected != null)
+            {
+                if (!selected.IsReady)
+                {
+                    SetTarget(null, selected.Double.Source.Name, $"Posing: {selected.Double.Source.Name}'s double (building…)");
+                    return;
+                }
+                SetTarget(selected.Double.Animator, selected.Double.Source.Name, $"Posing: {selected.Double.Source.Name}'s double");
+                return;
+            }
+
             if (!EvaKerbalLocator.TryFind(GameManager.Instance?.Game, out EvaKerbalLocator.Result found, out string reason))
             {
-                _animator = null;
-                _allClips.Clear();
-                ApplyFilter();
+                SetTarget(null, null, "Posing: nobody");
                 ShowStatus(reason);
                 _logger.LogInfo($"Pose picker: no kerbal to pose. {reason}");
                 return;
             }
+            if (_evaPlayer.IsHolding && found.Animator != _animator) _evaPlayer.Release();
+            SetTarget(found.Animator, found.KerbalName, $"Posing: {found.KerbalName} (the active EVA kerbal)");
+        }
 
-            if (_player.IsHolding && found.Animator != _animator) _player.Release();
-            _animator = found.Animator;
-            _kerbalName = found.KerbalName;
+        private void SetTarget(Animator animator, string name, string label)
+        {
+            _animator = animator;
+            _targetName = name;
+            _target.text = label;
+            _freeze.SetValueWithoutNotify(Player.FreezeBaseAnimation);
 
             _allClips.Clear();
-            _allClips.AddRange(PosePlayer.GetClips(_animator));
+            if (animator != null) _allClips.AddRange(PosePlayer.GetClips(animator));
             ApplyFilter();
 
-            if (_allClips.Count == 0)
+            if (animator != null && _allClips.Count == 0)
             {
-                RuntimeAnimatorController controller = _animator.runtimeAnimatorController;
-                string message = $"'{_kerbalName}' has no animation clips (controller "
-                                 + $"'{(controller != null ? controller.name : "<none>")}').";
+                RuntimeAnimatorController controller = animator.runtimeAnimatorController;
+                string message = $"'{name}' has no animation clips (controller '{(controller != null ? controller.name : "<none>")}').";
                 ShowStatus(message);
                 _logger.LogWarning($"Pose picker: {message}");
-                return;
             }
-
-            ShowStatus($"Posing {_kerbalName}: {_allClips.Count} clips.");
             UpdateReadout();
         }
+
+        private bool EnsureTarget()
+        {
+            if (_animator == null) RefreshTarget();
+            if (_animator == null) ShowStatus(_session.Selected != null ? "The double is still being built." : "There's nobody to pose.");
+            return _animator != null;
+        }
+
+        // ---- Posing ----
 
         private void ApplyFilter()
         {
@@ -238,7 +387,7 @@ namespace MunShot.Tools
             _timeSlider.SetValueWithoutNotify(0f);
 
             // Switching clips while holding shows the new clip straight away
-            if (_player.IsHolding) HoldSelected();
+            if (Player.IsHolding) HoldSelected();
             else UpdateReadout();
         }
 
@@ -254,7 +403,7 @@ namespace MunShot.Tools
 
         private void OnTimeChanged(float time)
         {
-            if (_player.IsHolding && _selectedClip != null) HoldSelected();
+            if (Player.IsHolding && _selectedClip != null) HoldSelected();
             else UpdateReadout();
         }
 
@@ -265,10 +414,10 @@ namespace MunShot.Tools
                 ShowStatus("Pick a clip first.");
                 return;
             }
-            if (!EnsureKerbal()) return;
+            if (!EnsureTarget()) return;
 
             var pose = new ClipPose(_selectedClip.name, Mathf.Max(0f, _timeSlider.value));
-            if (!_player.Hold(_animator, pose))
+            if (!Player.Hold(_animator, pose))
                 ShowStatus($"Could not hold {pose}; see the log.");
             UpdateReadout();
         }
@@ -278,12 +427,12 @@ namespace MunShot.Tools
         {
             if (index < 0 || index >= _presetChoices.Count) return;
             (string label, ClipPose pose) = _presetChoices[index];
-            if (!EnsureKerbal()) return;
+            if (!EnsureTarget()) return;
 
             AnimationClip clip = _allClips.FirstOrDefault(c => c.name == pose.ClipName);
             if (clip == null)
             {
-                string message = $"Preset '{label}' uses clip '{pose.ClipName}', which '{_kerbalName}' doesn't have.";
+                string message = $"Preset '{label}' uses clip '{pose.ClipName}', which '{_targetName}' doesn't have.";
                 ShowStatus(message);
                 _logger.LogWarning($"Pose picker: {message}");
                 return;
@@ -302,7 +451,7 @@ namespace MunShot.Tools
 
         private void ReleasePose()
         {
-            _player.Release();
+            Player.Release();
             UpdateReadout();
         }
 
@@ -314,23 +463,25 @@ namespace MunShot.Tools
             _logger.LogInfo($"Pose picker: copied {pose.Value}");
         }
 
+        // ---- Diagnostics ----
+
         private void DumpRig()
         {
-            if (!EnsureKerbal()) return;
+            if (!EnsureTarget()) return;
             try
             {
-                string file = RigDiagnostics.DumpRig(_animator, _kerbalName, DescribeHeld());
-                _logger.LogInfo($"Pose picker: rig of '{_kerbalName}' dumped to {file}");
+                string file = RigDiagnostics.DumpRig(_animator, _targetName, DescribeHeld());
+                _logger.LogInfo($"Pose picker: rig of '{_targetName}' dumped to {file}");
                 ShowStatus($"Rig dumped to {file}");
             }
             catch (Exception e)
             {
-                _logger.LogError($"Pose picker: could not dump the rig of '{_kerbalName}': {e}");
+                _logger.LogError($"Pose picker: could not dump the rig of '{_targetName}': {e}");
                 ShowStatus("Could not dump the rig; see the log.");
             }
         }
 
-        // Samples the selected clip within this frame, then puts the kerbal back as it was (held or released)
+        // Samples the selected clip within this frame, then puts the target back as it was (held or released)
         private void WhatMoves()
         {
             if (_selectedClip == null)
@@ -338,30 +489,31 @@ namespace MunShot.Tools
                 ShowStatus("Pick a clip first.");
                 return;
             }
-            if (!EnsureKerbal()) return;
+            if (!EnsureTarget()) return;
 
-            ClipPose? previous = _player.IsHolding ? _player.Current : null;
+            PosePlayer player = Player;
+            ClipPose? previous = player.IsHolding ? player.Current : null;
 
-            // The kerbal's own pose, to tell which bones the clip pins: let go, and have the game's animation
+            // The target's own pose, to tell which bones the clip pins: let go, and have the game's animation
             // pose it again now without moving time on
-            _player.Release();
+            player.Release();
             _animator.Update(0f);
             RigDiagnostics.RigSnapshot live = RigDiagnostics.Snapshot(_animator, "own pose");
 
             string result;
             try
             {
-                if (!_player.Hold(_animator, new ClipPose(_selectedClip.name, 0f)))
+                if (!player.Hold(_animator, new ClipPose(_selectedClip.name, 0f)))
                 {
                     ShowStatus($"Could not hold '{_selectedClip.name}'; see the log.");
                     return;
                 }
-                result = RigDiagnostics.WhatMoves(_animator, _selectedClip.name, _selectedClip.length, _player.ApplyNow, live);
+                result = RigDiagnostics.WhatMoves(_animator, _selectedClip.name, _selectedClip.length, player.ApplyNow, live);
             }
             finally
             {
-                if (previous.HasValue) _player.Hold(_animator, previous.Value);
-                else _player.Release();
+                if (previous.HasValue) player.Hold(_animator, previous.Value);
+                else player.Release();
             }
 
             _logger.LogInfo($"Pose picker: {result}");
@@ -372,7 +524,7 @@ namespace MunShot.Tools
 
         private void TakeSnapshot()
         {
-            if (!EnsureKerbal()) return;
+            if (!EnsureTarget()) return;
             _snapshot = RigDiagnostics.Snapshot(_animator, DescribeHeld());
             ShowStatus($"Snapshot taken at {_snapshot.Label}. Change the frame or clip, then Compare.");
         }
@@ -391,26 +543,22 @@ namespace MunShot.Tools
             ShowStatus((firstLineEnd >= 0 ? result.Substring(0, firstLineEnd) : result) + " Details are in the log.");
         }
 
-        private bool EnsureKerbal()
-        {
-            if (_animator == null) RefreshKerbal();
-            return _animator != null;
-        }
+        // ---- Readout ----
 
         private ClipPose? CurrentPose()
         {
-            if (_player.Current.HasValue) return _player.Current;
+            if (Player.Current.HasValue) return Player.Current;
             if (_selectedClip != null) return new ClipPose(_selectedClip.name, Mathf.Max(0f, _timeSlider.value));
             return null;
         }
 
-        private string DescribeHeld() => _player.Current?.ToString() ?? "live animation";
+        private string DescribeHeld() => Player.Current?.ToString() ?? "live animation";
 
         private void UpdateReadout()
         {
             if (_readout == null) return;
             ClipPose? pose = CurrentPose();
-            string state = _player.IsHolding ? "Holding" : "Not holding";
+            string state = Player.IsHolding ? "Holding" : "Not holding";
             _readout.text = pose.HasValue ? $"{state}: {pose.Value}" : state;
         }
 
