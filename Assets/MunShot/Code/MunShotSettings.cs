@@ -22,6 +22,7 @@ namespace MunShot
         private const float DefaultFlySpeed = 5f;
 
         private static ConfigValue<KeyboardShortcut> _togglePhotoMode;
+        private static ConfigValue<bool> _poseLabEnabled;
         private static ConfigValue<KeyboardShortcut> _togglePoseLab;
         private static ConfigValue<float> _flySpeed;
         private static ConfigValue<KeyBind> _hideUi;
@@ -30,7 +31,13 @@ namespace MunShot
         /// <summary>Opens and closes photo mode in flight. Left Alt+P by default.</summary>
         public static KeyboardShortcut TogglePhotoMode => _togglePhotoMode?.Value ?? DefaultTogglePhotoMode;
 
-        /// <summary>Opens and closes the developer pose lab in flight. Left Alt+L by default.</summary>
+        /// <summary>
+        /// Whether the developer pose lab can be opened. Off by default and not in the settings menu: switched on in
+        /// MunShot's config file by whoever is making poses.
+        /// </summary>
+        public static bool PoseLabEnabled => _poseLabEnabled?.Value ?? false;
+
+        /// <summary>Opens and closes the developer pose lab in flight, when it's enabled. Left Alt+L by default.</summary>
         public static KeyboardShortcut TogglePoseLab => _togglePoseLab?.Value ?? DefaultTogglePoseLab;
 
         /// <summary>Hides and shows photo mode's own UI, to frame the shot. H by default.</summary>
@@ -59,10 +66,16 @@ namespace MunShot
                 "Opens and closes photo mode in flight. It's also in the app tray and the pause menu."));
             _hideUi = Key(photoMode, "Hide Photo Mode UI", KeyCode.H, "Hides photo mode's panels and handles to frame the shot; press again to bring them back.");
 
+            // Developer tools: kept out of the settings menu (Redux's Hidden tag, as Redux hides its own internal
+            // settings), so players never see them; a section with only hidden entries isn't shown at all
             IConfigSection developer = config.GetOrCreateSection(DeveloperSection);
+            string[] hidden = { ConfigTags.Hidden };
+            _poseLabEnabled = new ConfigValue<bool>(developer.BindEntry("Enable Pose Lab", false,
+                "Lets the developer pose lab be opened in flight, for picking poses from the game's animations and "
+                + "inspecting the kerbal rig. Not for players.", null, null, null, hidden));
             _togglePoseLab = new ConfigValue<KeyboardShortcut>(developer.BindEntry("Toggle Pose Lab",
                 DefaultTogglePoseLab,
-                "Opens and closes the developer pose lab in flight, for picking poses from the game's animations."));
+                "Opens and closes the developer pose lab in flight, when Enable Pose Lab is on.", null, null, null, hidden));
 
             IConfigSection camera = config.GetOrCreateSection(CameraSection);
             _flySpeed = new ConfigValue<float>(camera.BindEntry("Fly Speed", DefaultFlySpeed,

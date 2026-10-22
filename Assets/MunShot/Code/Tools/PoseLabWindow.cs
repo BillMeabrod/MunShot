@@ -15,8 +15,9 @@ namespace MunShot.Tools
     /// <summary>
     /// Developer window for making poses: lists the target's animation clips, scrubs through the selected one and holds
     /// the kerbal at that frame, shown as a <see cref="ClipPose"/> to copy into a preset. The target is photo mode's
-    /// selected double, or the active EVA kerbal when there's none. It also hosts the rig diagnostics. It's opened with
-    /// its own shortcut, apart from photo mode, and built in code, so it needs no assets.
+    /// selected double, or the active EVA kerbal when there's none. It also hosts the rig diagnostics. Not for players:
+    /// it only opens (with its own shortcut, apart from photo mode) when "Enable Pose Lab" is switched on in MunShot's
+    /// config file, which the settings menu doesn't show. Built in code, so it needs no assets.
     /// </summary>
     public sealed class PoseLabWindow : IDisposable
     {

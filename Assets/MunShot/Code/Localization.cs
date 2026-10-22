@@ -1,6 +1,7 @@
+using System.Globalization;
 using I2.Loc;
 
-namespace MunShot.UI
+namespace MunShot
 {
     /// <summary>
     /// Text shown to the player. MunShot's own strings live in Copied/localizations/munshot_localization.csv, which
@@ -33,6 +34,13 @@ namespace MunShot.UI
         public const string HintHideUi = "MunShot/UI/HintHideUi";
         public const string HintTakePhoto = "MunShot/UI/HintTakePhoto";
         public const string HintExit = "MunShot/UI/HintExit";
+
+        /// <summary>
+        /// Translates one of MunShot's keys with {0}-style placeholders and fills them in. <paramref name="fallback"/>
+        /// (the English text, kept next to the key where it's used) is shown if the key is missing.
+        /// </summary>
+        public static string Format(string key, string fallback, params object[] args) =>
+            string.Format(CultureInfo.CurrentCulture, Translate(key, fallback), args);
 
         /// <summary>Translates one of MunShot's keys, showing the key itself if it's missing (as the game does).</summary>
         public static string Translate(string key) => Translate(key, key);

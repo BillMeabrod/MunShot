@@ -88,12 +88,12 @@ namespace MunShot.Posing
             if (existing != null)
             {
                 Select(existing);
-                result?.Invoke($"{candidate.Name} is already in; selected.");
+                result?.Invoke(Localization.Format("MunShot/Status/AlreadyInSelected", "{0} is already in; selected.", candidate.Name));
                 return;
             }
             if (camera == null)
             {
-                result?.Invoke("There's no camera to place the kerbal in front of.");
+                result?.Invoke(Localization.Translate("MunShot/Status/NoCamera", "There's no camera to place the kerbal in front of."));
                 return;
             }
 
@@ -101,7 +101,7 @@ namespace MunShot.Posing
             {
                 if (!loaded)
                 {
-                    result?.Invoke("Could not load what photo doubles are built from; see the log.");
+                    result?.Invoke(Localization.Translate("MunShot/Status/DoublesNotLoaded", "Couldn't load what photo doubles are built from; see the log."));
                     return;
                 }
                 // In the scene when listed, but gone since (vessel unloaded or destroyed): built from the roster like
@@ -114,7 +114,7 @@ namespace MunShot.Posing
                 if (parent == null)
                 {
                     _logError($"Photo mode: can't bring in {candidate}: there's no active vessel in the scene to stand them by.");
-                    result?.Invoke($"Can't bring {candidate.Name} in without an active vessel; see the log.");
+                    result?.Invoke(Localization.Format("MunShot/Status/NoActiveVessel", "Can't bring {0} in without an active vessel; see the log.", candidate.Name));
                     return;
                 }
                 Transform cam = camera.transform;
@@ -125,7 +125,7 @@ namespace MunShot.Posing
                 _entries.Add(entry);
                 Select(entry);
                 _logInfo($"Photo mode: building a double of {candidate}, {placement}.");
-                result?.Invoke($"Bringing in {candidate.Name}…");
+                result?.Invoke(Localization.Format("MunShot/Status/Bringing", "Bringing in {0}…", candidate.Name));
             });
         }
 
@@ -173,17 +173,17 @@ namespace MunShot.Posing
         {
             if (entry == null || !entry.IsReady || entry.Root == null)
             {
-                message = "Bring a kerbal in first; Snap to surface drops the selected double.";
+                message = Localization.Translate("MunShot/Status/SnapNobody", "Bring a kerbal in first; Snap to surface moves the selected kerbal.");
                 return false;
             }
 
             entry.Bones ??= SurfaceSnap.FindBones(entry.Root);
             if (!SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch()))
             {
-                message = $"Nothing to stand on within {DropReach:0.#} m below {entry.Double.Source.Name}.";
+                message = Localization.Format("MunShot/Status/NothingBelow", "Nothing to stand on within {0:0.#} m below {1}.", DropReach, entry.Double.Source.Name);
                 return false;
             }
-            message = $"{entry.Double.Source.Name} is standing on the surface.";
+            message = Localization.Format("MunShot/Status/OnSurface", "{0} is standing on the surface.", entry.Double.Source.Name);
             return true;
         }
 
@@ -197,7 +197,7 @@ namespace MunShot.Posing
         {
             if (entry == null || !entry.IsReady || entry.Root == null)
             {
-                message = "Bring a kerbal in first; Stand upright turns the selected double.";
+                message = Localization.Translate("MunShot/Status/UprightNobody", "Bring a kerbal in first; Stand upright turns the selected kerbal.");
                 return false;
             }
 
@@ -210,7 +210,7 @@ namespace MunShot.Posing
             Vector3 centre = BoundsOf(entry, out Bounds bounds) ? bounds.center : root.position;
             Quaternion turn = upright * Quaternion.Inverse(root.rotation);
             root.SetPositionAndRotation(centre + turn * (root.position - centre), upright);
-            message = $"{entry.Double.Source.Name} is standing upright.";
+            message = Localization.Format("MunShot/Status/Upright", "{0} is standing upright.", entry.Double.Source.Name);
             return true;
         }
 

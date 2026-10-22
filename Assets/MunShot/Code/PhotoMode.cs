@@ -97,7 +97,7 @@ namespace MunShot
             GameInstance game = GameManager.Instance?.Game;
             if (game?.GlobalGameState == null || game.GlobalGameState.GetState() != GameState.FlightView)
             {
-                Status?.Invoke("Photo mode is only available in flight.");
+                Status?.Invoke(Localization.Translate("MunShot/Status/OnlyInFlight", "Photo mode is only available in flight."));
                 _logger.LogInfo($"Photo mode: not opened; the game is in {game?.GlobalGameState?.GetState().ToString() ?? "no state yet"}, not flight.");
                 return false;
             }
@@ -183,8 +183,7 @@ namespace MunShot
                 return;
             }
 
-            // The game's own cursor, which is the virtual cursor when playing with a gamepad. Fast (Shift) is the fine
-            // snap modifier, as Shift is in the VAB
+            // The game's own cursor. Fast (Shift) is the fine snap modifier, as Shift is in the VAB
             global::Mouse.MouseButton left = global::Mouse.Left;
             if (left != null)
                 Manipulator.Tick(CurrentCamera(), global::Mouse.Position, left.WasPressedThisFrame(), left.IsPressed(),
@@ -204,7 +203,7 @@ namespace MunShot
             if (!IsOpen || candidate == null) return;
             if (Session.Contains(candidate.Info))
             {
-                Status?.Invoke($"{candidate.Name} is already in.");
+                Status?.Invoke(Localization.Format("MunShot/Status/AlreadyIn", "{0} is already in.", candidate.Name));
                 return;
             }
             Session.Bring(candidate, CurrentCamera(), message =>
@@ -239,7 +238,7 @@ namespace MunShot
             string name = entry.Double.Source.Name;
             Session.Remove(entry);
             RefreshOrbitTargets();
-            Status?.Invoke($"{name} is back where they were.");
+            Status?.Invoke(Localization.Format("MunShot/Status/BackWhereTheyWere", "{0} is back where they were.", name));
             _logger.LogInfo($"Photo mode: {name}'s double removed.");
             RaiseChanged();
         }
@@ -253,11 +252,13 @@ namespace MunShot
             ClipPose? pose = preset.Get(variant);
             if (!pose.HasValue)
             {
-                Status?.Invoke($"{preset.Name} has no {(variant == PoseVariant.Jetpack ? "jetpack" : "ground")} version.");
+                Status?.Invoke(variant == PoseVariant.Jetpack
+                    ? Localization.Format("MunShot/Status/NoJetpackVersion", "{0} has no jetpack version.", preset.Name)
+                    : Localization.Format("MunShot/Status/NoGroundVersion", "{0} has no ground version.", preset.Name));
                 return;
             }
             if (!selected.Player.Hold(selected.Double.Animator, pose.Value))
-                Status?.Invoke($"Couldn't hold {preset.Name}; see the log.");
+                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", "Couldn't hold {0}; see the log.", preset.Name));
             RaiseChanged();
         }
 
@@ -330,15 +331,19 @@ namespace MunShot
         {
             PhotoSession.Entry selected = Session.Selected;
             if (selected != null && selected.IsReady) return selected;
-            Status?.Invoke(selected == null ? "Bring a kerbal in first." : "The double is still being built.");
+            Status?.Invoke(selected == null
+                ? Localization.Translate("MunShot/Status/BringKerbalFirst", "Bring a kerbal in first.")
+                : Localization.Translate("MunShot/Status/StillBuilding", "The double is still being built."));
             return null;
         }
 
         private void OnEntryChanged(PhotoSession.Entry entry)
         {
             RefreshOrbitTargets();
-            if (entry.IsReady) Status?.Invoke($"{entry.Double.Source.Name} is in front of the camera.");
-            else Status?.Invoke(entry.Double.Failure + " See the log.");
+            if (entry.IsReady)
+                Status?.Invoke(Localization.Format("MunShot/Status/InFrontOfCamera", "{0} is in front of the camera.", entry.Double.Source.Name));
+            else
+                Status?.Invoke(Localization.Format("MunShot/Status/BuildFailed", "Couldn't build {0}'s double; see the log.", entry.Double.Source.Name));
             RaiseChanged();
         }
 
@@ -346,7 +351,7 @@ namespace MunShot
         private void OnDoubleClicked(PhotoSession.Entry entry)
         {
             Camera.SetTarget(OrbitTargetFor(entry));
-            Status?.Invoke($"Selected {entry.Double.Source.Name}.");
+            Status?.Invoke(Localization.Format("MunShot/Status/Selected", "Selected {0}.", entry.Double.Source.Name));
             RaiseChanged();
         }
 

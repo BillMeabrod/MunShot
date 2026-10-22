@@ -12,8 +12,8 @@ namespace MunShot.Capture
     /// <item>every flight action is switched off, camera ones included (photo mode has its own camera). That includes
     /// the "interact" clicks on parts, so clicking a double doesn't also select a part or vessel behind it;</item>
     /// <item>EVA controls are switched off entirely;</item>
-    /// <item>quicksave and quickload are switched off, so a stray key or trigger doesn't save or reload the game in the
-    /// middle of a shot (the gamepad's triggers are photo mode's speed boost).</item>
+    /// <item>quicksave and quickload are switched off, so a stray key doesn't save or reload the game in the middle of a
+    /// shot.</item>
     /// </list>
     /// Each action's own state, and each set's state, are remembered when the lock goes on, and put back exactly as
     /// they were when it comes off. (The game's FlightInputEnabled only switches whole sets back on, which leaves

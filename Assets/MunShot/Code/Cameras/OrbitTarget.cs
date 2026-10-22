@@ -10,15 +10,30 @@ namespace MunShot.Cameras
     /// </summary>
     public sealed class OrbitTarget
     {
+        private readonly Func<string> _name;
         private readonly Func<Vector3?> _centre;
 
-        public string Name { get; }
-
-        /// <param name="name">What the UI calls it, e.g. the kerbal's or the vessel's name.</param>
-        /// <param name="centre">Where its middle is in physics space, or null once it's gone.</param>
-        public OrbitTarget(string name, Func<Vector3?> centre)
+        /// <summary>What the UI calls it, looked up each time, so a translated name follows a language change.</summary>
+        public string Name
         {
-            Name = string.IsNullOrEmpty(name) ? "<unnamed>" : name;
+            get
+            {
+                string name = _name();
+                return string.IsNullOrEmpty(name) ? "<unnamed>" : name;
+            }
+        }
+
+        /// <param name="name">What the UI calls it, e.g. the kerbal's name.</param>
+        /// <param name="centre">Where its middle is in physics space, or null once it's gone.</param>
+        public OrbitTarget(string name, Func<Vector3?> centre) : this(() => name, centre)
+        {
+        }
+
+        /// <param name="name">What the UI calls it, asked each time it's shown (for names that are translated).</param>
+        /// <param name="centre">Where its middle is in physics space, or null once it's gone.</param>
+        public OrbitTarget(Func<string> name, Func<Vector3?> centre)
+        {
+            _name = name ?? throw new ArgumentNullException(nameof(name));
             _centre = centre ?? throw new ArgumentNullException(nameof(centre));
         }
 

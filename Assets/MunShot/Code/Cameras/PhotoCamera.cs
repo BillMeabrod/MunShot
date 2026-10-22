@@ -29,7 +29,7 @@ namespace MunShot.Cameras
     /// </list>
     /// In both, Roll tilts the camera and Level takes the tilt off; Fast and Slow scale every movement. Flying with
     /// Fast held keeps speeding up the longer it's held, for long distances. The controls come from the keyboard and
-    /// mouse and the gamepad together (<see cref="PhotoCameraIntent"/>), so both behave alike.
+    /// mouse (<see cref="PhotoCameraIntent"/>).
     /// Looking turns around the planet's up, like a tripod head, so the horizon stays put while you look around and
     /// tilt is a separate angle on top.
     ///
@@ -51,10 +51,8 @@ namespace MunShot.Cameras
         // How far one mouse-wheel step moves the free camera up or down: this many seconds of flying at Fly Speed
         private const float WheelStepSeconds = 0.2f;
 
-        // One mouse-wheel step brings the orbit camera this much closer (or further); holding up or down (d-pad)
-        // brings it this many times closer per second
+        // One mouse-wheel step brings the orbit camera this much closer (or further)
         private const float OrbitZoomPerStep = 0.9f;
-        private const float OrbitZoomPerSecond = 2f;
         private const float MinOrbitDistance = 0.5f;
         private const float MaxOrbitDistance = 20000f;
 
@@ -67,7 +65,6 @@ namespace MunShot.Cameras
         private const float MaxBoostSpeed = 2000f;
 
         private readonly KeyboardMouseCameraInput _keyboardMouse;
-        private readonly GamepadCameraInput _gamepad;
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logError;
 
@@ -95,10 +92,9 @@ namespace MunShot.Cameras
         /// <summary>Raised when the mode or the target changes, including when a lost target drops it to Free.</summary>
         public event Action Changed;
 
-        public PhotoCamera(KeyboardMouseCameraInput keyboardMouse, GamepadCameraInput gamepad, Action<string> logInfo, Action<string> logError)
+        public PhotoCamera(KeyboardMouseCameraInput keyboardMouse, Action<string> logInfo, Action<string> logError)
         {
             _keyboardMouse = keyboardMouse ?? throw new ArgumentNullException(nameof(keyboardMouse));
-            _gamepad = gamepad ?? throw new ArgumentNullException(nameof(gamepad));
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _logError = logError ?? throw new ArgumentNullException(nameof(logError));
         }
@@ -171,7 +167,6 @@ namespace MunShot.Cameras
             cameraManager.SetCameraShotOverride(CameraID.Flight, this);
             cameraManager.RefreshCameraShot(CameraID.Flight);
             IsEngaged = true;
-            _gamepad.Enable();
             SetMode(PhotoCameraMode.Free);
             _logInfo($"Photo camera: took over the flight camera at field of view {_fieldOfView:0.#}°.");
             return true;
@@ -184,7 +179,6 @@ namespace MunShot.Cameras
             IsEngaged = false;
             _boostSeconds = 0f;
             _keyboardMouse.Reset();
-            _gamepad.Disable();
             if (_cameraManager != null)
             {
                 if (_cameraManager.GetCameraShotIncludeOverride(CameraID.Flight) == (ICameraShot)this)
@@ -223,24 +217,26 @@ namespace MunShot.Cameras
         {
             if (!IsEngaged)
             {
-                message = "The photo camera isn't on.";
+                message = Localization.Translate("MunShot/Status/CameraOff", "The photo camera isn't on.");
                 return false;
             }
             if (mode == PhotoCameraMode.Orbit)
             {
                 if (Target == null)
                 {
-                    message = "Pick something to orbit first.";
+                    message = Localization.Translate("MunShot/Status/PickOrbitTarget", "Pick something to orbit first.");
                     return false;
                 }
                 if (!BeginOrbit())
                 {
-                    message = $"{Target.Name} isn't there to orbit any more.";
+                    message = Localization.Format("MunShot/Status/OrbitTargetGone", "{0} isn't there to orbit any more.", Target.Name);
                     return false;
                 }
             }
             SetMode(mode);
-            message = mode == PhotoCameraMode.Orbit ? $"Orbiting {Target.Name}." : "Flying free.";
+            message = mode == PhotoCameraMode.Orbit
+                ? Localization.Format("MunShot/Status/Orbiting", "Orbiting {0}.", Target.Name)
+                : Localization.Translate("MunShot/Status/FlyingFree", "Flying free.");
             return true;
         }
 
@@ -261,7 +257,6 @@ namespace MunShot.Cameras
 
             float deltaTime = Time.unscaledDeltaTime;
             PhotoCameraIntent intent = _keyboardMouse.Read(pointerOverUi, keyboardTaken);
-            intent.Add(_gamepad.Read(deltaTime));
             float speed = intent.Fast ? FastMultiplier : intent.Slow ? SlowMultiplier : 1f;
 
             // Look (Free) or circle (Orbit): both turn which way the camera faces
@@ -271,14 +266,14 @@ namespace MunShot.Cameras
             _roll = Mathf.Repeat(_roll + intent.Roll * RollSpeed * speed * deltaTime + 180f, 360f) - 180f;
             if (intent.Level) _roll = 0f;
 
-            if (Mode == PhotoCameraMode.Orbit) TickOrbit(forward, intent, speed, deltaTime);
+            if (Mode == PhotoCameraMode.Orbit) TickOrbit(forward, intent, speed);
             else TickFree(forward, up, intent, speed, deltaTime);
         }
 
         private void TickFree(Vector3 forward, Vector3 up, PhotoCameraIntent intent, float speed, float deltaTime)
         {
             Vector3 right = Vector3.Cross(up, forward).normalized;
-            Vector3 flying = forward * intent.Move.y + right * intent.Move.x + up * intent.Vertical;
+            Vector3 flying = forward * intent.Move.y + right * intent.Move.x;
 
             float flySpeed = MunShotSettings.FlySpeed * speed;
             bool boosting = intent.Fast && flying.sqrMagnitude > 0.01f;
@@ -291,7 +286,7 @@ namespace MunShot.Cameras
             SetPose(PhysicsPosition() + offset, forward);
         }
 
-        private void TickOrbit(Vector3 forward, PhotoCameraIntent intent, float speed, float deltaTime)
+        private void TickOrbit(Vector3 forward, PhotoCameraIntent intent, float speed)
         {
             if (!Target.TryGetCentre(out Vector3 centre))
             {
@@ -300,8 +295,7 @@ namespace MunShot.Cameras
                 SetMode(PhotoCameraMode.Free);
                 return;
             }
-            float closer = Mathf.Pow(OrbitZoomPerStep, intent.Steps * speed)
-                           * Mathf.Pow(OrbitZoomPerSecond, -intent.Vertical * speed * deltaTime);
+            float closer = Mathf.Pow(OrbitZoomPerStep, intent.Steps * speed);
             _orbitDistance = Mathf.Clamp(_orbitDistance * closer, MinOrbitDistance, MaxOrbitDistance);
             SetPose(centre - forward * _orbitDistance, forward);
         }

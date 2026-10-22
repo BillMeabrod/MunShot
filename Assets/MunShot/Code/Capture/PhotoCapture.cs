@@ -51,9 +51,9 @@ namespace MunShot.Capture
             ScreenshotCapture capture = ScreenshotCapture.Instance;
             if (capture == null || !capture.isActiveAndEnabled)
             {
-                const string message = "Can't take a photo: Redux's screenshot capture isn't running.";
-                _logError($"Photo mode: {message}");
-                Finished?.Invoke(message + " See the log.");
+                _logError("Photo mode: can't take a photo, Redux's screenshot capture isn't running.");
+                Finished?.Invoke(Localization.Translate("MunShot/Status/CaptureNotRunning",
+                    "Can't take a photo: the game's screenshot capture isn't running. See the log."));
                 return;
             }
 
@@ -72,7 +72,7 @@ namespace MunShot.Capture
             {
                 _logError($"Photo mode: Redux's screenshot didn't report saving within {TimeoutSeconds:0} seconds; "
                           + "showing photo mode's UI again. Check the Screenshots folder and the log for Redux's own messages.");
-                End("The photo may not have been saved; see the log.");
+                End(Localization.Translate("MunShot/Status/MaybeNotSaved", "The photo may not have been saved; see the log."));
             }
         }
 
@@ -88,12 +88,12 @@ namespace MunShot.Capture
             {
                 string path = message.Substring(SavedPrefix.Length);
                 _logInfo($"Photo mode: photo saved to {path}");
-                End($"Saved {path}");
+                End(Localization.Format("MunShot/Status/Saved", "Saved {0}", path));
             }
             else if (message.StartsWith(FailedPrefix, StringComparison.Ordinal))
             {
                 _logError($"Photo mode: the photo wasn't saved; Redux reported: {message}");
-                End("The photo wasn't saved; see the log.");
+                End(Localization.Translate("MunShot/Status/NotSaved", "The photo wasn't saved; see the log."));
             }
         }
 

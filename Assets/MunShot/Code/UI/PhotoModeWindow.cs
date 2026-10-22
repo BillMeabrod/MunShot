@@ -51,7 +51,13 @@ namespace MunShot.UI
         // The pose last picked for each double, to show when it's selected again
         private readonly Dictionary<PhotoSession.Entry, int> _poseOf = new Dictionary<PhotoSession.Entry, int>();
 
+        // The game's localizer, told about language changes (kept to stop listening to the same one)
+        private ILocalizer _localizer;
+
         private Tab _tab = Tab.Kerbals;
+
+        // The camera mode the hint bar shows, so it's only rebuilt when that changes
+        private PhotoCameraMode? _hintsMode;
         private int _toastId;
 
         private VisualElement _root;
@@ -119,6 +125,12 @@ namespace MunShot.UI
             _photoMode.Status += ShowToast;
             _photoMode.Capture.Started += OnCaptureStarted;
             _photoMode.Capture.Finished += OnCaptureFinished;
+
+            // Text from UXML is translated again by UitkForKsp2 when the language changes; what's built here (lists,
+            // hints) is redrawn then too
+            _localizer = ILocalizer.Instance;
+            if (_localizer != null) _localizer.OnLocalize += OnLanguageChanged;
+            else _logger.LogWarning("Photo mode overlay: the game's localizer isn't there; a language change shows after reopening photo mode.");
         }
 
         public void Dispose()
@@ -128,6 +140,7 @@ namespace MunShot.UI
             _photoMode.Status -= ShowToast;
             _photoMode.Capture.Started -= OnCaptureStarted;
             _photoMode.Capture.Finished -= OnCaptureFinished;
+            if (_localizer != null) _localizer.OnLocalize -= OnLanguageChanged;
             if (_renderer != null) UnityEngine.Object.Destroy(_renderer.gameObject);
         }
 
@@ -255,6 +268,7 @@ namespace MunShot.UI
             if (open)
             {
                 _poseOf.Clear();
+                _hintsMode = null;
                 _model.ToastVisible = false;
                 ShowTab(Tab.Kerbals);
                 _renderer.Show();
@@ -263,6 +277,12 @@ namespace MunShot.UI
             {
                 _renderer.Hide();
             }
+            Refresh();
+        }
+
+        private void OnLanguageChanged()
+        {
+            _hintsMode = null;
             Refresh();
         }
 
@@ -447,7 +467,8 @@ namespace MunShot.UI
         // the rest (Fast, clicking a kerbal) shows itself
         private void ShowHints(PhotoCameraMode mode)
         {
-            if (_hints == null) return;
+            if (_hints == null || _hintsMode == mode) return;
+            _hintsMode = mode;
             _hints.Clear();
             if (mode == PhotoCameraMode.Free)
             {

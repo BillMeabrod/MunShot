@@ -15,7 +15,16 @@ namespace MunShot.Cameras
         public static OrbitTarget Vessel(VesselComponent vessel)
         {
             if (vessel == null) return null;
-            return new OrbitTarget($"{vessel.RevealDisplayName()} (active vessel)", () =>
+            // The name is looked up each time it's shown (so it follows a language change), and remembered for after
+            // the vessel's gone, when the game can no longer say it
+            string lastName = vessel.RevealDisplayName();
+            string Name()
+            {
+                if (vessel.SimulationObject != null && !vessel.SimulationObject.IsDestroyedOrBeingDestroyed) lastName = vessel.RevealDisplayName();
+                return Localization.Format("MunShot/UI/ActiveVessel", "{0} (active vessel)", lastName);
+            }
+
+            return new OrbitTarget(Name, () =>
             {
                 IPhysicsSpaceProvider physicsSpace = GameManager.Instance?.Game?.UniverseView?.PhysicsSpace;
                 if (physicsSpace == null || vessel.SimulationObject == null || vessel.SimulationObject.IsDestroyedOrBeingDestroyed)

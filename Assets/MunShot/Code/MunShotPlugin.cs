@@ -60,7 +60,6 @@ namespace MunShot
             var session = new PhotoSession(new PhotoDoubleFactory(message => SWLogger.LogError(message)), NewPosePlayer,
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
             var camera = new PhotoCamera(new KeyboardMouseCameraInput(),
-                new GamepadCameraInput(message => SWLogger.LogInfo(message), message => SWLogger.LogWarning(message)),
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
             var capture = new PhotoCapture(message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
             _photoMode = new PhotoMode(SWLogger, session, camera, capture, LoadPresets());
@@ -176,7 +175,8 @@ namespace MunShot
             }
             if (_photoMode.IsOpen && MunShotSettings.HideUi.Down && !(_window != null && _window.IsAlive && _window.IsTyping))
                 _photoMode.ToggleUiHidden();
-            if (inFlight && MunShotSettings.TogglePoseLab.Down)
+            // A developer tool, only there when switched on in the config file
+            if (inFlight && MunShotSettings.PoseLabEnabled && MunShotSettings.TogglePoseLab.Down)
             {
                 PoseLabWindow lab = GetOrCreatePoseLab();
                 lab.SetOpen(!lab.IsOpen);
