@@ -14,7 +14,7 @@ namespace MunShot.Posing
     /// the surface below with <see cref="DropToSurface"/>. The real kerbals are never moved, so <see cref="Close"/> only
     /// has to destroy the doubles and un-hide the originals for everything to be exactly as it was.
     /// </summary>
-    public sealed class PhotoSession : IDisposable
+    public sealed class PhotoSession
     {
         /// <summary>A kerbal in the session: their double, the hider for their original, and the double's pose player.</summary>
         public sealed class Entry
@@ -58,6 +58,10 @@ namespace MunShot.Posing
         private readonly List<Entry> _entries = new List<Entry>();
         private Transform _ignoredInSurfaceSearch;
 
+        // Counts closes, so a bring-in still loading when the session closes is dropped instead of landing in the scene
+        // after photo mode has gone
+        private int _generation;
+
         public IReadOnlyList<Entry> Entries => _entries;
 
         /// <summary>The kerbal being posed: the last one brought in, or the one picked since.</summary>
@@ -88,20 +92,26 @@ namespace MunShot.Posing
             if (existing != null)
             {
                 Select(existing);
-                result?.Invoke(Localization.Format("MunShot/Status/AlreadyInSelected", "{0} is already in; selected.", candidate.Name));
+                result?.Invoke(Localization.Format("MunShot/Status/AlreadyInSelected", candidate.Name));
                 return;
             }
             if (camera == null)
             {
-                result?.Invoke(Localization.Translate("MunShot/Status/NoCamera", "There's no camera to place the kerbal in front of."));
+                result?.Invoke(Localization.Translate("MunShot/Status/NoCamera"));
                 return;
             }
 
+            int generation = _generation;
             _factory.EnsureLoaded(loaded =>
             {
+                if (generation != _generation)
+                {
+                    _logInfo($"Photo mode: closed before {candidate}'s double could be built; not bringing them in.");
+                    return;
+                }
                 if (!loaded)
                 {
-                    result?.Invoke(Localization.Translate("MunShot/Status/DoublesNotLoaded", "Couldn't load what photo doubles are built from; see the log."));
+                    result?.Invoke(Localization.Translate("MunShot/Status/DoublesNotLoaded"));
                     return;
                 }
                 // In the scene when listed, but gone since (vessel unloaded or destroyed): built from the roster like
@@ -114,18 +124,18 @@ namespace MunShot.Posing
                 if (parent == null)
                 {
                     _logError($"Photo mode: can't bring in {candidate}: there's no active vessel in the scene to stand them by.");
-                    result?.Invoke(Localization.Format("MunShot/Status/NoActiveVessel", "Can't bring {0} in without an active vessel; see the log.", candidate.Name));
+                    result?.Invoke(Localization.Format("MunShot/Status/NoActiveVessel", candidate.Name));
                     return;
                 }
                 Transform cam = camera.transform;
-                Vector3 up = SurfaceSnap.PlanetUpAt(cam.position + cam.forward * DistanceInFront, cam.up);
+                Vector3 up = Planet.UpAt(cam.position + cam.forward * DistanceInFront, cam.up);
                 Place(candidate, camera, up, parent, out Vector3 position, out Quaternion rotation, out string placement);
                 PhotoDouble photoDouble = _factory.Create(candidate, position, rotation, parent);
                 var entry = new Entry(photoDouble, hideOriginal ? new KerbalHider(candidate.Model.gameObject) : null, _newPlayer(), up);
                 _entries.Add(entry);
                 Select(entry);
                 _logInfo($"Photo mode: building a double of {candidate}, {placement}.");
-                result?.Invoke(Localization.Format("MunShot/Status/Bringing", "Bringing in {0}…", candidate.Name));
+                result?.Invoke(Localization.Format("MunShot/Status/Bringing", candidate.Name));
             });
         }
 
@@ -173,17 +183,17 @@ namespace MunShot.Posing
         {
             if (entry == null || !entry.IsReady || entry.Root == null)
             {
-                message = Localization.Translate("MunShot/Status/SnapNobody", "Bring a kerbal in first; Snap to surface moves the selected kerbal.");
+                message = Localization.Translate("MunShot/Status/SnapNobody");
                 return false;
             }
 
             entry.Bones ??= SurfaceSnap.FindBones(entry.Root);
             if (!SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch()))
             {
-                message = Localization.Format("MunShot/Status/NothingBelow", "Nothing to stand on within {0:0.#} m below {1}.", DropReach, entry.Double.Source.Name);
+                message = Localization.Format("MunShot/Status/NothingBelow", DropReach, entry.Double.Source.Name);
                 return false;
             }
-            message = Localization.Format("MunShot/Status/OnSurface", "{0} is standing on the surface.", entry.Double.Source.Name);
+            message = Localization.Format("MunShot/Status/OnSurface", entry.Double.Source.Name);
             return true;
         }
 
@@ -197,7 +207,7 @@ namespace MunShot.Posing
         {
             if (entry == null || !entry.IsReady || entry.Root == null)
             {
-                message = Localization.Translate("MunShot/Status/UprightNobody", "Bring a kerbal in first; Stand upright turns the selected kerbal.");
+                message = Localization.Translate("MunShot/Status/UprightNobody");
                 return false;
             }
 
@@ -210,7 +220,7 @@ namespace MunShot.Posing
             Vector3 centre = BoundsOf(entry, out Bounds bounds) ? bounds.center : root.position;
             Quaternion turn = upright * Quaternion.Inverse(root.rotation);
             root.SetPositionAndRotation(centre + turn * (root.position - centre), upright);
-            message = Localization.Format("MunShot/Status/Upright", "{0} is standing upright.", entry.Double.Source.Name);
+            message = Localization.Format("MunShot/Status/Upright", entry.Double.Source.Name);
             return true;
         }
 
@@ -263,11 +273,10 @@ namespace MunShot.Posing
         /// <summary>Destroys every double and un-hides every original: the scene is as it was before photo mode.</summary>
         public void Close()
         {
+            _generation++;
             for (int i = _entries.Count - 1; i >= 0; i--) Remove(_entries[i]);
             Selected = null;
         }
-
-        public void Dispose() => Close();
 
         /// <summary>Takes one double out: it's destroyed and its original shown again.</summary>
         public void Remove(Entry entry)

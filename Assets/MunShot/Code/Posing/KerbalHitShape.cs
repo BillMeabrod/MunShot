@@ -12,7 +12,6 @@ namespace MunShot.Posing
     /// </summary>
     public sealed class KerbalHitShape
     {
-        private const string Prefix = "bone_kerbal_";
 
         // Radii in metres, by the bone a capsule runs to (kerbals are about a metre tall)
         private const float TorsoRadius = 0.2f;
@@ -35,8 +34,8 @@ namespace MunShot.Posing
         {
             var bones = new Dictionary<string, Transform>(StringComparer.Ordinal);
             foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
-                if (t.name.StartsWith(Prefix, StringComparison.Ordinal))
-                    bones[t.name.Substring(Prefix.Length)] = t;
+                if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
+                    bones[t.name.Substring(KerbalRig.BonePrefix.Length)] = t;
 
             Transform Bone(string name) => bones.TryGetValue(name, out Transform t) ? t : null;
             void Capsule(string from, string to, float radius)

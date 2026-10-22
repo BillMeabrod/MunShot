@@ -25,7 +25,7 @@ namespace MunShot
         private static ConfigValue<bool> _poseLabEnabled;
         private static ConfigValue<KeyboardShortcut> _togglePoseLab;
         private static ConfigValue<float> _flySpeed;
-        private static ConfigValue<KeyBind> _hideUi;
+        private static ConfigValue<KeyBind> _hideUi, _removeKerbal, _removeKerbalAlternate, _tilt, _tip;
         private static ConfigValue<KeyBind> _forward, _back, _left, _right, _rollLeft, _rollRight, _level, _fast, _slow;
 
         /// <summary>Opens and closes photo mode in flight. Left Alt+P by default.</summary>
@@ -39,6 +39,19 @@ namespace MunShot
 
         /// <summary>Opens and closes the developer pose lab in flight, when it's enabled. Left Alt+L by default.</summary>
         public static KeyboardShortcut TogglePoseLab => _togglePoseLab?.Value ?? DefaultTogglePoseLab;
+
+        /// <summary>Takes the highlighted kerbals out of the shot. Delete by default, and Backspace.</summary>
+        public static KeyBind RemoveKerbal => _removeKerbal?.Value ?? new KeyBind(KeyCode.Delete);
+        public static KeyBind RemoveKerbalAlternate => _removeKerbalAlternate?.Value ?? new KeyBind(KeyCode.Backspace);
+
+        /// <summary>
+        /// Held while dragging kerbals, leans them sideways; with TipWhileDragging (Alt) too, tips them forward and back. Left Ctrl
+        /// by default.
+        /// </summary>
+        public static KeyBind TiltWhileDragging => _tilt?.Value ?? new KeyBind(KeyCode.LeftControl);
+
+        /// <summary>Held with TiltWhileDragging while dragging kerbals, tips them forward and back. Left Alt by default.</summary>
+        public static KeyBind TipWhileDragging => _tip?.Value ?? new KeyBind(KeyCode.LeftAlt);
 
         /// <summary>Hides and shows photo mode's own UI, to frame the shot. H by default.</summary>
         public static KeyBind HideUi => _hideUi?.Value ?? new KeyBind(KeyCode.H);
@@ -60,14 +73,28 @@ namespace MunShot
         {
             if (config == null || _togglePhotoMode != null) return;
 
-            IConfigSection photoMode = config.GetOrCreateSection(PhotoModeSection);
+            // Names and descriptions shown on the settings page are localized, as Redux's and KERNEL's are; the config
+            // file keeps the English keys, so saved settings don't depend on the language
+            IConfigSection photoMode = config.GetOrCreateSection(PhotoModeSection, Loc("PhotoMode"));
             _togglePhotoMode = new ConfigValue<KeyboardShortcut>(photoMode.BindEntry("Toggle Photo Mode",
                 DefaultTogglePhotoMode,
-                "Opens and closes photo mode in flight. It's also in the app tray and the pause menu."));
-            _hideUi = Key(photoMode, "Hide Photo Mode UI", KeyCode.H, "Hides photo mode's panels and handles to frame the shot; press again to bring them back.");
+                "Opens and closes photo mode in flight. It's also in the app tray and the pause menu.", null,
+                Loc("TogglePhotoMode"), LocDescription("TogglePhotoMode")));
+            _hideUi = Key(photoMode, "Hide Photo Mode UI", "HideUi", KeyCode.H,
+                "Hides photo mode's panels and handles to frame the shot; press again to bring them back.");
+            _removeKerbal = Key(photoMode, "Remove Kerbal", "RemoveKerbal", KeyCode.Delete,
+                "Takes the highlighted kerbals out of the shot; the real ones show again where they are.");
+            _removeKerbalAlternate = Key(photoMode, "Remove Kerbal (Alternate)", "RemoveKerbalAlternate", KeyCode.Backspace,
+                "A second key for Remove kerbal.");
+            _tilt = Key(photoMode, "Tilt While Dragging", "TiltWhileDragging", KeyCode.LeftControl,
+                "Hold while dragging kerbals to lean them to the side with the mouse. Hold Alt as well to tip them "
+                + "forward and back instead. Holding the right mouse button turns them.");
+            _tip = Key(photoMode, "Tip While Dragging", "TipWhileDragging", KeyCode.LeftAlt,
+                "Hold with Tilt while dragging to tip the dragged kerbals forward and back with the mouse.");
 
             // Developer tools: kept out of the settings menu (Redux's Hidden tag, as Redux hides its own internal
-            // settings), so players never see them; a section with only hidden entries isn't shown at all
+            // settings), so players never see them, and not translated; a section with only hidden entries isn't
+            // shown at all
             IConfigSection developer = config.GetOrCreateSection(DeveloperSection);
             string[] hidden = { ConfigTags.Hidden };
             _poseLabEnabled = new ConfigValue<bool>(developer.BindEntry("Enable Pose Lab", false,
@@ -77,22 +104,29 @@ namespace MunShot
                 DefaultTogglePoseLab,
                 "Opens and closes the developer pose lab in flight, when Enable Pose Lab is on.", null, null, null, hidden));
 
-            IConfigSection camera = config.GetOrCreateSection(CameraSection);
+            IConfigSection camera = config.GetOrCreateSection(CameraSection, Loc("PhotoCamera"));
             _flySpeed = new ConfigValue<float>(camera.BindEntry("Fly Speed", DefaultFlySpeed,
-                "How fast the free camera flies, in metres per second. Hold Fast for five times this, doubling every second it stays held (up to 2000 m/s); Slow for a fifth.",
-                new RangeConstraint<float>(0.5f, 100f)));
-            _forward = Key(camera, "Fly Forward", KeyCode.W, "Free camera: fly forward.");
-            _back = Key(camera, "Fly Back", KeyCode.S, "Free camera: fly backward.");
-            _left = Key(camera, "Fly Left", KeyCode.A, "Free camera: fly left.");
-            _right = Key(camera, "Fly Right", KeyCode.D, "Free camera: fly right.");
-            _rollLeft = Key(camera, "Roll Left", KeyCode.Q, "Tilts the photo camera to the left.");
-            _rollRight = Key(camera, "Roll Right", KeyCode.E, "Tilts the photo camera to the right.");
-            _level = Key(camera, "Level Horizon", KeyCode.R, "Takes the tilt off the photo camera.");
-            _fast = Key(camera, "Fast", KeyCode.LeftShift, "Hold to move the photo camera five times faster; while flying, it keeps speeding up the longer it is held.");
-            _slow = Key(camera, "Slow", KeyCode.LeftControl, "Hold to move the photo camera five times slower.");
+                "How fast the free camera flies, in metres per second. Hold Faster for five times this, doubling every "
+                + "second it stays held (up to 2000 m/s); Slower for a fifth.",
+                new RangeConstraint<float>(0.5f, 100f), Loc("FlySpeed"), LocDescription("FlySpeed")));
+            _forward = Key(camera, "Fly Forward", "FlyForward", KeyCode.W, "Free camera: fly forward.");
+            _back = Key(camera, "Fly Back", "FlyBack", KeyCode.S, "Free camera: fly backward.");
+            _left = Key(camera, "Fly Left", "FlyLeft", KeyCode.A, "Free camera: fly left.");
+            _right = Key(camera, "Fly Right", "FlyRight", KeyCode.D, "Free camera: fly right.");
+            _rollLeft = Key(camera, "Roll Left", "RollLeft", KeyCode.Q, "Tilts the photo camera to the left.");
+            _rollRight = Key(camera, "Roll Right", "RollRight", KeyCode.E, "Tilts the photo camera to the right.");
+            _level = Key(camera, "Level Horizon", "LevelHorizon", KeyCode.R, "Takes the tilt off the photo camera.");
+            _fast = Key(camera, "Fast", "Fast", KeyCode.LeftShift,
+                "Hold to move the photo camera five times faster, speeding up the longer it's held while flying. Also "
+                + "adds kerbals to the selection when clicking or dragging a box, and turns rings in finer steps.");
+            _slow = Key(camera, "Slow", "Slow", KeyCode.LeftControl, "Hold to move the photo camera five times slower.");
         }
 
-        private static ConfigValue<KeyBind> Key(IConfigSection section, string name, KeyCode key, string description) =>
-            new ConfigValue<KeyBind>(section.BindEntry(name, new KeyBind(key), description));
+        // A key setting: stored under its English config key, shown with the localized name and description for id
+        private static ConfigValue<KeyBind> Key(IConfigSection section, string configKey, string id, KeyCode key, string description) =>
+            new ConfigValue<KeyBind>(section.BindEntry(configKey, new KeyBind(key), description, null, Loc(id), LocDescription(id)));
+
+        private static string Loc(string id) => "MunShot/Settings/" + id;
+        private static string LocDescription(string id) => "MunShot/Settings/Description/" + id;
     }
 }

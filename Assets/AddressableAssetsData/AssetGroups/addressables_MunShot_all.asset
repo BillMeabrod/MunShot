@@ -25,11 +25,6 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: c1213a880ce6f44459b7cf788ef3550f
-    m_Address: MunShot/PhotoModeWindow.uss
-    m_ReadOnly: 0
-    m_SerializedLabels: []
-    FlaggedDuringContentUpdateRestriction: 0
   m_ReadOnly: 0
   m_Settings: {fileID: 11400000, guid: d2e9389a927173b4599160efbb1a25f4, type: 2}
   m_SchemaSet:

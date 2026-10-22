@@ -2,6 +2,7 @@ using System;
 using KSP.Game;
 using KSP.Sim;
 using KSP.Sim.impl;
+using Redux.Cameras;
 using Redux.Modules;
 using UnityEngine;
 
@@ -69,6 +70,9 @@ namespace MunShot.Cameras
         private readonly Action<string> _logError;
 
         private UniverseCameraManager _cameraManager;
+
+        // The first-person view photo mode left, to go back to when it gives the camera back
+        private FirstPersonCameraTarget _firstPersonTarget;
         private IPhysicsSpaceProvider _physicsSpace;
         private bool _gameInputWasEnabled;
 
@@ -145,8 +149,9 @@ namespace MunShot.Cameras
             }
 
             // The first-person and part cameras override the flight camera's shot too; only one can
+            _firstPersonTarget = cameraManager.IsFirstPersonCameraActive ? cameraManager.ActiveFirstPersonCameraTarget : null;
             if (cameraManager.ExitFirstPersonCamera(selectAutoMode: false))
-                _logInfo("Photo camera: left the first-person camera; the flight camera goes back to its previous mode afterwards.");
+                _logInfo("Photo camera: left the first-person camera; it's selected again when photo mode closes.");
             PartCameraController.Deactivate();
 
             ICameraShot current = cameraManager.GetCameraShotIncludeOverride(CameraID.Flight);
@@ -186,10 +191,15 @@ namespace MunShot.Cameras
                     _cameraManager.ClearCameraShotOverride(CameraID.Flight);
                     _cameraManager.RefreshCameraShot(CameraID.Flight);
                 }
+                // Back to first person if that's where photo mode found the player (Redux re-finds the target, and says
+                // no if it's gone, e.g. the kerbal boarded or the vessel is out of range)
+                if (_firstPersonTarget != null && !_cameraManager.SelectFirstPersonCameraTarget(_firstPersonTarget))
+                    _logInfo($"Photo camera: couldn't go back to {_firstPersonTarget.KerbalName}'s first-person view; it's no longer available.");
                 if (_gameInputWasEnabled) _cameraManager.EnableInput();
             }
             _cameraManager = null;
             _physicsSpace = null;
+            _firstPersonTarget = null;
             Target = null;
             Mode = PhotoCameraMode.Free;
             _logInfo("Photo camera: gave the flight camera back.");
@@ -217,35 +227,35 @@ namespace MunShot.Cameras
         {
             if (!IsEngaged)
             {
-                message = Localization.Translate("MunShot/Status/CameraOff", "The photo camera isn't on.");
+                message = Localization.Translate("MunShot/Status/CameraOff");
                 return false;
             }
             if (mode == PhotoCameraMode.Orbit)
             {
                 if (Target == null)
                 {
-                    message = Localization.Translate("MunShot/Status/PickOrbitTarget", "Pick something to orbit first.");
+                    message = Localization.Translate("MunShot/Status/PickOrbitTarget");
                     return false;
                 }
                 if (!BeginOrbit())
                 {
-                    message = Localization.Format("MunShot/Status/OrbitTargetGone", "{0} isn't there to orbit any more.", Target.Name);
+                    message = Localization.Format("MunShot/Status/OrbitTargetGone", Target.Name);
                     return false;
                 }
             }
             SetMode(mode);
             message = mode == PhotoCameraMode.Orbit
-                ? Localization.Format("MunShot/Status/Orbiting", "Orbiting {0}.", Target.Name)
-                : Localization.Translate("MunShot/Status/FlyingFree", "Flying free.");
+                ? Localization.Format("MunShot/Status/Orbiting", Target.Name)
+                : Localization.Translate("MunShot/Status/FlyingFree");
             return true;
         }
 
         /// <summary>
-        /// Moves the camera from this frame's input. <paramref name="pointerOverUi"/>: the mouse is over photo mode's
-        /// own UI, so a right-click or wheel there is the UI's. <paramref name="keyboardTaken"/>: a text field has the
-        /// keyboard, so typing doesn't fly the camera.
+        /// Moves the camera from this frame's input. <paramref name="mouseTaken"/>: the mouse is over photo mode's own
+        /// UI or dragging something, so its right button and wheel aren't the camera's. <paramref name="keyboardTaken"/>:
+        /// a text field has the keyboard, so typing doesn't fly the camera.
         /// </summary>
-        public void Tick(bool pointerOverUi, bool keyboardTaken)
+        public void Tick(bool mouseTaken, bool keyboardTaken)
         {
             if (!IsEngaged) return;
             if (_cameraManager == null || _physicsSpace == null || GameManager.Instance?.Game?.CameraManager != _cameraManager)
@@ -256,7 +266,7 @@ namespace MunShot.Cameras
             }
 
             float deltaTime = Time.unscaledDeltaTime;
-            PhotoCameraIntent intent = _keyboardMouse.Read(pointerOverUi, keyboardTaken);
+            PhotoCameraIntent intent = _keyboardMouse.Read(mouseTaken, keyboardTaken);
             float speed = intent.Fast ? FastMultiplier : intent.Slow ? SlowMultiplier : 1f;
 
             // Look (Free) or circle (Orbit): both turn which way the camera faces
@@ -372,15 +382,7 @@ namespace MunShot.Cameras
 
         // Away from the centre of the body the active vessel orbits, at the camera: the same "up" the game gives
         // kerbals on EVA (KerbalBehavior's horizon up). The physics space's own up when there's no body to go by.
-        private Vector3 PlanetUp()
-        {
-            CelestialBodyComponent body = GameManager.Instance?.Game?.ViewController?.GetActiveSimVessel()?.mainBody;
-            if (body == null) return _physicsSpace.transform.up;
-            // Named as the game names them: Delta's parameters are declared end first
-            Vector away = MathDP.Normalize(MathDP.Delta(start: new Position(body.transform.celestialFrame, Vector3d.zero), end: _position));
-            Vector3 up = _physicsSpace.VectorToPhysics(away);
-            return up.sqrMagnitude > 0.5f ? up.normalized : _physicsSpace.transform.up;
-        }
+        private Vector3 PlanetUp() => Planet.UpAt(PhysicsPosition(), _physicsSpace.transform.up);
 
         private Vector ToVector(Vector3 v) => _physicsSpace.PhysicsToVector(v);
     }

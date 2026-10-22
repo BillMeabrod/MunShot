@@ -224,6 +224,15 @@
     color: rgb(112, 117, 128);
 }
 
+/* The box dragged to select several kerbals, in the theme's highlight green */
+.pm-selection-box {
+    position: absolute;
+    display: none;
+    border-width: 1px;
+    border-color: rgb(0, 204, 81);
+    background-color: rgba(0, 204, 81, 0.12);
+}
+
 /* A note at the top middle, in a flight panel */
 .pm-toast {
     position: absolute;

@@ -13,7 +13,7 @@ namespace MunShot.Capture
     /// line Redux writes when it has saved the file, or failed to, which also gives the file's path. If neither comes,
     /// the UI comes back after <see cref="TimeoutSeconds"/> anyway, and that's logged.
     /// </summary>
-    public sealed class PhotoCapture : IDisposable
+    public sealed class PhotoCapture
     {
         // Redux's own log lines (ScreenshotCapture.Announce / OnReadbackComplete)
         private const string SavedPrefix = "[Screenshot] Saved ";
@@ -52,8 +52,7 @@ namespace MunShot.Capture
             if (capture == null || !capture.isActiveAndEnabled)
             {
                 _logError("Photo mode: can't take a photo, Redux's screenshot capture isn't running.");
-                Finished?.Invoke(Localization.Translate("MunShot/Status/CaptureNotRunning",
-                    "Can't take a photo: the game's screenshot capture isn't running. See the log."));
+                Finished?.Invoke(Localization.Translate("MunShot/Status/CaptureNotRunning"));
                 return;
             }
 
@@ -72,11 +71,12 @@ namespace MunShot.Capture
             {
                 _logError($"Photo mode: Redux's screenshot didn't report saving within {TimeoutSeconds:0} seconds; "
                           + "showing photo mode's UI again. Check the Screenshots folder and the log for Redux's own messages.");
-                End(Localization.Translate("MunShot/Status/MaybeNotSaved", "The photo may not have been saved; see the log."));
+                End(Localization.Translate("MunShot/Status/MaybeNotSaved"));
             }
         }
 
-        public void Dispose()
+        /// <summary>Stops waiting for a photo in progress (photo mode is closing); it's used again next time.</summary>
+        public void Cancel()
         {
             if (IsCapturing) End(null);
         }
@@ -88,12 +88,12 @@ namespace MunShot.Capture
             {
                 string path = message.Substring(SavedPrefix.Length);
                 _logInfo($"Photo mode: photo saved to {path}");
-                End(Localization.Format("MunShot/Status/Saved", "Saved {0}", path));
+                End(Localization.Format("MunShot/Status/Saved", path));
             }
             else if (message.StartsWith(FailedPrefix, StringComparison.Ordinal))
             {
                 _logError($"Photo mode: the photo wasn't saved; Redux reported: {message}");
-                End(Localization.Translate("MunShot/Status/NotSaved", "The photo wasn't saved; see the log."));
+                End(Localization.Translate("MunShot/Status/NotSaved"));
             }
         }
 

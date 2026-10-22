@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using MunShot.Posing;
 using UnityEngine;
 
 namespace MunShot.Tools
@@ -47,7 +48,7 @@ namespace MunShot.Tools
             Transform root = animator.transform;
             var report = new StringBuilder();
             report.AppendLine($"# MunShot live rig dump: {kerbalName}");
-            report.AppendLine($"Animator: {PathFromScene(root)} (avatar '{(animator.avatar ? animator.avatar.name : "<none>")}', "
+            report.AppendLine($"Animator: {TransformPath.From(null, root)} (avatar '{(animator.avatar ? animator.avatar.name : "<none>")}', "
                               + $"controller '{(animator.runtimeAnimatorController ? animator.runtimeAnimatorController.name : "<none>")}')");
             report.AppendLine($"Held clip: {clipDescription}");
             report.AppendLine();
@@ -198,7 +199,7 @@ namespace MunShot.Tools
             string name = path.Substring(path.LastIndexOf('/') + 1);
             string area = AreaOf(name);
             if (!byArea.TryGetValue(area, out List<string> lines)) byArea[area] = lines = new List<string>();
-            lines.Add($"{name.Replace("bone_kerbal_", string.Empty)} {detail}");
+            lines.Add($"{name.Replace(KerbalRig.BonePrefix, string.Empty)} {detail}");
         }
 
         private static void AppendAreas(StringBuilder result, string heading, SortedDictionary<string, List<string>> byArea)
@@ -219,7 +220,7 @@ namespace MunShot.Tools
         private static string AreaOf(string transformName)
         {
             string n = transformName.ToLowerInvariant();
-            if (!n.StartsWith("bone_kerbal_")) return "other (not a kerbal bone)";
+            if (!n.StartsWith(KerbalRig.BonePrefix)) return "other (not a kerbal bone)";
             if (n.Contains("thumb") || n.Contains("pointer") || n.Contains("middle") || n.Contains("pinky")) return "fingers";
             if (n.Contains("eye")) return "eyes";
             if (n.Contains("jaw") || n.Contains("lips") || n.Contains("teeth") || n.Contains("tongue")) return "mouth";
@@ -238,25 +239,10 @@ namespace MunShot.Tools
         private static string DescribeBone(Transform root, Transform bone)
         {
             if (bone == null) return "<null>";
-            return bone.IsChildOf(root) ? PathFrom(root, bone) : "!" + PathFromScene(bone);
+            return bone.IsChildOf(root) ? PathFrom(root, bone) : "!" + TransformPath.From(null, bone);
         }
 
-        private static string PathFrom(Transform root, Transform t)
-        {
-            if (t == root) return "<animator>";
-            var parts = new List<string>();
-            for (Transform c = t; c != null && c != root; c = c.parent) parts.Add(c.name);
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
-
-        private static string PathFromScene(Transform t)
-        {
-            var parts = new List<string>();
-            for (Transform c = t; c != null; c = c.parent) parts.Add(c.name);
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
+        private static string PathFrom(Transform root, Transform t) => t == root ? "<animator>" : TransformPath.From(root, t);
 
         private static string Sanitize(string name)
         {

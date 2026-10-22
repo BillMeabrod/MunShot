@@ -21,7 +21,7 @@ namespace MunShot.Cameras
             string Name()
             {
                 if (vessel.SimulationObject != null && !vessel.SimulationObject.IsDestroyedOrBeingDestroyed) lastName = vessel.RevealDisplayName();
-                return Localization.Format("MunShot/UI/ActiveVessel", "{0} (active vessel)", lastName);
+                return Localization.Format("MunShot/UI/ActiveVessel", lastName);
             }
 
             return new OrbitTarget(Name, () =>

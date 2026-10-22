@@ -4,8 +4,10 @@ using System.Globalization;
 using System.Linq;
 using MunShot.Cameras;
 using MunShot.Posing;
+using I2.Loc;
 using SpaceWarp2.API.Input;
 using UitkForKsp2.API;
+using UitkForKsp2.API.Manipulator;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
@@ -17,24 +19,18 @@ namespace MunShot.UI
     /// Photo mode's overlay, built from PhotoModeWindow.uxml with a <see cref="PhotoModeViewModel"/> as its data
     /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera tabs; opened and
     /// closed by its bar toggle), a shutter button and a hint bar sit on its edges. It's built from the KerbalUI
-    /// theme's own pieces as Redux's panels are, with localized text and the game's menu sounds on hover and click. It shows while photo mode is open, stays up when photo mode hides the rest of the
-    /// game's UI, hides with the Hide UI key to frame the shot, and hides for the moment a photo is taken. Everything it
-    /// does goes through <see cref="PhotoMode"/>.
+    /// theme's own pieces as Redux's panels are, with localized text and the game's menu sounds on hover and click.
+    /// It shows while photo mode is open, stays up when photo mode hides the rest of the game's UI, hides with the
+    /// Hide UI key to frame the shot, and hides for the moment a photo is taken. Everything it does goes through
+    /// <see cref="PhotoMode"/>.
     /// </summary>
     public sealed class PhotoModeWindow : IDisposable
     {
-        private enum Tab
-        {
-            Kerbals,
-            Pose,
-            Camera
-        }
-
         private const string WindowId = "MunShot_PhotoMode";
 
-        // The chosen one: "selected" for UitkForKsp2's sounds (a chosen item clicks differently) and list rows,
+        // The chosen one: UitkForKsp2's "selected" for its sounds (a chosen item clicks differently) and list rows,
         // "active" for the theme's OabButton (lit up, as the VAB's chosen tool)
-        private const string SelectedClass = "selected";
+        private const string SelectedClass = DocumentSoundManipulator.SelectedClass;
         private const string ActiveClass = "active";
 
         // How long a note stays up
@@ -43,7 +39,7 @@ namespace MunShot.UI
         private readonly PhotoMode _photoMode;
         private readonly ILogger _logger;
         private readonly PanelRenderer _renderer;
-        private readonly PhotoModeViewModel _model = new PhotoModeViewModel();
+        private readonly PhotoModeViewModel _model;
 
         // One pose choice per preset version: "None" first, then e.g. "Wave", "Wave (jetpack)"
         private readonly List<(PosePreset preset, PoseVariant variant)> _poseChoices = new List<(PosePreset, PoseVariant)>();
@@ -51,13 +47,10 @@ namespace MunShot.UI
         // The pose last picked for each double, to show when it's selected again
         private readonly Dictionary<PhotoSession.Entry, int> _poseOf = new Dictionary<PhotoSession.Entry, int>();
 
-        // The game's localizer, told about language changes (kept to stop listening to the same one)
-        private ILocalizer _localizer;
-
-        private Tab _tab = Tab.Kerbals;
+        private PhotoModeTab _tab = PhotoModeTab.Kerbals;
 
         // The camera mode the hint bar shows, so it's only rebuilt when that changes
-        private PhotoCameraMode? _hintsMode;
+        private (PhotoCameraMode mode, bool dragging)? _hintsFor;
         private int _toastId;
 
         private VisualElement _root;
@@ -66,16 +59,18 @@ namespace MunShot.UI
         private VisualElement _sidePanel;
         private Button _shutter;
         private VisualElement _hints;
-        private readonly Dictionary<Tab, (Button tab, VisualElement page)> _tabs = new Dictionary<Tab, (Button, VisualElement)>();
+        private VisualElement _selectionBox;
+        private readonly Dictionary<PhotoModeTab, (Button tab, VisualElement page)> _tabs =
+            new Dictionary<PhotoModeTab, (Button, VisualElement)>();
         private Button _bringIn;
         private ScrollView _kerbalList;
         private ScrollView _poseList;
         private ScrollView _orbitList;
         private Toggle _helmet;
         private Toggle _visor;
+        private Toggle _angleSnap;
         private Button _move;
         private Button _rotate;
-        private Toggle _angleSnap;
         private Button _free;
         private Button _orbit;
         private Slider _fieldOfView;
@@ -91,6 +86,7 @@ namespace MunShot.UI
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
+            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu);
 
             _poseChoices.Add((null, PoseVariant.Ground));
             foreach (PosePreset preset in photoMode.Presets)
@@ -127,10 +123,8 @@ namespace MunShot.UI
             _photoMode.Capture.Finished += OnCaptureFinished;
 
             // Text from UXML is translated again by UitkForKsp2 when the language changes; what's built here (lists,
-            // hints) is redrawn then too
-            _localizer = ILocalizer.Instance;
-            if (_localizer != null) _localizer.OnLocalize += OnLanguageChanged;
-            else _logger.LogWarning("Photo mode overlay: the game's localizer isn't there; a language change shows after reopening photo mode.");
+            // hints) is redrawn then too, told by the game's localization as Redux's own windows are
+            LocalizationManager.OnLocalizeEvent += OnLanguageChanged;
         }
 
         public void Dispose()
@@ -140,27 +134,56 @@ namespace MunShot.UI
             _photoMode.Status -= ShowToast;
             _photoMode.Capture.Started -= OnCaptureStarted;
             _photoMode.Capture.Finished -= OnCaptureFinished;
-            if (_localizer != null) _localizer.OnLocalize -= OnLanguageChanged;
+            LocalizationManager.OnLocalizeEvent -= OnLanguageChanged;
             if (_renderer != null) UnityEngine.Object.Destroy(_renderer.gameObject);
         }
 
-        /// <summary>Whether the mouse is over one of the overlay's panels, so clicks there aren't for the scene.</summary>
+        /// <summary>Called every frame: draws the selection box while one is being dragged.</summary>
+        public void Tick()
+        {
+            // Dragging kerbals shows what else the drag can do; letting go brings the usual hints back
+            if (_photoMode.IsOpen) ShowHints(_photoMode.Camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
+
+            if (_selectionBox == null || _root?.panel == null) return;
+            Rect? box = _photoMode.IsOpen ? _photoMode.Manipulator.SelectionBox : null;
+            if (!box.HasValue)
+            {
+                SetShown(_selectionBox, false);
+                return;
+            }
+
+            // Screen positions count up from the bottom, panel positions down from the top
+            Rect screen = box.Value;
+            Vector2 topLeft = RuntimePanelUtils.ScreenToPanel(_root.panel, new Vector2(screen.xMin, Screen.height - screen.yMax));
+            Vector2 bottomRight = RuntimePanelUtils.ScreenToPanel(_root.panel, new Vector2(screen.xMax, Screen.height - screen.yMin));
+            SetShown(_selectionBox, true);
+            _selectionBox.style.left = topLeft.x;
+            _selectionBox.style.top = topLeft.y;
+            _selectionBox.style.width = bottomRight.x - topLeft.x;
+            _selectionBox.style.height = bottomRight.y - topLeft.y;
+        }
+
+        /// <summary>
+        /// Whether the mouse is over UI that takes clicks (the overlay's panels, the Bring in menu, any window on the
+        /// same panel), so clicks there aren't for the scene. The overlay's full-screen parts let clicks through
+        /// (picking-mode Ignore), so they aren't picked.
+        /// </summary>
         public bool IsPointerOver(Vector2 screen)
         {
             if (!_photoMode.IsOpen || _photoMode.UiHidden || _root?.panel == null) return false;
             // Screen positions count up from the bottom, panel positions down from the top
             Vector2 inPanel = RuntimePanelUtils.ScreenToPanel(_root.panel, new Vector2(screen.x, Screen.height - screen.y));
-            return Contains(_sidebar, inPanel) || Contains(_shutter, inPanel) || Contains(_hints, inPanel);
+            VisualElement picked = _root.panel.Pick(inPanel);
+            // The window's own containers (and the panel's) cover the screen too
+            return picked != null && !Encloses(picked, _root);
         }
 
-        /// <summary>Whether a text or number field in the overlay has the keyboard.</summary>
-        public bool IsTyping
+        // Whether outer is element itself or one of its ancestors
+        private static bool Encloses(VisualElement outer, VisualElement element)
         {
-            get
-            {
-                var focused = _root?.panel?.focusController?.focusedElement as VisualElement;
-                return focused != null && (focused.GetFirstOfType<TextField>() != null || focused.GetFirstOfType<FloatField>() != null);
-            }
+            for (VisualElement e = element; e != null; e = e.parent)
+                if (e == outer) return true;
+            return false;
         }
 
         private static bool Contains(VisualElement element, Vector2 point) =>
@@ -193,20 +216,17 @@ namespace MunShot.UI
             _sidePanel = Required<VisualElement>(root, "side-panel");
             _shutter = Required<Button>(root, "shutter");
             _hints = Required<VisualElement>(root, "hints");
+            _selectionBox = Required<VisualElement>(root, "selection-box");
             if (_chrome == null || _sidePanel == null) return;
 
             // The bar toggle opens and closes the panel, as on Redux's orbital info panel
             Required<Toggle>(root, "panel-toggle")?.RegisterValueChangedCallback(change =>
-                _sidePanel.style.display = change.newValue ? DisplayStyle.Flex : DisplayStyle.None);
+                SetShown(_sidePanel, change.newValue));
 
-            _tabs[Tab.Kerbals] = (Required<Button>(root, "tab-kerbals"), Required<VisualElement>(root, "page-kerbals"));
-            _tabs[Tab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
-            _tabs[Tab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
-            foreach (KeyValuePair<Tab, (Button tab, VisualElement page)> tab in _tabs)
-            {
-                Tab which = tab.Key;
-                OnClick(tab.Value.tab, () => ShowTab(which));
-            }
+            // The buttons run the view model's commands, bound in the UXML; these are looked up to show which is chosen
+            _tabs[PhotoModeTab.Kerbals] = (Required<Button>(root, "tab-kerbals"), Required<VisualElement>(root, "page-kerbals"));
+            _tabs[PhotoModeTab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
+            _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
 
             _bringIn = Required<Button>(root, "bring-in");
             _kerbalList = Required<ScrollView>(root, "kerbal-list");
@@ -220,15 +240,6 @@ namespace MunShot.UI
             _free = Required<Button>(root, "camera-free");
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
-
-            OnClick(_bringIn, OpenKerbalMenu);
-            OnClick(_move, () => _photoMode.SetTool(HandleMode.Move));
-            OnClick(_rotate, () => _photoMode.SetTool(HandleMode.Rotate));
-            OnClick(Required<Button>(root, "snap-to-surface"), _photoMode.SnapToSurface);
-            OnClick(Required<Button>(root, "stand-upright"), _photoMode.StandUpright);
-            OnClick(_free, () => _photoMode.SetCameraMode(PhotoCameraMode.Free));
-            OnClick(_orbit, () => _photoMode.SetCameraMode(PhotoCameraMode.Orbit));
-            OnClick(_shutter, _photoMode.TakePhoto);
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
@@ -256,11 +267,6 @@ namespace MunShot.UI
             return element;
         }
 
-        private static void OnClick(Button button, Action action)
-        {
-            if (button != null) button.clicked += action;
-        }
-
         // ---- Showing photo mode ----
 
         private void OnOpenChanged(bool open)
@@ -268,9 +274,9 @@ namespace MunShot.UI
             if (open)
             {
                 _poseOf.Clear();
-                _hintsMode = null;
+                _hintsFor = null;
                 _model.ToastVisible = false;
-                ShowTab(Tab.Kerbals);
+                ShowTab(PhotoModeTab.Kerbals);
                 _renderer.Show();
             }
             else
@@ -282,7 +288,7 @@ namespace MunShot.UI
 
         private void OnLanguageChanged()
         {
-            _hintsMode = null;
+            _hintsFor = null;
             Refresh();
         }
 
@@ -309,28 +315,45 @@ namespace MunShot.UI
             }).ExecuteLater(ToastMilliseconds);
         }
 
-        private void ShowTab(Tab tab)
+        private void ShowTab(PhotoModeTab tab)
         {
             _tab = tab;
-            foreach (KeyValuePair<Tab, (Button tab, VisualElement page)> entry in _tabs)
+            foreach (KeyValuePair<PhotoModeTab, (Button tab, VisualElement page)> entry in _tabs)
             {
                 bool shown = entry.Key == tab;
                 MarkActive(entry.Value.tab, shown);
-                if (entry.Value.page != null) entry.Value.page.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
+                if (entry.Value.page != null) SetShown(entry.Value.page, shown);
             }
+        }
+
+        // Shows or hides through UitkForKsp2 (hiding also lets go of focus and text input inside), only on a change: some
+        // of this runs every frame, and hiding tells UitkForKsp2's listeners each time. Whether it shows now is its own
+        // display if set, or else the stylesheet's (the selection box starts hidden there)
+        private static void SetShown(VisualElement element, bool shown)
+        {
+            if (element == null) return;
+            StyleEnum<DisplayStyle> own = element.style.display;
+            bool showing = own.keyword == StyleKeyword.Undefined
+                ? own.value != DisplayStyle.None
+                : element.resolvedStyle.display != DisplayStyle.None;
+            if (showing == shown) return;
+            if (shown) element.Show();
+            else element.Hide();
         }
 
         // Brings every control in line with photo mode
         private void Refresh()
         {
             if (_chrome == null) return;
-            _chrome.style.display = _photoMode.UiHidden ? DisplayStyle.None : DisplayStyle.Flex;
+            SetShown(_chrome, !_photoMode.UiHidden);
 
             PhotoSession session = _photoMode.Session;
             PhotoSession.Entry selected = session.Selected;
             bool ready = selected != null && selected.IsReady;
             _model.HasKerbals = session.Entries.Count > 0;
-            _model.SelectedName = selected != null ? selected.Double.Source.Name : Localization.Translate(Localization.NobodyIn);
+            // In capitals like the headings beside it: "nobody in" is a key the binding's UppercaseLocalization converter
+            // translates (again on a language change), which leaves a name as it is
+            _model.SelectedName = selected != null ? selected.Double.Source.Name.ToUpperInvariant() : "#" + Localization.NobodyIn;
 
             RefreshKerbals(session, selected);
             RefreshPoses(selected, ready);
@@ -351,7 +374,7 @@ namespace MunShot.UI
             RefreshOrbitTargets(camera);
             _fieldOfView?.SetValueWithoutNotify(camera.FieldOfView);
             ShowFieldOfView();
-            ShowHints(camera.Mode);
+            ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
         }
 
         // Who's in the shot: click a name to select them, x to take them out
@@ -372,13 +395,16 @@ namespace MunShot.UI
                 row.Add(remove);
                 _kerbalList.Add(row);
             }
-            _bringIn?.SetEnabled(_photoMode.NotYetIn(_photoMode.Kerbals.InScene).Any() || _photoMode.NotYetIn(_photoMode.Kerbals.Elsewhere).Any());
+            _model.RefreshCommands();
         }
 
         private void RefreshPoses(PhotoSession.Entry selected, bool ready)
         {
             if (_poseList == null) return;
             _poseList.Clear();
+            // Kerbals taken out are forgotten
+            foreach (PhotoSession.Entry gone in _poseOf.Keys.Where(e => !_photoMode.Session.Entries.Contains(e)).ToList())
+                _poseOf.Remove(gone);
             int current = ready && _poseOf.TryGetValue(selected, out int chosen) ? chosen : 0;
             for (int i = 0; i < _poseChoices.Count; i++)
             {
@@ -448,28 +474,36 @@ namespace MunShot.UI
         {
             PhotoSession.Entry selected = _photoMode.Session.Selected;
             if (selected == null || index < 0 || index >= _poseChoices.Count) return;
-            _poseOf[selected] = index;
             (PosePreset preset, PoseVariant variant) = _poseChoices[index];
             if (preset == null) _photoMode.ReleasePose();
-            else _photoMode.HoldPreset(preset, variant);
+            else if (!_photoMode.HoldPreset(preset, variant)) return;
+            // Only what's actually held is remembered
+            _poseOf[selected] = index;
         }
 
         private static string PoseLabel((PosePreset preset, PoseVariant variant) choice)
         {
-            if (choice.preset == null) return Localization.Translate(Localization.NoPose, "None");
+            if (choice.preset == null) return Localization.Translate(Localization.NoPose);
             if (choice.variant == PoseVariant.Ground) return choice.preset.DisplayName;
-            return Localization.Format(Localization.JetpackPose, "{0} (jetpack)", choice.preset.DisplayName);
+            return Localization.Format(Localization.JetpackPose, choice.preset.DisplayName);
         }
 
         // ---- Hints ----
 
         // The keys as they're bound, as keycaps, and what they do in the camera's current mode. Only the essentials:
         // the rest (Fast, clicking a kerbal) shows itself
-        private void ShowHints(PhotoCameraMode mode)
+        private void ShowHints(PhotoCameraMode mode, bool dragging)
         {
-            if (_hints == null || _hintsMode == mode) return;
-            _hintsMode = mode;
+            if (_hints == null || _hintsFor == (mode, dragging)) return;
+            _hintsFor = (mode, dragging);
             _hints.Clear();
+            if (dragging)
+            {
+                AddHint(Localization.HintTurn, Localization.Translate(Localization.KeyRightMouse));
+                AddHint(Localization.HintLean, Key(MunShotSettings.TiltWhileDragging));
+                AddHint(Localization.HintTip, Key(MunShotSettings.TiltWhileDragging), Key(MunShotSettings.TipWhileDragging));
+                return;
+            }
             if (mode == PhotoCameraMode.Free)
             {
                 AddHint(Localization.HintFly, Key(MunShotSettings.Forward), Key(MunShotSettings.Left), Key(MunShotSettings.Back), Key(MunShotSettings.Right));
@@ -482,6 +516,9 @@ namespace MunShot.UI
                 AddHint(Localization.HintCloser, Localization.Translate(Localization.KeyWheel));
             }
             AddHint(Localization.HintRoll, Key(MunShotSettings.RollLeft), Key(MunShotSettings.RollRight));
+            AddHint(Localization.HintLevel, Key(MunShotSettings.LevelHorizon));
+            AddHint(Localization.HintSelectSeveral, Localization.Translate(Localization.KeyDrag));
+            AddHint(Localization.HintRemove, Key(MunShotSettings.RemoveKerbal));
             AddHint(Localization.HintHideUi, Key(MunShotSettings.HideUi));
             AddHint(Localization.HintTakePhoto, ScreenshotKey());
             AddHint(Localization.HintExit, Shortcut(MunShotSettings.TogglePhotoMode));

@@ -1,8 +1,5 @@
 using System;
 using System.Collections.Generic;
-using KSP.Game;
-using KSP.Sim;
-using KSP.Sim.impl;
 using UnityEngine;
 
 namespace MunShot.Posing
@@ -14,10 +11,6 @@ namespace MunShot.Posing
     /// </summary>
     public static class SurfaceSnap
     {
-        // The kerbal skeleton's bones are named bone_kerbal_*; whichever is lowest (feet when standing, maybe a
-        // shoulder when lying down) touches the surface
-        private const string BonePrefix = "bone_kerbal_";
-
         // How far above the lowest bone the downward search starts, so a double slightly sunk into the ground still
         // finds the surface it's in
         private const float SearchStartAboveLowest = 0.5f;
@@ -25,31 +18,13 @@ namespace MunShot.Posing
         // Moves smaller than this aren't worth making (and would just jitter)
         private const float MinimumMove = 0.001f;
 
-        /// <summary>
-        /// "Up" at a place in physics space, the way the game works it out for kerbals on EVA (KerbalBehavior's horizon
-        /// up): away from the centre of the body the active vessel orbits. <paramref name="fallback"/> when the game
-        /// can't tell (no active vessel, no physics space).
-        /// </summary>
-        public static Vector3 PlanetUpAt(Vector3 physicsPosition, Vector3 fallback)
-        {
-            GameInstance game = GameManager.Instance?.Game;
-            CelestialBodyComponent body = game?.ViewController?.GetActiveSimVessel()?.mainBody;
-            IPhysicsSpaceProvider physicsSpace = game?.UniverseView?.PhysicsSpace;
-            if (body == null || physicsSpace == null) return fallback;
-
-            // Named as the game names them: Delta's parameters are declared end first
-            Vector away = MathDP.Normalize(MathDP.Delta(start: new Position(body.transform.celestialFrame, Vector3d.zero),
-                                                        end: physicsSpace.PhysicsToPosition(physicsPosition)));
-            Vector3 up = physicsSpace.VectorToPhysics(away);
-            return up.sqrMagnitude > 0.5f ? up.normalized : fallback;
-        }
-
         /// <summary>The skeleton's bones under <paramref name="root"/>, for <see cref="TryDrop"/>.</summary>
         public static Transform[] FindBones(Transform root)
         {
             var bones = new List<Transform>();
             foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
-                if (t.name.StartsWith(BonePrefix, StringComparison.Ordinal))
+                // Whichever bone is lowest (feet when standing, maybe a shoulder when lying down) touches the surface
+                if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
                     bones.Add(t);
             return bones.ToArray();
         }

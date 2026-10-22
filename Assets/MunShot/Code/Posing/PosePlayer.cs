@@ -16,7 +16,7 @@ namespace MunShot.Posing
     /// <see cref="FreezeBaseAnimation"/> is on. The graph runs on unscaled time, so the pose holds while the game is
     /// paused or time is frozen.
     /// </summary>
-    public sealed class PosePlayer : IDisposable
+    public sealed class PosePlayer
     {
         // Sorted after the Animator's own controller output (which uses the default order), so ours is applied last
         private const ushort OutputSortingOrder = 1000;
@@ -123,8 +123,6 @@ namespace MunShot.Posing
             _animator = null;
             Current = null;
         }
-
-        public void Dispose() => Release();
 
         /// <summary>Turns <see cref="FreezeBaseAnimation"/> on or off, taking effect at once if a pose is held.</summary>
         public void SetFreezeBaseAnimation(bool freeze)

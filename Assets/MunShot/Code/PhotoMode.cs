@@ -20,7 +20,7 @@ namespace MunShot
     /// doubles, their poses, helmets and handles), the camera and photo capture, and everything the UI offers on them.
     /// The player's window and the developer's pose lab both work through it; neither owns any of this.
     /// </summary>
-    public sealed class PhotoMode : IDisposable
+    public sealed class PhotoMode
     {
         private readonly ILogger _logger;
         private readonly GamePause _pause;
@@ -97,17 +97,27 @@ namespace MunShot
             GameInstance game = GameManager.Instance?.Game;
             if (game?.GlobalGameState == null || game.GlobalGameState.GetState() != GameState.FlightView)
             {
-                Status?.Invoke(Localization.Translate("MunShot/Status/OnlyInFlight", "Photo mode is only available in flight."));
+                Status?.Invoke(Localization.Translate("MunShot/Status/OnlyInFlight"));
                 _logger.LogInfo($"Photo mode: not opened; the game is in {game?.GlobalGameState?.GetState().ToString() ?? "no state yet"}, not flight.");
+                return false;
+            }
+
+            // The camera first: without it photo mode is no use, so if it can't be taken over (the reason is logged),
+            // nothing else is touched
+            if (!Camera.Engage())
+            {
+                Status?.Invoke(Localization.Translate("MunShot/Status/CameraUnavailable"));
                 return false;
             }
 
             IsOpen = true;
             UiHidden = false;
+            PartHoverOutlines.Suppressed = true;
+            // A part the mouse was over as photo mode opened is still outlined; the game won't take it away now
+            game.UI?.OutlineManager?.ClearOutlines();
             _pause.Engage();
             _inputLock.Engage();
             _uiHider.Engage();
-            Camera.Engage();
             ListenToScreenshotKey(true);
 
             UnityEngine.Camera view = CurrentCamera();
@@ -131,30 +141,23 @@ namespace MunShot
             UiHidden = false;
             bool hadDoubles = Session.Entries.Count > 0;
             Session.Close();
-            Manipulator.Dispose();
+            Manipulator.Reset();
             _doubleTargets.Clear();
             _orbitTargets.Clear();
             _targetVessel = null;
             _vesselTarget = null;
             ListenToScreenshotKey(false);
-            Capture.Dispose();
+            Capture.Cancel();
             Camera.Release();
             _uiHider.Release();
             _inputLock.Release();
             _pause.Release();
+            PartHoverOutlines.Suppressed = false;
             Kerbals = new KerbalCandidates.Listing();
             if (hadDoubles) _logger.LogInfo("Photo mode: closed; doubles removed and originals shown again.");
 
             OpenChanged?.Invoke(false);
             RaiseChanged();
-        }
-
-        public void Dispose()
-        {
-            Close();
-            Session.EntryChanged -= OnEntryChanged;
-            Manipulator.Selected -= OnDoubleClicked;
-            Camera.Changed -= RaiseChanged;
         }
 
         /// <summary>
@@ -183,12 +186,17 @@ namespace MunShot
                 return;
             }
 
-            // The game's own cursor. Fast (Shift) is the fine snap modifier, as Shift is in the VAB
+            // The game's own cursor. Fast (Shift) also adds to the selection on a click or box, and is the fine snap
+            // modifier while turning a ring, as Shift is in the VAB. The right button held too turns dragged doubles; the
+            // tilt key leans them, or with the tip key tips them
             global::Mouse.MouseButton left = global::Mouse.Left;
+            bool rightHeld = global::Mouse.Right != null && global::Mouse.Right.IsPressed();
             if (left != null)
                 Manipulator.Tick(CurrentCamera(), global::Mouse.Position, left.WasPressedThisFrame(), left.IsPressed(),
-                                 left.WasReleasedThisFrame(), pointerOverUi, MunShotSettings.Fast.Held);
-            Camera.Tick(pointerOverUi, typing);
+                                 left.WasReleasedThisFrame(), pointerOverUi, MunShotSettings.Fast.Held, MunShotSettings.Fast.Held,
+                                 rightHeld, MunShotSettings.TiltWhileDragging.Held, MunShotSettings.TipWhileDragging.Held);
+            // While something's dragged, the right button and wheel are the drag's, not the camera's
+            Camera.Tick(pointerOverUi || Manipulator.IsDragging, typing);
         }
 
         // ---- Kerbals ----
@@ -203,7 +211,7 @@ namespace MunShot
             if (!IsOpen || candidate == null) return;
             if (Session.Contains(candidate.Info))
             {
-                Status?.Invoke(Localization.Format("MunShot/Status/AlreadyIn", "{0} is already in.", candidate.Name));
+                Status?.Invoke(Localization.Format("MunShot/Status/AlreadyIn", candidate.Name));
                 return;
             }
             Session.Bring(candidate, CurrentCamera(), message =>
@@ -235,31 +243,53 @@ namespace MunShot
         public void Remove(PhotoSession.Entry entry)
         {
             if (entry == null) return;
-            string name = entry.Double.Source.Name;
-            Session.Remove(entry);
+            RemoveAll(new[] { entry });
+        }
+
+        /// <summary>
+        /// Takes out every double selected for moving (the outlined ones); their originals come back where they're in
+        /// the scene.
+        /// </summary>
+        public void RemoveMoving()
+        {
+            if (!IsOpen || Manipulator.Moving.Count == 0) return;
+            RemoveAll(new List<PhotoSession.Entry>(Manipulator.Moving));
+        }
+
+        private void RemoveAll(IReadOnlyList<PhotoSession.Entry> entries)
+        {
+            foreach (PhotoSession.Entry entry in entries)
+            {
+                _logger.LogInfo($"Photo mode: {entry.Double.Source.Name}'s double removed.");
+                Session.Remove(entry);
+            }
             RefreshOrbitTargets();
-            Status?.Invoke(Localization.Format("MunShot/Status/BackWhereTheyWere", "{0} is back where they were.", name));
-            _logger.LogInfo($"Photo mode: {name}'s double removed.");
+            Status?.Invoke(entries.Count == 1
+                ? Localization.Format("MunShot/Status/BackWhereTheyWere", entries[0].Double.Source.Name)
+                : Localization.Format("MunShot/Status/AllBack", entries.Count));
             RaiseChanged();
         }
 
         // ---- The selected double ----
 
-        public void HoldPreset(PosePreset preset, PoseVariant variant)
+        /// <summary>Holds a pose on the selected double; false (with a status note) if it couldn't.</summary>
+        public bool HoldPreset(PosePreset preset, PoseVariant variant)
         {
             PhotoSession.Entry selected = ReadySelected();
-            if (selected == null || preset == null) return;
+            if (selected == null || preset == null) return false;
             ClipPose? pose = preset.Get(variant);
             if (!pose.HasValue)
             {
                 Status?.Invoke(variant == PoseVariant.Jetpack
-                    ? Localization.Format("MunShot/Status/NoJetpackVersion", "{0} has no jetpack version.", preset.DisplayName)
-                    : Localization.Format("MunShot/Status/NoGroundVersion", "{0} has no ground version.", preset.DisplayName));
-                return;
+                    ? Localization.Format("MunShot/Status/NoJetpackVersion", preset.DisplayName)
+                    : Localization.Format("MunShot/Status/NoGroundVersion", preset.DisplayName));
+                return false;
             }
-            if (!selected.Player.Hold(selected.Double.Animator, pose.Value))
-                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", "Couldn't hold {0}; see the log.", preset.DisplayName));
+            bool held = selected.Player.Hold(selected.Double.Animator, pose.Value);
+            if (!held)
+                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset.DisplayName));
             RaiseChanged();
+            return held;
         }
 
         public void ReleasePose()
@@ -297,16 +327,31 @@ namespace MunShot
             RaiseChanged();
         }
 
-        public void SnapToSurface()
-        {
-            Session.DropToSurface(Session.Selected, out string message);
-            Status?.Invoke(message);
-        }
+        /// <summary>Stands every double selected for moving (or the posed one, when none are) on the surface below.</summary>
+        public void SnapToSurface() =>
+            ForEachToPlace(Session.DropToSurface, "MunShot/Status/AllOnSurface", "{0} kerbals are standing on the surface.");
 
-        public void StandUpright()
+        /// <summary>Turns every double selected for moving (or the posed one, when none are) back upright.</summary>
+        public void StandUpright() =>
+            ForEachToPlace(Session.StandUpright, "MunShot/Status/AllUpright", "{0} kerbals are standing upright.");
+
+        // Runs a placing action on the moving selection, or the posed double when nothing's selected for moving. One
+        // double says what happened to it; several say how many it worked for, or the first that it didn't
+        private delegate bool PlaceAction(PhotoSession.Entry entry, out string message);
+
+        private void ForEachToPlace(PlaceAction place, string allKey, string allFallback)
         {
-            Session.StandUpright(Session.Selected, out string message);
-            Status?.Invoke(message);
+            var targets = new List<PhotoSession.Entry>(Manipulator.Moving);
+            if (targets.Count == 0) targets.Add(Session.Selected);
+            string first = null, failure = null;
+            int placed = 0;
+            foreach (PhotoSession.Entry entry in targets)
+            {
+                if (place(entry, out string message)) placed++;
+                else failure ??= message;
+                first ??= message;
+            }
+            Status?.Invoke(targets.Count == 1 ? first : failure ?? Localization.Format(allKey, allFallback, placed));
         }
 
         // ---- Camera and photo ----
@@ -332,8 +377,8 @@ namespace MunShot
             PhotoSession.Entry selected = Session.Selected;
             if (selected != null && selected.IsReady) return selected;
             Status?.Invoke(selected == null
-                ? Localization.Translate("MunShot/Status/BringKerbalFirst", "Bring a kerbal in first.")
-                : Localization.Translate("MunShot/Status/StillBuilding", "The double is still being built."));
+                ? Localization.Translate("MunShot/Status/BringKerbalFirst")
+                : Localization.Translate("MunShot/Status/StillBuilding"));
             return null;
         }
 
@@ -341,9 +386,9 @@ namespace MunShot
         {
             RefreshOrbitTargets();
             if (entry.IsReady)
-                Status?.Invoke(Localization.Format("MunShot/Status/InFrontOfCamera", "{0} is in front of the camera.", entry.Double.Source.Name));
+                Status?.Invoke(Localization.Format("MunShot/Status/InFrontOfCamera", entry.Double.Source.Name));
             else
-                Status?.Invoke(Localization.Format("MunShot/Status/BuildFailed", "Couldn't build {0}'s double; see the log.", entry.Double.Source.Name));
+                Status?.Invoke(Localization.Format("MunShot/Status/BuildFailed", entry.Double.Source.Name));
             RaiseChanged();
         }
 
@@ -351,7 +396,7 @@ namespace MunShot
         private void OnDoubleClicked(PhotoSession.Entry entry)
         {
             Camera.SetTarget(OrbitTargetFor(entry));
-            Status?.Invoke(Localization.Format("MunShot/Status/Selected", "Selected {0}.", entry.Double.Source.Name));
+            Status?.Invoke(Localization.Format("MunShot/Status/Selected", entry.Double.Source.Name));
             RaiseChanged();
         }
 

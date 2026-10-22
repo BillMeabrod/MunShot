@@ -4,8 +4,8 @@ namespace MunShot.Cameras
 {
     /// <summary>
     /// What the player asks of the photo camera this frame, read from the keyboard and mouse by
-    /// <see cref="KeyboardMouseCameraInput"/>; the camera turns it into movement. Kept apart from the camera so another
-    /// input device can be added later by producing the same intent.
+    /// <see cref="KeyboardMouseCameraInput"/>; the camera turns it into movement, so reading the keys and moving the
+    /// camera stay separate.
     /// </summary>
     public struct PhotoCameraIntent
     {
@@ -44,14 +44,16 @@ namespace MunShot.Cameras
         private CursorLockMode _cursorLockBeforeLook;
         private bool _cursorVisibleBeforeLook;
 
-        /// <param name="pointerOverUi">The mouse is over photo mode's own UI: a right-click or wheel there is the UI's.</param>
+        /// <param name="mouseTaken">The mouse is over photo mode's own UI or dragging something: its right button and
+        /// wheel aren't the camera's.</param>
         /// <param name="keyboardTaken">A text field has the keyboard: typing isn't flying.</param>
-        public PhotoCameraIntent Read(bool pointerOverUi, bool keyboardTaken)
+        public PhotoCameraIntent Read(bool mouseTaken, bool keyboardTaken)
         {
             var intent = new PhotoCameraIntent();
-            UpdateLooking(pointerOverUi);
+            UpdateLooking(mouseTaken);
             if (_looking) intent.Look = global::Mouse.SystemDelta * DegreesPerPixel;
-            if (!pointerOverUi) intent.Steps = UnityEngine.Input.mouseScrollDelta.y;
+            // The game's mouse: about one per wheel notch (the game scales it by 120 for its own UI scrolling)
+            if (!mouseTaken) intent.Steps = global::Mouse.SystemScroll.y;
             if (keyboardTaken) return intent;
 
             intent.Move = Vector2.ClampMagnitude(new Vector2(Axis(MunShotSettings.Right.Held, MunShotSettings.Left.Held),
@@ -66,11 +68,11 @@ namespace MunShot.Cameras
         /// <summary>Lets go of the cursor if it's held for looking.</summary>
         public void Reset() => StopLooking();
 
-        private void UpdateLooking(bool pointerOverUi)
+        private void UpdateLooking(bool mouseTaken)
         {
             global::Mouse.MouseButton right = global::Mouse.Right;
             bool held = right != null && right.IsPressed();
-            if (!_looking && held && right.WasPressedThisFrame() && !pointerOverUi)
+            if (!_looking && held && right.WasPressedThisFrame() && !mouseTaken)
             {
                 _looking = true;
                 _cursorLockBeforeLook = Cursor.lockState;

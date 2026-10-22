@@ -3,9 +3,10 @@
          and closed by its bar toggle, as Redux's orbital info panel is), a shutter and a hint bar sit on its edges, and
          the Hide UI key hides them all. Built from the KerbalUI theme's own pieces, as Redux's panels are: flight-panel,
          bar-toggle, InvertedCornerBox, OabButton, switch toggles; PhotoModeWindow.uss only places them. Only the
-         panels take clicks: the rest of the screen is the scene. Its data source is a PhotoModeViewModel;
-         PhotoModeWindow fills the lists and wires the controls. Texts starting with # are localization keys
-         (Copied/localizations/munshot_localization.csv); "uppercase" elements are shown in capitals. -->
+         panels take clicks: the rest of the screen is the scene. Its data source is a PhotoModeViewModel, whose
+         commands the buttons run (CommandBinding); PhotoModeWindow fills the lists and wires the other controls. Texts
+         starting with # are localization keys (Copied/localizations/munshot_localization.csv); "uppercase" elements are
+         shown in capitals (bound text through the UppercaseLocalization converter). -->
     <Style src="PhotoModeWindow.uss" />
     <ui:VisualElement name="photo-mode" class="pm-root" picking-mode="Ignore">
         <ui:VisualElement name="chrome" class="pm-chrome" picking-mode="Ignore">
@@ -28,9 +29,21 @@
                             </ui:VisualElement>
 
                             <ui:VisualElement class="pm-tabs">
-                                <uitk:OabButton name="tab-kerbals" text="#MunShot/UI/Kerbals" class="pm-tab" />
-                                <uitk:OabButton name="tab-pose" text="#MunShot/UI/Pose" class="pm-tab" />
-                                <uitk:OabButton name="tab-camera" text="#MunShot/UI/Camera" class="pm-tab" />
+                                <uitk:OabButton name="tab-kerbals" text="#MunShot/UI/Kerbals" class="pm-tab">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowKerbalsCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
+                                <uitk:OabButton name="tab-pose" text="#MunShot/UI/Pose" class="pm-tab">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowPoseCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
+                                <uitk:OabButton name="tab-camera" text="#MunShot/UI/Camera" class="pm-tab">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowCameraCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
                             </ui:VisualElement>
                             <ui:Label text="................................................" class="pm-divider" />
 
@@ -44,7 +57,11 @@
                                         </Bindings>
                                     </ui:Label>
                                 </uitk:InvertedCornerBox>
-                                <uitk:OabButton name="bring-in" text="#MunShot/UI/BringInKerbal" class="pm-wide" />
+                                <uitk:OabButton name="bring-in" text="#MunShot/UI/BringInKerbal" class="pm-wide">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="BringInCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
 
                                 <ui:VisualElement name="kerbal-gear">
                                     <Bindings>
@@ -52,9 +69,9 @@
                                     </Bindings>
                                     <ui:VisualElement class="pm-heading-row">
                                         <ui:Label text="## " class="pm-heading pm-dim" />
-                                        <ui:Label class="pm-heading uppercase">
+                                        <ui:Label class="pm-heading">
                                             <Bindings>
-                                                <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" />
+                                                <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" source-to-ui-converters="UppercaseLocalization" />
                                             </Bindings>
                                         </ui:Label>
                                     </ui:VisualElement>
@@ -67,33 +84,69 @@
 
                             <!-- Pose: the selected kerbal's pose, and moving them -->
                             <ui:VisualElement name="page-pose" class="pm-page">
-                                <ui:VisualElement class="pm-heading-row">
-                                    <ui:Label text="## " class="pm-heading pm-dim" />
-                                    <ui:Label class="pm-heading uppercase">
-                                        <Bindings>
-                                            <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" />
-                                        </Bindings>
-                                    </ui:Label>
-                                </ui:VisualElement>
+                                <!-- Until someone's brought in there's nobody to pose -->
                                 <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
-                                    <ui:ScrollView name="pose-list" class="pm-list pm-list--tall" />
+                                    <Bindings>
+                                        <ui:DataBinding property="style.display" data-source-path="HasKerbals" binding-mode="ToTarget" source-to-ui-converters="MunShotInvertedBoolToDisplay" />
+                                    </Bindings>
+                                    <ui:Label text="#MunShot/UI/AddKerbalFirst" class="pm-empty" />
                                 </uitk:InvertedCornerBox>
-                                <ui:VisualElement class="pm-row">
-                                    <uitk:OabButton name="tool-move" text="#MunShot/UI/Move" class="pm-grow" />
-                                    <uitk:OabButton name="tool-rotate" text="#MunShot/UI/Rotate" class="pm-grow" />
-                                </ui:VisualElement>
-                                <ui:Toggle name="angle-snap" label="#MunShot/UI/AngleSnap" class="switch" />
-                                <ui:VisualElement class="pm-row">
-                                    <uitk:OabButton name="snap-to-surface" text="#MunShot/UI/SnapToSurface" class="pm-grow" />
-                                    <uitk:OabButton name="stand-upright" text="#MunShot/UI/StandUpright" class="pm-grow" />
+                                <ui:VisualElement name="pose-tools">
+                                    <Bindings>
+                                        <ui:DataBinding property="style.display" data-source-path="HasKerbals" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                    </Bindings>
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label class="pm-heading">
+                                            <Bindings>
+                                                <ui:DataBinding property="text" data-source-path="SelectedName" binding-mode="ToTarget" source-to-ui-converters="UppercaseLocalization" />
+                                            </Bindings>
+                                        </ui:Label>
+                                    </ui:VisualElement>
+                                    <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                        <ui:ScrollView name="pose-list" class="pm-list pm-list--tall" />
+                                    </uitk:InvertedCornerBox>
+                                    <ui:VisualElement class="pm-row">
+                                        <uitk:OabButton name="tool-move" text="#MunShot/UI/Move" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="MoveToolCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                        <uitk:OabButton name="tool-rotate" text="#MunShot/UI/Rotate" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="RotateToolCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                    </ui:VisualElement>
+                                    <ui:Toggle name="angle-snap" label="#MunShot/UI/AngleSnap" class="switch" />
+                                    <ui:VisualElement class="pm-row">
+                                        <uitk:OabButton name="snap-to-surface" text="#MunShot/UI/SnapToSurface" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="SnapToSurfaceCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                        <uitk:OabButton name="stand-upright" text="#MunShot/UI/StandUpright" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="StandUprightCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                    </ui:VisualElement>
                                 </ui:VisualElement>
                             </ui:VisualElement>
 
                             <!-- Camera: fly free or circle something, and how wide it sees -->
                             <ui:VisualElement name="page-camera" class="pm-page">
                                 <ui:VisualElement class="pm-row">
-                                    <uitk:OabButton name="camera-free" text="#MunShot/UI/Free" class="pm-grow" />
-                                    <uitk:OabButton name="camera-orbit" text="#MunShot/UI/Orbit" class="pm-grow" />
+                                    <uitk:OabButton name="camera-free" text="#MunShot/UI/Free" class="pm-grow">
+                                        <Bindings>
+                                            <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="FreeCameraCommand" />
+                                        </Bindings>
+                                    </uitk:OabButton>
+                                    <uitk:OabButton name="camera-orbit" text="#MunShot/UI/Orbit" class="pm-grow">
+                                        <Bindings>
+                                            <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="OrbitCameraCommand" />
+                                        </Bindings>
+                                    </uitk:OabButton>
                                 </ui:VisualElement>
                                 <!-- What Orbit circles: only while orbiting -->
                                 <ui:VisualElement name="orbit-section">
@@ -113,7 +166,7 @@
                                     <ui:Label text="#MunShot/UI/FieldOfView" class="pm-heading uppercase" />
                                 </ui:VisualElement>
                                 <ui:VisualElement class="pm-row">
-                                    <ui:Slider name="field-of-view" low-value="10" high-value="100" class="pm-grow" />
+                                    <ui:Slider name="field-of-view" class="pm-grow" />
                                     <ui:Label class="pm-value">
                                         <Bindings>
                                             <ui:DataBinding property="text" data-source-path="FieldOfViewText" binding-mode="ToTarget" />
@@ -128,6 +181,9 @@
 
             <!-- Shutter: takes the photo (as the screenshot key does), with all of this hidden -->
             <ui:Button name="shutter" class="pm-shutter">
+                <Bindings>
+                    <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="TakePhotoCommand" />
+                </Bindings>
                 <ui:VisualElement class="pm-shutter__inner" picking-mode="Ignore" />
             </ui:Button>
 
@@ -135,7 +191,10 @@
             <ui:VisualElement name="hints" class="pm-hints" />
         </ui:VisualElement>
 
-        <!-- A short note about what just happened; fades out on its own -->
+        <!-- The box being dragged to select several kerbals; placed by PhotoModeWindow while there is one -->
+        <ui:VisualElement name="selection-box" class="pm-selection-box" picking-mode="Ignore" />
+
+        <!-- A short note about what just happened; PhotoModeWindow hides it again after a few seconds -->
         <ui:VisualElement name="toast" class="root flight-panel pm-toast" picking-mode="Ignore">
             <Bindings>
                 <ui:DataBinding property="style.display" data-source-path="ToastVisible" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />

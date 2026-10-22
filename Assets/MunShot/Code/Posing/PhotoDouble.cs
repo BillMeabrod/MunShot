@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KSP.Game;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -26,6 +27,15 @@ namespace MunShot.Posing
         // The game rebinds the Animator on its first update after the kerbal is built, which resets parameters:
         // finish (and set the face) only after that
         private const int FramesAfterBuilt = 2;
+
+        // The helmet's glass is "mesh_helmet_01_visor" on the kerbal rig
+        private const string VisorName = "visor";
+
+        // The game's animation names for a kerbal's own eye height and eye symmetry, and the attributes they come from
+        private const string EyeOffsetParameter = "eyeOffsetPercentage";
+        private const string EyeSymmetryParameter = "EyeSymmetry_Phase";
+        private const string EyeHeightAttribute = "EYEHEIGHT";
+        private const string EyeSymmetryAttribute = "EYESYMMETRY";
 
         private readonly float _startedAt;
         private int _framesSinceBuilt;
@@ -105,9 +115,6 @@ namespace MunShot.Posing
         /// <summary>Set when <see cref="SetVisor"/> found no visor to show or hide.</summary>
         public string VisorWarning { get; private set; }
 
-        // The helmet's glass is "mesh_helmet_01_visor" on the kerbal rig
-        private const string VisorName = "visor";
-
         /// <summary>Removes the double from the scene and from the game's update list.</summary>
         public void Destroy()
         {
@@ -118,12 +125,6 @@ namespace MunShot.Posing
             }
         }
 
-        // The game's animation names for a kerbal's own eye height and eye symmetry, and the attributes they come from
-        private const string EyeOffsetParameter = "eyeOffsetPercentage";
-        private const string EyeSymmetryParameter = "EyeSymmetry_Phase";
-        private const string EyeHeightAttribute = "EYEHEIGHT";
-        private const string EyeSymmetryAttribute = "EYESYMMETRY";
-
         /// <summary>Set when the face couldn't be set up fully: the double still works, it may just look a little off.</summary>
         public string FaceWarning { get; private set; }
 
@@ -131,14 +132,14 @@ namespace MunShot.Posing
         // (AnimationManager.InitAttributeValues): eye height and eye symmetry from the kerbal's attributes
         private void SetFace()
         {
-            var problems = new System.Collections.Generic.List<string>();
+            var problems = new List<string>();
             SetFloatFromAttribute(EyeOffsetParameter, EyeHeightAttribute, value => Convert.ToInt32(value), problems);
             SetFloatFromAttribute(EyeSymmetryParameter, EyeSymmetryAttribute, value => Convert.ToSingle(value), problems);
             if (problems.Count > 0) FaceWarning = $"Photo double of {Source.Name}: face not fully set up ({string.Join("; ", problems)}).";
         }
 
         private void SetFloatFromAttribute(string parameter, string attribute, Func<object, float> convert,
-                                           System.Collections.Generic.List<string> problems)
+                                           List<string> problems)
         {
             if (!HasFloatParameter(parameter))
             {

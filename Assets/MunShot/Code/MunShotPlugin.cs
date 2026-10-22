@@ -28,9 +28,6 @@ namespace MunShot
         private const string ToolbarIconAddress = "MunShot/toolbar.png";
 
         private const string LoadAssetsStep = "MunShot: Loading photo mode";
-        // A stock campaign-load step to load after, as K.E.R.N.E.L does: early enough that the app tray button is
-        // registered before the flight app tray is built
-        private const string LoadAssetsAfter = "Loading Celestial Body Data";
 
         private PhotoMode _photoMode;
         private PosePlayer _evaPlayer;
@@ -45,17 +42,28 @@ namespace MunShot
             // The game only gives a mod its settings page if its settings exist when the menu is set up
             MunShotSettings.Bind(SWConfiguration);
 
-            // Redux only lets a mod load its own assets in a campaign that has it switched on. Loading them in a step of
-            // the campaign load, rather than OnCampaignLoaded, registers the app tray button before the flight app
-            // tray is built
-            SaveLoad.AddStepAfter(SWMetadata.Guid, LoadAssetsStep, StockFlow.CampaignLoad, LoadAssetsAfter,
-                (resolve, reject) => LoadAssets(resolve));
+            // Redux only lets a mod load its own assets in a campaign that has it switched on. Loading them in Redux's
+            // BeforeUniverse campaign phase, rather than OnCampaignLoaded, registers the app tray button before the game
+            // loads its UI systems (and builds the flight app tray), without depending on a stock step's name
+            SaveLoad.AddCampaignLoadAction(SWMetadata.Guid, LoadAssetsStep, CampaignPhase.BeforeUniverse, LoadAssets);
         }
 
         public override void OnInitialized()
         {
             // The window binds show and hide through these, so they're registered before it loads
             MunShotConverters.Register();
+
+            // MunShot's patches to the game (the part hover photo mode switches off), applied the Redux way. If a game
+            // update has moved what they patch, photo mode still works, with the game's part hover left on
+            try
+            {
+                CreateHarmonyAndPatchAll();
+            }
+            catch (Exception e)
+            {
+                SWLogger.LogError("Couldn't patch the game's part hover (UIManager.LateUpdateMouseOverLogic); in photo mode, "
+                                  + $"hovering a vessel part will clear the kerbals' outlines and outline the part. {e}");
+            }
 
             var session = new PhotoSession(new PhotoDoubleFactory(message => SWLogger.LogError(message)), NewPosePlayer,
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
@@ -68,7 +76,15 @@ namespace MunShot
             _pauseMenuButton = new PauseMenuButton(OpenPhotoMode, () => Enabled, SWLogger);
 
             Messages?.PersistentSubscribe<GameStateChangedMessage>(OnGameStateChanged);
-            Messages?.PersistentSubscribe<EscapeMenuOpenedMessage>(_ => _pauseMenuButton.OnPauseMenuOpened());
+            Messages?.PersistentSubscribe<EscapeMenuOpenedMessage>(_ => OnPauseMenuOpened());
+        }
+
+        // The pause menu doesn't pause the game, so closing photo mode under it leaves the game as the player had it;
+        // the pause menu's own windows (settings, save, quit) then never open over photo mode's frozen scene
+        private void OnPauseMenuOpened()
+        {
+            _photoMode.Close();
+            _pauseMenuButton.OnPauseMenuOpened();
         }
 
         // After a freeze, a kerbal's Animator gets the speed the game gives it for the current time warp
@@ -119,8 +135,7 @@ namespace MunShot
                 }
                 else
                 {
-                    Sprite icon = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-                    AppBarButton.Register(SWMetadata.Guid, icon, open =>
+                    AppBarButton.Register(SWMetadata.Guid, texture, open =>
                     {
                         if (open) OpenPhotoMode();
                         else _photoMode.Close();
@@ -130,9 +145,16 @@ namespace MunShot
             });
         }
 
-        // Lets go of the campaign before the game tears it down: photo mode closes (doubles go, originals come back)
-        // and no kerbal stays posed
-        public override void OnCampaignUnloading() => EndPhotoMode();
+        // Lets go of the campaign before the game tears it down: photo mode closes (doubles go, originals come back), no
+        // kerbal stays posed, and the windows stop listening (the game takes their UI down with the campaign)
+        public override void OnCampaignUnloading()
+        {
+            EndPhotoMode();
+            _window?.Dispose();
+            _window = null;
+            _poseLab?.Dispose();
+            _poseLab = null;
+        }
 
         private void EndPhotoMode()
         {
@@ -173,22 +195,27 @@ namespace MunShot
                 if (_photoMode.IsOpen) _photoMode.Close();
                 else OpenPhotoMode();
             }
-            if (_photoMode.IsOpen && MunShotSettings.HideUi.Down && !(_window != null && _window.IsAlive && _window.IsTyping))
+            // Typing in a text field (only the Pose lab has any) isn't pressing photo mode's keys or flying the camera
+            bool labAlive = _poseLab != null && _poseLab.IsAlive;
+            bool typing = labAlive && _poseLab.IsTyping;
+            if (_photoMode.IsOpen && MunShotSettings.HideUi.Down && !typing)
                 _photoMode.ToggleUiHidden();
+            if (_photoMode.IsOpen && !typing && (MunShotSettings.RemoveKerbal.Down || MunShotSettings.RemoveKerbalAlternate.Down))
+                _photoMode.RemoveMoving();
             // A developer tool, only there when switched on in the config file
-            if (inFlight && MunShotSettings.PoseLabEnabled && MunShotSettings.TogglePoseLab.Down)
+            if (inFlight && MunShotSettings.PoseLabEnabled && MunShotSettings.TogglePoseLab.Down && !typing)
             {
                 PoseLabWindow lab = GetOrCreatePoseLab();
                 lab.SetOpen(!lab.IsOpen);
+                labAlive = _poseLab.IsAlive;
             }
 
-            // Clicks and typing in photo mode's windows aren't for the scene or the camera
+            // Clicks in photo mode's windows aren't for the scene or the camera
             Vector2 mouse = global::Mouse.Position;
-            bool labAlive = _poseLab != null && _poseLab.IsAlive;
             bool windowAlive = _window != null && _window.IsAlive;
             bool pointerOverUi = (windowAlive && _window.IsPointerOver(mouse)) || (labAlive && _poseLab.IsPointerOver(mouse));
-            bool typing = (windowAlive && _window.IsTyping) || (labAlive && _poseLab.IsTyping);
             _photoMode.Tick(pointerOverUi, typing);
+            if (windowAlive) _window.Tick();
 
             _evaPlayer.Tick();
             if (labAlive) _poseLab.Tick();

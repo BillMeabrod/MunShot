@@ -16,7 +16,7 @@ namespace MunShot.UI
     /// resumes the game and opens photo mode (which pauses it again). Everything that could go missing in a game update
     /// is checked and logged.
     /// </summary>
-    internal sealed class PauseMenuButton : IDisposable
+    internal sealed class PauseMenuButton
     {
         // Redux's Game Statistics button, copied and placed just before it
         private const string TemplateName = "22GameStatistics";
@@ -60,15 +60,9 @@ namespace MunShot.UI
                     lines[i].SetID(i.ToString());
         }
 
-        public void Dispose()
-        {
-            if (_button != null) UnityEngine.Object.Destroy(_button);
-            _button = null;
-        }
-
         private GameObject Create()
         {
-            var menu = UnityEngine.Object.FindFirstObjectByType<ESCMenuActionElementsController>(FindObjectsInactive.Include);
+            var menu = UnityEngine.Object.FindAnyObjectByType<ESCMenuActionElementsController>(FindObjectsInactive.Include);
             Transform template = menu != null ? menu.transform.Find(TemplateName) : null;
             if (template == null)
             {

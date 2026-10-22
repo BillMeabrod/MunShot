@@ -25,7 +25,7 @@ namespace MunShot.Posing
         /// What the player sees: the translation under "MunShot/Pose/&lt;id&gt;" in MunShot's localization file, or
         /// <see cref="Name"/> when there's none (a preset someone added without a translation).
         /// </summary>
-        public string DisplayName => Localization.Translate("MunShot/Pose/" + Id, Name);
+        public string DisplayName => Localization.TranslateOr("MunShot/Pose/" + Id, Name);
 
         public ClipPose? Ground { get; }
         public ClipPose? Jetpack { get; }

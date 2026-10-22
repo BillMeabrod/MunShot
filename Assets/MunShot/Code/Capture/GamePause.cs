@@ -13,13 +13,15 @@ namespace MunShot.Capture
     ///
     /// Nothing may unpause it while engaged: the time-warp keys are locked with the game's own input lock, and every
     /// frame anything else that unpaused the game (the pause menu's resume, the flight report, mission actions, other
-    /// mods) is undone and logged. Released, it unpauses only if the game wasn't already paused when photo mode opened.
+    /// mods) is undone and logged. Released, it unpauses only if the game wasn't already paused when photo mode opened,
+    /// and the time-warp keys go back to how they were (still locked, if something else had locked them).
     /// </summary>
     public sealed class GamePause
     {
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logWarning;
         private bool _wasPaused;
+        private InputLockDefinition _restoreTimeWarp;
 
         public bool IsEngaged { get; private set; }
 
@@ -43,7 +45,12 @@ namespace MunShot.Capture
 
             _wasPaused = viewController.IsPaused;
             SetPaused(viewController, true);
-            game.InputManager?.SetInputLock(InputLocks.TimeWarpDisabled);
+            InputManager inputManager = game.InputManager;
+            if (inputManager != null)
+            {
+                _restoreTimeWarp = CurrentState(inputManager, InputLocks.TimeWarpDisabled);
+                inputManager.SetInputLock(InputLocks.TimeWarpDisabled);
+            }
             IsEngaged = true;
             _logInfo($"Photo mode: game paused{(_wasPaused ? " (it already was)" : string.Empty)}; time warp locked.");
         }
@@ -60,8 +67,8 @@ namespace MunShot.Capture
         }
 
         /// <summary>
-        /// Unlocks time warp and unpauses, unless the game was already paused before. Safe to call when not engaged,
-        /// and when the game is already being torn down.
+        /// Puts the time-warp keys back as they were and unpauses, unless the game was already paused before. Safe to
+        /// call when not engaged, and when the game is already being torn down.
         /// </summary>
         public void Release()
         {
@@ -69,11 +76,32 @@ namespace MunShot.Capture
             IsEngaged = false;
 
             GameInstance game = GameManager.Instance?.Game;
-            // Flight's own setting: the game enables the time-warp keys when it enters flight
-            game?.InputManager?.SetInputLock(InputLocks.TimeWarpEnabled);
+            if (_restoreTimeWarp != null) game?.InputManager?.SetInputLock(_restoreTimeWarp);
+            _restoreTimeWarp = null;
             ViewController viewController = game?.ViewController;
             if (viewController != null && !_wasPaused) SetPaused(viewController, false);
-            _logInfo($"Photo mode: time warp unlocked; game {(_wasPaused ? "left paused, as it was" : "unpaused")}.");
+            _logInfo($"Photo mode: time-warp keys back as they were; game {(_wasPaused ? "left paused, as it was" : "unpaused")}.");
+        }
+
+        // The lock that puts back how each action the given lock touches (and its set) is right now
+        private static InputLockDefinition CurrentState(InputManager inputManager, InputLockDefinition lockTo)
+        {
+            var current = new InputLockDefinition();
+            foreach (InputLockDefinition.InputLock inputLock in lockTo.InputLocks)
+            {
+                if (inputManager.InputDefinitions == null
+                    || !inputManager.InputDefinitions.TryGetValue(inputLock.DefinitionID, out InputDefinition set)
+                    || !set.TryGetAction(inputLock.InputID, out ToggleableInputAction action))
+                    continue;
+                current.InputLocks.Add(new InputLockDefinition.InputLock
+                {
+                    DefinitionID = inputLock.DefinitionID,
+                    InputID = inputLock.InputID,
+                    DefinitionEnabled = set.Enabled,
+                    InputEnabled = action.Enabled
+                });
+            }
+            return current;
         }
 
         private static void SetPaused(ViewController viewController, bool paused)

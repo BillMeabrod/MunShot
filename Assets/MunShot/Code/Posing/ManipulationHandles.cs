@@ -214,7 +214,7 @@ namespace MunShot.Posing
                 root.SetActive(false);
                 Object.DontDestroyOnLoad(root);
                 logInfo(report.ToString());
-                return new VabHandleTemplate(root, PathFrom(root.transform, moveGroup.transform), PathFrom(root.transform, rotateGroup.transform),
+                return new VabHandleTemplate(root, TransformPath.From(root.transform, moveGroup.transform), TransformPath.From(root.transform, rotateGroup.transform),
                                              arrows, rings, sizeOnScreen);
             }
             finally
@@ -301,7 +301,7 @@ namespace MunShot.Posing
                     axis = rings ? Smallest(size) : Largest(size);
                     how = $"shape {size}";
                 }
-                described.Add((PathFrom(root, handle.transform), axis));
+                described.Add((TransformPath.From(root, handle.transform), axis));
                 report.Append($"{handle.name}→{"xyz"[axis]} ({how}) ");
             }
             return described;
@@ -335,14 +335,6 @@ namespace MunShot.Posing
 
         private static int Largest(Vector3 v) => v.x >= v.y && v.x >= v.z ? 0 : v.y >= v.z ? 1 : 2;
         private static int Smallest(Vector3 v) => v.x <= v.y && v.x <= v.z ? 0 : v.y <= v.z ? 1 : 2;
-
-        private static string PathFrom(Transform root, Transform t)
-        {
-            var parts = new List<string>();
-            for (Transform c = t; c != null && c != root; c = c.parent) parts.Add(c.name);
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
 
         private static bool TryRead<T>(ManipulationWidget widget, string field, out T value, Action<string> logError)
         {

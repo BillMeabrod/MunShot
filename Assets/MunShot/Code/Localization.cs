@@ -4,8 +4,9 @@ using I2.Loc;
 namespace MunShot
 {
     /// <summary>
-    /// Text shown to the player. MunShot's own strings live in Copied/localizations/munshot_localization.csv, which
-    /// SpaceWarp loads into the game's localization at startup. UXML uses the keys directly ("#MunShot/UI/…").
+    /// Text shown to the player. MunShot's own strings, English included, live only in
+    /// Copied/localizations/munshot_localization.csv, which SpaceWarp loads into the game's localization at startup.
+    /// UXML uses the keys directly ("#MunShot/UI/…"). A missing key shows as the key itself, as Redux's own windows do.
     /// </summary>
     public static class Localization
     {
@@ -31,21 +32,29 @@ namespace MunShot
         public const string HintCircle = "MunShot/UI/HintCircle";
         public const string HintCloser = "MunShot/UI/HintCloser";
         public const string HintRoll = "MunShot/UI/HintRoll";
+        public const string HintLevel = "MunShot/UI/HintLevel";
+        public const string KeyDrag = "MunShot/UI/KeyDrag";
+        public const string HintTurn = "MunShot/UI/HintTurn";
+        public const string HintLean = "MunShot/UI/HintLean";
+        public const string HintTip = "MunShot/UI/HintTip";
+        public const string HintSelectSeveral = "MunShot/UI/HintSelectSeveral";
+        public const string HintRemove = "MunShot/UI/HintRemove";
         public const string HintHideUi = "MunShot/UI/HintHideUi";
         public const string HintTakePhoto = "MunShot/UI/HintTakePhoto";
         public const string HintExit = "MunShot/UI/HintExit";
 
+        /// <summary>Translates one of MunShot's keys with {0}-style placeholders and fills them in.</summary>
+        public static string Format(string key, params object[] args) =>
+            string.Format(CultureInfo.CurrentCulture, Translate(key), args);
+
+        /// <summary>Translates one of MunShot's keys, showing the key itself if it's missing.</summary>
+        public static string Translate(string key) => TranslateOr(key, key);
+
         /// <summary>
-        /// Translates one of MunShot's keys with {0}-style placeholders and fills them in. <paramref name="fallback"/>
-        /// (the English text, kept next to the key where it's used) is shown if the key is missing.
+        /// Translates a key that may not exist, such as a pose added after this release, showing
+        /// <paramref name="fallback"/> (its own name) if there's no translation.
         /// </summary>
-        public static string Format(string key, string fallback, params object[] args) =>
-            string.Format(CultureInfo.CurrentCulture, Translate(key, fallback), args);
-
-        /// <summary>Translates one of MunShot's keys, showing the key itself if it's missing (as the game does).</summary>
-        public static string Translate(string key) => Translate(key, key);
-
-        public static string Translate(string key, string fallback)
+        public static string TranslateOr(string key, string fallback)
         {
             if (string.IsNullOrEmpty(key)) return fallback;
             string text = LocalizationManager.GetTranslation(key);
