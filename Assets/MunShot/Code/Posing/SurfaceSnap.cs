@@ -26,21 +26,20 @@ namespace MunShot.Posing
         private const float MinimumMove = 0.001f;
 
         /// <summary>
-        /// "Up" at a kerbal the way the game works it out for kerbals on EVA (KerbalBehavior's horizon up): away from
-        /// the centre of the body their vessel orbits, in physics space. <paramref name="fallback"/> when the game
-        /// can't tell (no orbit, no physics space).
+        /// "Up" at a place in physics space, the way the game works it out for kerbals on EVA (KerbalBehavior's horizon
+        /// up): away from the centre of the body the active vessel orbits. <paramref name="fallback"/> when the game
+        /// can't tell (no active vessel, no physics space).
         /// </summary>
-        public static Vector3 PlanetUp(Kerbal3DModel kerbal, Vector3 fallback)
+        public static Vector3 PlanetUpAt(Vector3 physicsPosition, Vector3 fallback)
         {
-            VesselComponent vessel = kerbal != null ? kerbal.GetComponentInParent<VesselBehavior>()?.Model : null;
-            SimulationObjectModel simObject = vessel?.SimulationObject;
-            CelestialBodyComponent body = simObject?.Orbiter?.PatchedConicsOrbit?.referenceBody;
-            IPhysicsSpaceProvider physicsSpace = GameManager.Instance?.Game?.UniverseView?.PhysicsSpace;
+            GameInstance game = GameManager.Instance?.Game;
+            CelestialBodyComponent body = game?.ViewController?.GetActiveSimVessel()?.mainBody;
+            IPhysicsSpaceProvider physicsSpace = game?.UniverseView?.PhysicsSpace;
             if (body == null || physicsSpace == null) return fallback;
 
             // Named as the game names them: Delta's parameters are declared end first
             Vector away = MathDP.Normalize(MathDP.Delta(start: new Position(body.transform.celestialFrame, Vector3d.zero),
-                                                        end: simObject.transform.Position));
+                                                        end: physicsSpace.PhysicsToPosition(physicsPosition)));
             Vector3 up = physicsSpace.VectorToPhysics(away);
             return up.sqrMagnitude > 0.5f ? up.normalized : fallback;
         }

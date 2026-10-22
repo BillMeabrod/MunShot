@@ -6,8 +6,8 @@ using Object = UnityEngine.Object;
 namespace MunShot.Posing
 {
     /// <summary>
-    /// A visual-only copy of a kerbal for photo mode: the game's own kerbal model, built from the original's
-    /// appearance, with the EVA animation controller so stock poses can be held on it. It has no physics and no part in
+    /// A visual-only copy of a kerbal for photo mode: the game's own kerbal model, built from the kerbal's roster
+    /// record (so the original needn't be in the scene), with the EVA animation controller so stock poses can be held on it. It has no physics and no part in
     /// the simulation. Made by <see cref="PhotoDoubleFactory"/>; the game builds the body, head and helmet over a few
     /// frames, and <see cref="Tick"/> finishes the double once it has.
     /// </summary>
@@ -24,7 +24,7 @@ namespace MunShot.Posing
         private const float BuildTimeoutSeconds = 20f;
 
         // The game rebinds the Animator on its first update after the kerbal is built, which resets parameters:
-        // finish (and copy the face settings) only after that
+        // finish (and set the face) only after that
         private const int FramesAfterBuilt = 2;
 
         private readonly float _startedAt;
@@ -63,7 +63,7 @@ namespace MunShot.Posing
 
             if (++_framesSinceBuilt < FramesAfterBuilt) return false;
 
-            CopyFaceSettings();
+            SetFace();
             State = BuildState.Ready;
             return true;
         }
@@ -78,23 +78,55 @@ namespace MunShot.Posing
             }
         }
 
-        // Copies the Animator settings that give this kerbal their own look (eye offset, eye symmetry, the eye look
-        // the game derives from stupidity, set per kerbal as the portrait booth does) from the original's Animator.
-        // Parameters are matched by name and type, so only those both controllers have are copied.
-        private void CopyFaceSettings()
+        // The game's animation names for a kerbal's own eye height and eye symmetry, and the attributes they come from
+        private const string EyeOffsetParameter = "eyeOffsetPercentage";
+        private const string EyeSymmetryParameter = "EyeSymmetry_Phase";
+        private const string EyeHeightAttribute = "EYEHEIGHT";
+        private const string EyeSymmetryAttribute = "EYESYMMETRY";
+
+        /// <summary>Set when the face couldn't be set up fully: the double still works, it may just look a little off.</summary>
+        public string FaceWarning { get; private set; }
+
+        // Gives the double this kerbal's own face, the way the game does for every kerbal in flight
+        // (AnimationManager.InitAttributeValues): eye height and eye symmetry from the kerbal's attributes
+        private void SetFace()
         {
-            Animator original = Source.Model != null ? Source.Model.GetComponent<Animator>() : null;
-            if (original == null || original.runtimeAnimatorController == null || Animator == null) return;
+            var problems = new System.Collections.Generic.List<string>();
+            SetFloatFromAttribute(EyeOffsetParameter, EyeHeightAttribute, value => Convert.ToInt32(value), problems);
+            SetFloatFromAttribute(EyeSymmetryParameter, EyeSymmetryAttribute, value => Convert.ToSingle(value), problems);
+            if (problems.Count > 0) FaceWarning = $"Photo double of {Source.Name}: face not fully set up ({string.Join("; ", problems)}).";
+        }
 
-            var originalFloats = new System.Collections.Generic.Dictionary<int, float>();
-            foreach (AnimatorControllerParameter parameter in original.parameters)
-                if (parameter.type == AnimatorControllerParameterType.Float)
-                    originalFloats[parameter.nameHash] = original.GetFloat(parameter.nameHash);
+        private void SetFloatFromAttribute(string parameter, string attribute, Func<object, float> convert,
+                                           System.Collections.Generic.List<string> problems)
+        {
+            if (!HasFloatParameter(parameter))
+            {
+                problems.Add($"the animation controller has no '{parameter}'");
+                return;
+            }
+            if (Model.Attributes == null || !Model.Attributes.TryGetValue(attribute, out object value) || value == null)
+            {
+                problems.Add($"the kerbal has no '{attribute}' attribute");
+                return;
+            }
+            try
+            {
+                Animator.SetFloat(parameter, convert(value));
+            }
+            catch (Exception e) when (e is FormatException || e is InvalidCastException || e is OverflowException)
+            {
+                problems.Add($"'{attribute}' is {value.GetType().Name} '{value}', not a number");
+            }
+        }
 
+        private bool HasFloatParameter(string name)
+        {
+            if (Animator == null) return false;
             foreach (AnimatorControllerParameter parameter in Animator.parameters)
-                if (parameter.type == AnimatorControllerParameterType.Float
-                    && originalFloats.TryGetValue(parameter.nameHash, out float value))
-                    Animator.SetFloat(parameter.nameHash, value);
+                if (parameter.type == AnimatorControllerParameterType.Float && parameter.name == name)
+                    return true;
+            return false;
         }
 
         private bool Fail(string reason)

@@ -5,9 +5,11 @@ namespace MunShot.Posing
 {
     /// <summary>
     /// Moving and rotating photo doubles with the mouse, VAB style. Clicking a double selects it and shows the handles
-    /// on it. With the move tool, dragging the double slides it along the ground plane (the plane across its up), and
+    /// on it; clicking empty space puts the handles away, but the double stays selected (it's still the one being posed).
+    /// Selecting it again, by clicking it or in the UI, brings them back. With the move tool, dragging the double slides it along the ground plane (the plane across its up), and
     /// dragging an arrow moves it along that axis; with the rotate tool, dragging a ring turns it about that axis,
-    /// around the middle of its body. Hovering a double outlines it and plays a sound, as hovering a part does in the
+    /// around the middle of its body. With angle snap on (as the VAB starts), a ring turns in 15° steps from where the
+    /// drag began, or 5° steps with the fine modifier held, as the VAB's widget does. Hovering a double outlines it and plays a sound, as hovering a part does in the
     /// VAB (<see cref="HoverFeedback"/>). The UI feeds it the mouse each frame, so this class has no input or UI code.
     /// </summary>
     public sealed class DoubleManipulator : IDisposable
@@ -32,9 +34,27 @@ namespace MunShot.Posing
         private Plane _dragPlane;
         private Vector3 _dragStartPoint;
         private Vector3 _dragStartPosition;
+
+        // A ring drag: what it turns about, how the double stood when it began, and how far the mouse has turned it
+        private Vector3 _ringCentre;
+        private Quaternion _ringStartRotation;
         private Vector3 _ringLast;
+        private float _ringAngle;
+        private bool _fine;
+
+        // The double the handles are on: the selected one, until a click on empty space puts them away. A double
+        // selected anew (clicked, or picked in the UI) gets them back.
+        private PhotoSession.Entry _handlesOn;
+        private PhotoSession.Entry _lastSelected;
+
+        // The VAB widget's rotation steps with angle snap on: normal, and with its speed modifier (Shift) held
+        private const float SnapStep = 15f;
+        private const float FineSnapStep = 5f;
 
         public HandleMode Mode { get; private set; } = HandleMode.Move;
+
+        /// <summary>Whether rings turn in steps (on, as the VAB starts) or freely.</summary>
+        public bool AngleSnap { get; set; } = true;
 
         /// <summary>Raised when a click selects a different double, for the UI to follow.</summary>
         public event Action<PhotoSession.Entry> Selected;
@@ -46,6 +66,9 @@ namespace MunShot.Posing
             _logError = logError ?? throw new ArgumentNullException(nameof(logError));
         }
 
+        /// <summary>Puts the handles back on the selected double, e.g. when it's picked again in the UI.</summary>
+        public void ShowHandles() => _handlesOn = _session.Selected;
+
         public void SetMode(HandleMode mode)
         {
             Mode = mode;
@@ -55,12 +78,19 @@ namespace MunShot.Posing
         /// <summary>
         /// Called every frame with the mouse: <paramref name="pressed"/>/<paramref name="released"/> on the frames the
         /// left button goes down/up, <paramref name="held"/> while it's down. Presses over the UI are ignored.
+        /// <paramref name="fine"/>: the fine modifier is held, so rings snap in small steps.
         /// </summary>
-        public void Tick(Camera camera, Vector2 mouse, bool pressed, bool held, bool released, bool overUi)
+        public void Tick(Camera camera, Vector2 mouse, bool pressed, bool held, bool released, bool overUi, bool fine)
         {
+            _fine = fine;
             EnsureHandles();
             PhotoSession.Entry selected = _session.Selected;
-            bool showHandles = camera != null && selected != null && selected.IsReady && selected.Root != null;
+            if (selected != _lastSelected)
+            {
+                _lastSelected = selected;
+                _handlesOn = selected;
+            }
+            bool showHandles = camera != null && selected != null && _handlesOn == selected && selected.IsReady && selected.Root != null;
             _handles?.SetVisible(showHandles);
             if (showHandles) _handles?.Follow(Centre(selected), selected.Root.rotation, camera);
             if (camera == null) return;
@@ -74,6 +104,17 @@ namespace MunShot.Posing
             if (_drag == Drag.None) _hover.SetHovered(overUi ? null : _session.PickDouble(ray, out _), camera);
         }
 
+        /// <summary>
+        /// Keeps the handles and hover outline out of sight (call every frame while a photo is taken, instead of
+        /// <see cref="Tick"/>), and drops any drag. The next Tick shows them again as they were.
+        /// </summary>
+        public void HideForCapture()
+        {
+            _handles?.SetVisible(false);
+            _hover.Clear();
+            _drag = Drag.None;
+        }
+
         public void Dispose()
         {
             _hover.Clear();
@@ -81,12 +122,13 @@ namespace MunShot.Posing
             _handles = null;
             _handlesRequested = false;
             _drag = Drag.None;
+            _handlesOn = _lastSelected = null;
         }
 
         private void BeginDrag(Ray ray, PhotoSession.Entry selected)
         {
-            // A handle of the selected double takes the click before any double does
-            if (selected != null && selected.IsReady && _handles != null && _handles.TryPick(ray, out HandleHit hit))
+            // A shown handle takes the click before any double does
+            if (selected != null && _handlesOn == selected && selected.IsReady && _handles != null && _handles.TryPick(ray, out HandleHit hit))
             {
                 _dragAxis = hit.Axis;
                 Vector3 axis = AxisOf(selected, hit.Axis);
@@ -95,6 +137,10 @@ namespace MunShot.Posing
                 {
                     _drag = Drag.Ring;
                     _dragPlane = new Plane(axis, centre);
+                    _ringCentre = centre;
+                    _ringStartRotation = selected.Root.rotation;
+                    _dragStartPosition = selected.Root.position;
+                    _ringAngle = 0f;
                     _ringLast = _dragPlane.Raycast(ray, out float enter) ? ray.GetPoint(enter) - centre : Vector3.zero;
                 }
                 else
@@ -107,7 +153,13 @@ namespace MunShot.Posing
             }
 
             PhotoSession.Entry clicked = _session.PickDouble(ray, out Vector3 point);
-            if (clicked == null) return;
+            if (clicked == null)
+            {
+                // Empty space: the handles go, as clicking away from a part does in the VAB
+                _handlesOn = null;
+                return;
+            }
+            _handlesOn = clicked;
             if (clicked != selected)
             {
                 _session.Select(clicked);
@@ -148,16 +200,19 @@ namespace MunShot.Posing
 
                 case Drag.Ring:
                 {
-                    Vector3 centre = Centre(selected);
+                    // The mouse's turn is added up (so it can go past half a turn), then applied from the starting
+                    // rotation, snapped to whole steps
                     Vector3 axis = _dragPlane.normal;
                     if (!_dragPlane.Raycast(ray, out float hitAt)) break;
-                    Vector3 now = ray.GetPoint(hitAt) - centre;
+                    Vector3 now = ray.GetPoint(hitAt) - _ringCentre;
                     if (_ringLast.sqrMagnitude > 1e-8f && now.sqrMagnitude > 1e-8f)
-                    {
-                        float angle = Vector3.SignedAngle(_ringLast, now, axis);
-                        selected.Root.RotateAround(centre, axis, angle);
-                    }
+                        _ringAngle += Vector3.SignedAngle(_ringLast, now, axis);
                     _ringLast = now;
+
+                    float step = _fine ? FineSnapStep : SnapStep;
+                    float angle = AngleSnap ? Mathf.Round(_ringAngle / step) * step : _ringAngle;
+                    Quaternion turn = Quaternion.AngleAxis(angle, axis);
+                    selected.Root.SetPositionAndRotation(_ringCentre + turn * (_dragStartPosition - _ringCentre), turn * _ringStartRotation);
                     break;
                 }
             }

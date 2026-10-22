@@ -8,7 +8,8 @@ namespace MunShot.Posing
 {
     /// <summary>
     /// The kerbals brought into photo mode. Bringing a kerbal in builds a <see cref="PhotoDouble"/> in front of the
-    /// camera and, once it's built, hides the original (<see cref="KerbalHider"/>); each double has its own
+    /// camera and, once it's built, hides the original if they're in the scene (<see cref="KerbalHider"/>); kerbals
+    /// elsewhere in the roster are built from their roster record alone. Each double has its own
     /// <see cref="PosePlayer"/>. Doubles are moved and rotated with a <see cref="DoubleManipulator"/>, and dropped onto
     /// the surface below with <see cref="DropToSurface"/>. The real kerbals are never moved, so <see cref="Close"/> only
     /// has to destroy the doubles and un-hide the originals for everything to be exactly as it was.
@@ -19,6 +20,7 @@ namespace MunShot.Posing
         public sealed class Entry
         {
             public PhotoDouble Double { get; }
+            /// <summary>Hides the original while the double stands in; null for a kerbal who isn't in the scene.</summary>
             public KerbalHider Hider { get; }
             public PosePlayer Player { get; }
             public bool IsReady => Double.State == PhotoDouble.BuildState.Ready;
@@ -45,8 +47,9 @@ namespace MunShot.Posing
         private const float GroundSearchAbove = 3f;
         private const float GroundSearchBelow = 30f;
 
-        // How far below a double a surface can be for Drop to surface
-        private const float DropReach = 100f;
+        // How far below a double's lowest point a surface can be for Snap to surface: only to settle a kerbal onto the
+        // ground just below, not to drop one from a height
+        private const float DropReach = 1f;
 
         private readonly PhotoDoubleFactory _factory;
         private readonly Func<PosePlayer> _newPlayer;
@@ -101,16 +104,24 @@ namespace MunShot.Posing
                     result?.Invoke("Could not load what photo doubles are built from; see the log.");
                     return;
                 }
-                if (candidate.Model == null)
+                // In the scene when listed, but gone since (vessel unloaded or destroyed): built from the roster like
+                // anyone elsewhere, with nothing to hide
+                bool hideOriginal = candidate.InScene && candidate.Model != null;
+                if (candidate.InScene && !hideOriginal)
+                    _logInfo($"Photo mode: {candidate} has left the scene since photo mode opened; building their double from the roster.");
+
+                Transform parent = PhysicsSpaceFor(candidate);
+                if (parent == null)
                 {
-                    result?.Invoke($"{candidate.Name} is no longer in the scene.");
+                    _logError($"Photo mode: can't bring in {candidate}: there's no active vessel in the scene to stand them by.");
+                    result?.Invoke($"Can't bring {candidate.Name} in without an active vessel; see the log.");
                     return;
                 }
-
-                Vector3 up = SurfaceSnap.PlanetUp(candidate.Model, camera.transform.up);
-                Place(candidate, camera, up, out Vector3 position, out Quaternion rotation, out Transform parent, out string placement);
+                Transform cam = camera.transform;
+                Vector3 up = SurfaceSnap.PlanetUpAt(cam.position + cam.forward * DistanceInFront, cam.up);
+                Place(candidate, camera, up, parent, out Vector3 position, out Quaternion rotation, out string placement);
                 PhotoDouble photoDouble = _factory.Create(candidate, position, rotation, parent);
-                var entry = new Entry(photoDouble, new KerbalHider(candidate.Model.gameObject), _newPlayer(), up);
+                var entry = new Entry(photoDouble, hideOriginal ? new KerbalHider(candidate.Model.gameObject) : null, _newPlayer(), up);
                 _entries.Add(entry);
                 Select(entry);
                 _logInfo($"Photo mode: building a double of {candidate}, {placement}.");
@@ -169,10 +180,37 @@ namespace MunShot.Posing
             entry.Bones ??= SurfaceSnap.FindBones(entry.Root);
             if (!SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch()))
             {
-                message = $"Nothing to stand on within {DropReach:0} m below {entry.Double.Source.Name}.";
+                message = $"Nothing to stand on within {DropReach:0.#} m below {entry.Double.Source.Name}.";
                 return false;
             }
             message = $"{entry.Double.Source.Name} is standing on the surface.";
+            return true;
+        }
+
+        /// <summary>
+        /// Turns a double back to standing straight up (its up along the planet's up), still facing the way it faced,
+        /// turning about the middle of its body so it doesn't jump. A double lying down ends up facing the way its head
+        /// pointed.
+        /// </summary>
+        /// <returns>False, with <paramref name="message"/> saying why, when there's no built double to stand up.</returns>
+        public bool StandUpright(Entry entry, out string message)
+        {
+            if (entry == null || !entry.IsReady || entry.Root == null)
+            {
+                message = "Bring a kerbal in first; Stand upright turns the selected double.";
+                return false;
+            }
+
+            Transform root = entry.Root;
+            Vector3 facing = Vector3.ProjectOnPlane(root.forward, entry.Up);
+            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.up, entry.Up);
+            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.right, entry.Up);
+            Quaternion upright = Quaternion.LookRotation(facing.normalized, entry.Up);
+
+            Vector3 centre = BoundsOf(entry, out Bounds bounds) ? bounds.center : root.position;
+            Quaternion turn = upright * Quaternion.Inverse(root.rotation);
+            root.SetPositionAndRotation(centre + turn * (root.position - centre), upright);
+            message = $"{entry.Double.Source.Name} is standing upright.";
             return true;
         }
 
@@ -206,8 +244,10 @@ namespace MunShot.Posing
                     if (entry.IsReady)
                     {
                         // Shown and hidden in the same frame, so the kerbal is never seen twice
-                        entry.Hider.Hide();
-                        _logInfo($"Photo mode: {entry.Double.Source.Name}'s double is ready; the original is hidden.");
+                        entry.Hider?.Hide();
+                        _logInfo($"Photo mode: {entry.Double.Source.Name}'s double is ready"
+                                 + (entry.Hider != null ? "; the original is hidden." : " (built from the roster; they're not in the scene)."));
+                        if (entry.Double.FaceWarning != null) _logError(entry.Double.FaceWarning);
                     }
                     else
                     {
@@ -233,7 +273,7 @@ namespace MunShot.Posing
         {
             entry.Player.Release();
             entry.Double.Destroy();
-            entry.Hider.Restore();
+            entry.Hider?.Restore();
             _entries.Remove(entry);
             if (Selected == entry) Selected = _entries.Count > 0 ? _entries[_entries.Count - 1] : null;
         }
@@ -248,8 +288,8 @@ namespace MunShot.Posing
 
         // In front of the camera, standing on the first surface below that isn't a hidden kerbal's own body, facing the
         // camera. Parented to the physics space the original lives in, so the double moves with the floating origin.
-        private void Place(KerbalCandidate candidate, Camera camera, Vector3 up, out Vector3 position, out Quaternion rotation,
-                           out Transform parent, out string placement)
+        private void Place(KerbalCandidate candidate, Camera camera, Vector3 up, Transform parent, out Vector3 position,
+                           out Quaternion rotation, out string placement)
         {
             Transform cam = camera.transform;
             position = cam.position + cam.forward * DistanceInFront;
@@ -262,7 +302,6 @@ namespace MunShot.Posing
             if (grounded) position = hit.point;
 
             rotation = FacingCamera(position, cam, up);
-            parent = PhysicsSpaceOf(candidate.Model.transform);
             placement = $"{(grounded ? "standing on the surface" : "floating")} {DistanceInFront:0}m in front of the camera, "
                         + $"under '{(parent != null ? parent.name : "<scene root>")}'";
         }
@@ -293,11 +332,19 @@ namespace MunShot.Posing
                 ? candidate.Model.GetComponentInParent<VesselBehavior>()?.transform
                 : null;
 
-        // The object the original's vessel lives under: the vessel's own parent, which the game moves when the
-        // floating origin shifts
-        private static Transform PhysicsSpaceOf(Transform kerbal)
+        // What a double lives under: the object vessels live under (the original's vessel's parent, or for a kerbal not
+        // in the scene, the active vessel's), which the game moves when the floating origin shifts
+        private static Transform PhysicsSpaceFor(KerbalCandidate candidate)
         {
-            VesselBehavior vessel = kerbal.GetComponentInParent<VesselBehavior>();
+            VesselBehavior vessel = candidate.InScene && candidate.Model != null
+                ? candidate.Model.GetComponentInParent<VesselBehavior>()
+                : null;
+            if (vessel == null)
+            {
+                GameInstance game = GameManager.Instance?.Game;
+                VesselComponent active = game?.ViewController?.GetActiveSimVessel();
+                vessel = active != null ? game.ViewController.GetBehaviorIfLoaded(active) : null;
+            }
             return vessel != null ? vessel.transform.parent : null;
         }
     }
