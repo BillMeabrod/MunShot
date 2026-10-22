@@ -42,14 +42,20 @@ namespace MunShot.Posing
             internal Transform Root => Double.Model != null ? Double.Model.transform : null;
         }
 
-        // Where a double appears: this far in front of the camera, on whatever surface is below within reach
+        // Where a double appears: where the camera looks, this far ahead, or just short of whatever it's looking at
+        // that's nearer
         private const float DistanceInFront = 3f;
-        private const float GroundSearchAbove = 3f;
-        private const float GroundSearchBelow = 30f;
+        private const float StandOffSurface = 0.5f;
 
-        // How far below a double's lowest point a surface can be for Snap to surface: only to settle a kerbal onto the
-        // ground just below, not to drop one from a height
+        // How far below a double's lowest point a surface can be for Snap to surface, or below where a new double
+        // appears for it to stand there: only to settle a kerbal onto the ground just below, not to drop one from a
+        // height. The search starts a little above, in case the spot is just inside the surface
         private const float DropReach = 1f;
+        private const float SettleFromAbove = 0.25f;
+
+        // About half a kerbal's height: a floating double is placed with its middle where the camera looks, so it's in
+        // the middle of the shot
+        private const float HalfHeight = 0.55f;
 
         private readonly PhotoDoubleFactory _factory;
         private readonly Func<PosePlayer> _newPlayer;
@@ -297,24 +303,35 @@ namespace MunShot.Posing
             return null;
         }
 
-        // In front of the camera, standing on the first surface below that isn't a hidden kerbal's own body, facing the
-        // camera. Parented to the physics space the original lives in, so the double moves with the floating origin.
+        // Where the camera looks, facing it: standing on a surface just below that spot (none of the hidden kerbals' own
+        // bodies), or floating there with its middle at the spot, so it's in the middle of the shot. Never moved far up
+        // or down, where it would be out of the shot; Snap to surface puts a floating one down. Parented to the physics
+        // space the original lives in, so the double moves with the floating origin.
         private void Place(KerbalCandidate candidate, Camera camera, Vector3 up, Transform parent, out Vector3 position,
                            out Quaternion rotation, out string placement)
         {
             Transform cam = camera.transform;
-            position = cam.position + cam.forward * DistanceInFront;
-
             List<Transform> ignore = IgnoredInSurfaceSearch();
             Transform ownBody = BodyOf(candidate);
             if (ownBody != null) ignore.Add(ownBody);
-            bool grounded = SurfaceSnap.TryFindSurface(position + up * GroundSearchAbove, -up, GroundSearchAbove + GroundSearchBelow,
-                                                       ignore, null, out RaycastHit hit);
-            if (grounded) position = hit.point;
+
+            // Aim: what the camera looks at, if it's nearer than the usual distance, so the double isn't put inside or
+            // behind it
+            Vector3 spot = cam.position + cam.forward * DistanceInFront;
+            float distance = DistanceInFront;
+            if (SurfaceSnap.TryFindSurface(cam.position, cam.forward, DistanceInFront, ignore, null, out RaycastHit ahead))
+            {
+                distance = Mathf.Max(0f, ahead.distance - StandOffSurface);
+                spot = cam.position + cam.forward * distance;
+            }
+
+            bool grounded = SurfaceSnap.TryFindSurface(spot + up * SettleFromAbove, -up, SettleFromAbove + DropReach,
+                                                       ignore, null, out RaycastHit below);
+            position = grounded ? below.point : spot - up * HalfHeight;
 
             rotation = FacingCamera(position, cam, up);
-            placement = $"{(grounded ? "standing on the surface" : "floating")} {DistanceInFront:0}m in front of the camera, "
-                        + $"under '{(parent != null ? parent.name : "<scene root>")}'";
+            placement = $"{(grounded ? "standing on a surface just below" : "floating")} where the camera looks, "
+                        + $"{distance:0.#}m in front of it, under '{(parent != null ? parent.name : "<scene root>")}'";
         }
 
         private static Quaternion FacingCamera(Vector3 position, Transform camera, Vector3 up)
