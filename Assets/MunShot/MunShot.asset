@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: ksp2community.ksp2unitytools.editor::Ksp2UnityTools.Editor.Modding.Mod
   id: MunShot
   name: MunShot
-  author: nobody
-  description: A sample mod for KSP2
+  author: Bill Meabrod
+  description: 'A photo mode for KSP2 Redux: pause the game, bring any kerbal into the shot, pose them, frame it with a free or orbiting camera, and take the picture.'
   version: 0.1.0
-  versionCheck: 
+  versionCheck: https://raw.githubusercontent.com/BillMeabrod/MunShot/main/Assets/MunShot/swinfo.json
   minKsp2Version: '*'
   maxKsp2Version: '*'
-  source: 
+  source: https://github.com/BillMeabrod/MunShot
   allGroup: {fileID: 11400000, guid: 8cca61b0651cb4d4ba65818fe8065af9, type: 2}
   partsGroup: {fileID: 11400000, guid: 8b7546989b2979543980443ead78f80e, type: 2}
   missionsGroup: {fileID: 11400000, guid: 72cea99e5b3054047a6e33a782179d13, type: 2}
