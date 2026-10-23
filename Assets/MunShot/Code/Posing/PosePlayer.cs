@@ -8,13 +8,16 @@ using UnityEngine.Playables;
 namespace MunShot.Posing
 {
     /// <summary>
-    /// Holds one Animator in a <see cref="ClipPose"/>: plays the named clip through a Playables graph of its own,
-    /// paused at the pose's time, and gives the Animator back when released.
+    /// Holds one Animator in a pose: a <see cref="ClipPose"/>, a <see cref="BonePose"/>, or both, and gives the
+    /// Animator back when released.
     ///
-    /// The game's own animation keeps running underneath; this graph's output is sorted after it, so the held frame
-    /// is what's shown for every bone the clip animates. Bones it doesn't animate keep the game's animation, unless
-    /// <see cref="FreezeBaseAnimation"/> is on. The graph runs on unscaled time, so the pose holds while the game is
-    /// paused or time is frozen.
+    /// A clip plays through a Playables graph of its own, paused at the pose's time. The game's own animation keeps
+    /// running underneath; this graph's output is sorted after it, so the held frame is what's shown for every bone the
+    /// clip animates. Bones it doesn't animate keep the game's animation, unless <see cref="FreezeBaseAnimation"/> is
+    /// on. The graph runs on unscaled time, so the pose holds while the game is paused or time is frozen.
+    ///
+    /// A bone pose is set after all of that, every frame (<see cref="BonePoseDriver"/>), so its bones show exactly as
+    /// given, over the clip and the game's animation alike.
     /// </summary>
     public sealed class PosePlayer
     {
@@ -28,16 +31,20 @@ namespace MunShot.Posing
         private AnimationClipPlayable _clipPlayable;
         private AnimationClip _clip;
         private Animator _animator;
+        private BonePoseDriver _driver;
         private bool _baseFrozen;
 
-        /// <summary>The pose being held, or null when nothing is held.</summary>
+        /// <summary>The clip pose being held, or null when no clip is held.</summary>
         public ClipPose? Current { get; private set; }
+
+        /// <summary>The bone pose being held, or null when none is.</summary>
+        public BonePose CurrentBones { get; private set; }
 
         /// <summary>
         /// Whether a pose is held and its Animator still exists (the kerbal can be destroyed while posed, e.g. on
         /// a scene change or when the EVA ends).
         /// </summary>
-        public bool IsHolding => Current.HasValue && _animator != null && _graph.IsValid();
+        public bool IsHolding => _animator != null && ((Current.HasValue && _graph.IsValid()) || CurrentBones != null);
 
         /// <summary>
         /// Whether the game's own animation is paused while a pose is held. The held clip only covers the bones it
@@ -74,40 +81,63 @@ namespace MunShot.Posing
             return clips;
         }
 
+        /// <summary>Holds <paramref name="animator"/> in a clip pose, with no bones posed over it.</summary>
+        public bool Hold(Animator animator, ClipPose pose) => Hold(animator, pose, null);
+
         /// <summary>
-        /// Holds <paramref name="animator"/> in <paramref name="pose"/>. Holding the same Animator in another pose
-        /// swaps the clip if it changed and moves the held frame; a different Animator releases the previous one
-        /// first.
+        /// Holds <paramref name="animator"/> in <paramref name="clip"/> (or the game's own animation, if null) with
+        /// <paramref name="bones"/> (if any) set over it. Holding the same Animator in another pose swaps the clip if
+        /// it changed and moves the held frame; a different Animator releases the previous one first.
         /// </summary>
-        /// <returns>False, with the reason logged, when the Animator has no clip of that name.</returns>
-        public bool Hold(Animator animator, ClipPose pose)
+        /// <returns>
+        /// False, with the reason logged, when there's nothing to hold or the Animator has no clip of that name. Bones
+        /// the kerbal doesn't have are logged and skipped; the rest of the pose still holds.
+        /// </returns>
+        public bool Hold(Animator animator, ClipPose? clip, BonePose bones)
         {
+            string what = clip.HasValue ? (bones != null ? $"{clip.Value} with {bones}" : clip.Value.ToString()) : bones?.ToString();
             if (animator == null)
             {
-                _logError($"Cannot hold {pose}: no Animator was given.");
+                _logError($"Cannot hold {what ?? "a pose"}: no Animator was given.");
+                return false;
+            }
+            if (what == null)
+            {
+                _logError($"Cannot hold a pose on '{animator.name}': it has neither a clip nor bones.");
                 return false;
             }
 
-            AnimationClip clip = FindClip(animator, pose.ClipName);
-            if (clip == null)
+            AnimationClip found = null;
+            if (clip.HasValue)
             {
-                RuntimeAnimatorController controller = animator.runtimeAnimatorController;
-                _logError($"Cannot hold {pose} on '{animator.name}': its controller "
-                          + $"'{(controller != null ? controller.name : "<none>")}' has no clip named '{pose.ClipName}'.");
-                return false;
+                found = FindClip(animator, clip.Value.ClipName);
+                if (found == null)
+                {
+                    RuntimeAnimatorController controller = animator.runtimeAnimatorController;
+                    _logError($"Cannot hold {what} on '{animator.name}': its controller "
+                              + $"'{(controller != null ? controller.name : "<none>")}' has no clip named '{clip.Value.ClipName}'.");
+                    return false;
+                }
             }
 
-            if (_animator != animator || !_graph.IsValid())
-            {
-                Release();
-                Build(animator);
-            }
-            if (_clip != clip) SetClip(clip);
+            if (_animator != animator) Release();
+            _animator = animator;
 
-            // Held past the end means held on the last frame, as the pose lab's slider allows the full length
-            float time = Mathf.Min(pose.Time, clip.length);
-            _clipPlayable.SetTime(time);
-            Current = new ClipPose(clip.name, time);
+            if (found != null)
+            {
+                if (!_graph.IsValid()) Build(animator);
+                if (_clip != found) SetClip(found);
+                // Held past the end means held on the last frame, as the pose lab's slider allows the full length
+                float time = Mathf.Min(clip.Value.Time, found.length);
+                _clipPlayable.SetTime(time);
+                Current = new ClipPose(found.name, time);
+            }
+            else
+            {
+                ReleaseClip();
+            }
+
+            SetBones(bones);
             ApplyBaseFreeze();
             return true;
         }
@@ -116,12 +146,9 @@ namespace MunShot.Posing
         public void Release()
         {
             UnfreezeBase();
-            if (_graph.IsValid()) _graph.Destroy();
-            _graph = default;
-            _clipPlayable = default;
-            _clip = null;
+            ReleaseClip();
+            SetBones(null);
             _animator = null;
-            Current = null;
         }
 
         /// <summary>Turns <see cref="FreezeBaseAnimation"/> on or off, taking effect at once if a pose is held.</summary>
@@ -144,7 +171,7 @@ namespace MunShot.Posing
         /// </summary>
         public bool ApplyNow(float time)
         {
-            if (!IsHolding) return false;
+            if (!IsHolding || !Current.HasValue || !_graph.IsValid()) return false;
             _clipPlayable.SetTime(Mathf.Clamp(time, 0f, _clip.length));
             _graph.Evaluate(0f);
             return true;
@@ -157,7 +184,52 @@ namespace MunShot.Posing
             var output = AnimationPlayableOutput.Create(_graph, "MunShot Pose", animator);
             output.SetSortingOrder(OutputSortingOrder);
             _graph.Play();
-            _animator = animator;
+        }
+
+        private void ReleaseClip()
+        {
+            if (_graph.IsValid()) _graph.Destroy();
+            _graph = default;
+            _clipPlayable = default;
+            _clip = null;
+            Current = null;
+        }
+
+        // Finds the pose's bones on the kerbal and hands them to the driver; null takes the driver away
+        private void SetBones(BonePose bones)
+        {
+            CurrentBones = bones;
+            if (bones == null || _animator == null)
+            {
+                if (_driver != null) UnityEngine.Object.Destroy(_driver);
+                _driver = null;
+                return;
+            }
+
+            var byName = new Dictionary<string, Transform>(StringComparer.Ordinal);
+            foreach (Transform t in _animator.GetComponentsInChildren<Transform>(true))
+                if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
+                    byName[t.name.Substring(KerbalRig.BonePrefix.Length)] = t;
+
+            var missing = new List<string>();
+            List<(Transform, Quaternion)> Find(IReadOnlyDictionary<string, Quaternion> list)
+            {
+                var found = new List<(Transform, Quaternion)>();
+                foreach (KeyValuePair<string, Quaternion> bone in list)
+                {
+                    if (byName.TryGetValue(bone.Key, out Transform t)) found.Add((t, bone.Value));
+                    else missing.Add(bone.Key);
+                }
+                return found;
+            }
+            List<(Transform, Quaternion)> set = Find(bones.Rotations), turned = Find(bones.Turns);
+            if (missing.Count > 0)
+                _logError($"Pose on '{_animator.name}': no bones named {string.Join(", ", missing)} (without the "
+                          + $"'{KerbalRig.BonePrefix}' prefix); those parts keep their animation.");
+
+            if (_driver == null)
+                _driver = _animator.GetComponent<BonePoseDriver>() ?? _animator.gameObject.AddComponent<BonePoseDriver>();
+            _driver.Set(set, turned);
         }
 
         private void SetClip(AnimationClip clip)

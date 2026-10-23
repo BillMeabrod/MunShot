@@ -23,6 +23,7 @@ namespace MunShot
     public sealed class PhotoMode
     {
         private readonly ILogger _logger;
+        private readonly Func<IReadOnlyList<PosePreset>> _loadPresets;
         private readonly GamePause _pause;
         private readonly UiHider _uiHider;
         private readonly PhotoModeInputLock _inputLock;
@@ -39,7 +40,8 @@ namespace MunShot
         public DoubleManipulator Manipulator { get; }
         public PhotoCamera Camera { get; }
         public PhotoCapture Capture { get; }
-        public IReadOnlyList<PosePreset> Presets { get; }
+        /// <summary>The pose presets, read from the mod's pose files again each time photo mode opens.</summary>
+        public IReadOnlyList<PosePreset> Presets { get; private set; } = Array.Empty<PosePreset>();
 
         /// <summary>
         /// Who can be brought in: the kerbals in the scene when photo mode opened (nearest first), then everyone else
@@ -66,13 +68,18 @@ namespace MunShot
         /// <summary>A message for the player about what just happened.</summary>
         public event Action<string> Status;
 
-        public PhotoMode(ILogger logger, PhotoSession session, PhotoCamera camera, PhotoCapture capture, IReadOnlyList<PosePreset> presets)
+        /// <param name="loadPresets">
+        /// Reads the pose files; called each time photo mode opens, so poses added or changed while the game runs show
+        /// the next time it's opened.
+        /// </param>
+        public PhotoMode(ILogger logger, PhotoSession session, PhotoCamera camera, PhotoCapture capture,
+                         Func<IReadOnlyList<PosePreset>> loadPresets)
         {
+            _loadPresets = loadPresets ?? throw new ArgumentNullException(nameof(loadPresets));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             Session = session ?? throw new ArgumentNullException(nameof(session));
             Camera = camera ?? throw new ArgumentNullException(nameof(camera));
             Capture = capture ?? throw new ArgumentNullException(nameof(capture));
-            Presets = presets ?? Array.Empty<PosePreset>();
             _pause = new GamePause(Info, Warn);
             _uiHider = new UiHider(Info, Warn);
             _inputLock = new PhotoModeInputLock(Info, Warn);
@@ -109,6 +116,7 @@ namespace MunShot
                 Status?.Invoke(Localization.Translate("MunShot/Status/CameraUnavailable"));
                 return false;
             }
+            Presets = _loadPresets() ?? Array.Empty<PosePreset>();
 
             IsOpen = true;
             UiHidden = false;
@@ -277,15 +285,14 @@ namespace MunShot
         {
             PhotoSession.Entry selected = ReadySelected();
             if (selected == null || preset == null) return false;
-            ClipPose? pose = preset.Get(variant);
-            if (!pose.HasValue)
+            if (!preset.Offers(variant))
             {
                 Status?.Invoke(variant == PoseVariant.Jetpack
                     ? Localization.Format("MunShot/Status/NoJetpackVersion", preset.DisplayName)
                     : Localization.Format("MunShot/Status/NoGroundVersion", preset.DisplayName));
                 return false;
             }
-            bool held = selected.Player.Hold(selected.Double.Animator, pose.Value);
+            bool held = selected.Player.Hold(selected.Double.Animator, preset.Get(variant), preset.Bones);
             if (!held)
                 Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset.DisplayName));
             RaiseChanged();

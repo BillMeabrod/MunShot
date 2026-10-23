@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnityEngine;
 
 namespace MunShot.Posing
 {
@@ -12,14 +14,54 @@ namespace MunShot.Posing
     /// { "version": 1, "poses": [
     ///   { "id": "wave", "name": "Wave",
     ///     "ground":  { "clip": "kerbal_emote_wave",    "time": 0 },
-    ///     "jetpack": { "clip": "kerbal_jp_emote_wave", "time": 0 } } ] }
+    ///     "jetpack": { "clip": "kerbal_jp_emote_wave", "time": 0 },
+    ///     "bones":   { "r_shoulder": [0, 90, 0], "jaw_d": [0, 0, 0, 1] },
+    ///     "turns":   { "l_eye_lid_u": [0, 0, 15] } } ] }
     /// </code>
-    /// "ground" and "jetpack" are each optional, but a preset needs at least one. Clip names are checked when a pose
-    /// is held, against the kerbal's own clips, not here.
+    /// "ground", "jetpack", "bones" and "turns" are each optional, but a preset needs at least one. "bones" sets bones
+    /// by hand over the clip (or over the game's animation, with no clip): each is the bone's name without
+    /// "bone_kerbal_" and its local rotation. "turns" turns bones further from where the animation has them, by a
+    /// rotation in the bone's parent's frame. Rotations are Unity's Euler angles in degrees [x, y, z] (as the Inspector
+    /// shows them) or a quaternion [x, y, z, w]. Clip and bone names are checked when a pose is held, against the
+    /// kerbal's own, not here.
     /// </summary>
     public static class PosePresetLibrary
     {
         public const int SupportedVersion = 1;
+
+        /// <summary>
+        /// Reads every pose file in <paramref name="folder"/>: <paramref name="firstFile"/> (the stock poses) first,
+        /// then the others in name order, so custom poses can sit in their own files next to it. A pose whose id an
+        /// earlier file already used is skipped and reported, as are problems within a file (see <see cref="Load"/>).
+        /// </summary>
+        public static IReadOnlyList<PosePreset> LoadFolder(string folder, string firstFile, Action<string> warn)
+        {
+            if (warn == null) throw new ArgumentNullException(nameof(warn));
+            var presets = new List<PosePreset>();
+            if (!Directory.Exists(folder))
+            {
+                warn($"No pose presets: the folder '{folder}' doesn't exist; the mod's install is incomplete.");
+                return presets;
+            }
+
+            string first = Path.Combine(folder, firstFile);
+            IEnumerable<string> files = Directory.GetFiles(folder, "*.json")
+                .Where(f => !string.Equals(Path.GetFileName(f), firstFile, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(first)) files = new[] { first }.Concat(files);
+            else warn($"Stock pose presets not found at '{first}'; the mod's install is incomplete.");
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string file in files)
+            {
+                foreach (PosePreset preset in Load(file, warn))
+                {
+                    if (ids.Add(preset.Id)) presets.Add(preset);
+                    else warn($"'{file}': pose '{preset.Id}' has the same id as one in an earlier file; skipped.");
+                }
+            }
+            return presets;
+        }
 
         /// <summary>
         /// Reads the presets in <paramref name="file"/>. An entry with a problem is skipped and reported through
@@ -86,18 +128,70 @@ namespace MunShot.Posing
                 }
 
                 if (!TryReadVersion(entry, "ground", where, warn, out ClipPose? ground)
-                    || !TryReadVersion(entry, "jetpack", where, warn, out ClipPose? jetpack))
+                    || !TryReadVersion(entry, "jetpack", where, warn, out ClipPose? jetpack)
+                    || !TryReadRotations(entry, "bones", where, warn, out Dictionary<string, Quaternion> set)
+                    || !TryReadRotations(entry, "turns", where, warn, out Dictionary<string, Quaternion> turns))
                     continue;
-                if (!ground.HasValue && !jetpack.HasValue)
+                if (!ground.HasValue && !jetpack.HasValue && set == null && turns == null)
                 {
-                    warn($"{where} has neither a \"ground\" nor a \"jetpack\" version; skipped.");
+                    warn($"{where} has no \"ground\" or \"jetpack\" version, no \"bones\" and no \"turns\"; skipped.");
                     continue;
                 }
+                string both = set != null && turns != null ? set.Keys.FirstOrDefault(turns.ContainsKey) : null;
+                if (both != null)
+                {
+                    warn($"{where}: bone '{both}' is in both \"bones\" and \"turns\"; give it one or the other; skipped.");
+                    continue;
+                }
+                BonePose bones = set != null || turns != null ? new BonePose(set, turns) : null;
 
-                presets.Add(new PosePreset(id, name, ground, jetpack));
+                presets.Add(new PosePreset(id, name, ground, jetpack, bones));
             }
 
             return presets;
+        }
+
+        // "bones" or "turns": missing is fine (null); present but malformed (or any bone malformed) skips the whole
+        // preset, since a pose with some of its bones dropped wouldn't be the pose
+        private static bool TryReadRotations(JObject entry, string key, string where, Action<string> warn,
+                                             out Dictionary<string, Quaternion> rotations)
+        {
+            rotations = null;
+            JToken token = entry[key];
+            if (token == null || token.Type == JTokenType.Null) return true;
+            if (!(token is JObject list) || !list.HasValues)
+            {
+                warn($"{where}: \"{key}\" must be an object of bone names and rotations, with at least one bone; skipped.");
+                return false;
+            }
+
+            rotations = new Dictionary<string, Quaternion>(StringComparer.Ordinal);
+            foreach (JProperty bone in list.Properties())
+            {
+                float[] values = bone.Value is JArray array
+                                 && array.All(v => v.Type == JTokenType.Float || v.Type == JTokenType.Integer)
+                    ? array.Select(v => v.Value<float>()).ToArray()
+                    : null;
+                if (values == null || (values.Length != 3 && values.Length != 4) || values.Any(float.IsNaN) || values.Any(float.IsInfinity))
+                {
+                    warn($"{where}: {key} '{bone.Name}' must be [x, y, z] Euler angles in degrees or an [x, y, z, w] quaternion; skipped.");
+                    return false;
+                }
+                if (values.Length == 3)
+                {
+                    rotations[bone.Name] = Quaternion.Euler(values[0], values[1], values[2]);
+                    continue;
+                }
+                var q = new Quaternion(values[0], values[1], values[2], values[3]);
+                float length = Mathf.Sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+                if (length < 1e-4f)
+                {
+                    warn($"{where}: {key} '{bone.Name}' has a zero quaternion; skipped.");
+                    return false;
+                }
+                rotations[bone.Name] = new Quaternion(q.x / length, q.y / length, q.z / length, q.w / length);
+            }
+            return true;
         }
 
         // Missing is fine (null); present but malformed skips the whole preset

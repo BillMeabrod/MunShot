@@ -41,7 +41,7 @@ namespace MunShot.UI
         private readonly PanelRenderer _renderer;
         private readonly PhotoModeViewModel _model;
 
-        // One pose choice per preset version: "None" first, then e.g. "Wave", "Wave (jetpack)"
+        // The pose list's choices (see ListPoses)
         private readonly List<(PosePreset preset, PoseVariant variant)> _poseChoices = new List<(PosePreset, PoseVariant)>();
 
         // The pose last picked for each double, to show when it's selected again
@@ -87,13 +87,6 @@ namespace MunShot.UI
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
             _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu);
-
-            _poseChoices.Add((null, PoseVariant.Ground));
-            foreach (PosePreset preset in photoMode.Presets)
-            {
-                if (preset.Ground.HasValue) _poseChoices.Add((preset, PoseVariant.Ground));
-                if (preset.Jetpack.HasValue) _poseChoices.Add((preset, PoseVariant.Jetpack));
-            }
 
             var options = new WindowOptions
             {
@@ -275,6 +268,7 @@ namespace MunShot.UI
             {
                 _poseOf.Clear();
                 _hintsFor = null;
+                ListPoses();
                 _model.ToastVisible = false;
                 ShowTab(PhotoModeTab.Kerbals);
                 _renderer.Show();
@@ -479,6 +473,17 @@ namespace MunShot.UI
             else if (!_photoMode.HoldPreset(preset, variant)) return;
             // Only what's actually held is remembered
             _poseOf[selected] = index;
+        }
+
+        // One pose choice per preset version: "None" first, then e.g. "Wave", "Wave (jetpack)". Listed again each time
+        // photo mode opens, since it reads the pose files again then
+        private void ListPoses()
+        {
+            _poseChoices.Clear();
+            _poseChoices.Add((null, PoseVariant.Ground));
+            foreach (PosePreset preset in _photoMode.Presets)
+                foreach (PoseVariant variant in preset.ListedVariants())
+                    _poseChoices.Add((preset, variant));
         }
 
         private static string PoseLabel((PosePreset preset, PoseVariant variant) choice)

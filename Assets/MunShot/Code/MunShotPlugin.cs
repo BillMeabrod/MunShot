@@ -70,7 +70,7 @@ namespace MunShot
             var camera = new PhotoCamera(new KeyboardMouseCameraInput(),
                 message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
             var capture = new PhotoCapture(message => SWLogger.LogInfo(message), message => SWLogger.LogError(message));
-            _photoMode = new PhotoMode(SWLogger, session, camera, capture, LoadPresets());
+            _photoMode = new PhotoMode(SWLogger, session, camera, capture, LoadPresets);
             _photoMode.OpenChanged += AppBarButton.SetPressed;
             _evaPlayer = NewPosePlayer();
             _pauseMenuButton = new PauseMenuButton(OpenPhotoMode, () => Enabled, SWLogger);
@@ -93,15 +93,10 @@ namespace MunShot
 
         private IReadOnlyList<PosePreset> LoadPresets()
         {
-            string file = Path.Combine(SWMetadata.Folder.FullName, PresetsFolder, StockPresetsFile);
-            if (!File.Exists(file))
-            {
-                SWLogger.LogError($"Stock pose presets not found at '{file}'; the mod's install is incomplete.");
-                return Array.Empty<PosePreset>();
-            }
-
-            IReadOnlyList<PosePreset> presets = PosePresetLibrary.Load(file, message => SWLogger.LogWarning(message));
-            SWLogger.LogInfo($"Loaded {presets.Count} pose presets from '{file}'.");
+            string folder = Path.Combine(SWMetadata.Folder.FullName, PresetsFolder);
+            IReadOnlyList<PosePreset> presets = PosePresetLibrary.LoadFolder(folder, StockPresetsFile,
+                message => SWLogger.LogWarning(message));
+            SWLogger.LogInfo($"Loaded {presets.Count} pose presets from '{folder}'.");
             return presets;
         }
 

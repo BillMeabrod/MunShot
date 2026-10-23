@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace MunShot.Posing
 {
@@ -10,8 +11,9 @@ namespace MunShot.Posing
     }
 
     /// <summary>
-    /// A named pose from the game's animations, with a version for each <see cref="PoseVariant"/> the game has a
-    /// clip for (some poses only exist on the ground, the flying ones only with the jetpack).
+    /// A named pose: a game animation held at a moment, with a version for each <see cref="PoseVariant"/> the game has
+    /// a clip for (some poses only exist on the ground, the flying ones only with the jetpack), and/or bones set by
+    /// hand (<see cref="Bones"/>), which go over the clip, or over the game's own animation when there's no clip.
     /// </summary>
     public sealed class PosePreset
     {
@@ -30,20 +32,37 @@ namespace MunShot.Posing
         public ClipPose? Ground { get; }
         public ClipPose? Jetpack { get; }
 
-        public PosePreset(string id, string name, ClipPose? ground, ClipPose? jetpack)
+        /// <summary>Bones set by hand, in both versions; null when the preset is only a clip.</summary>
+        public BonePose Bones { get; }
+
+        public PosePreset(string id, string name, ClipPose? ground, ClipPose? jetpack, BonePose bones = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A pose preset needs an id.", nameof(id));
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException($"Pose preset '{id}' needs a name.", nameof(name));
-            if (!ground.HasValue && !jetpack.HasValue)
-                throw new ArgumentException($"Pose preset '{id}' needs a ground or a jetpack version.");
+            if (!ground.HasValue && !jetpack.HasValue && bones == null)
+                throw new ArgumentException($"Pose preset '{id}' needs a ground or a jetpack version, or bones.");
 
             Id = id;
             Name = name;
             Ground = ground;
             Jetpack = jetpack;
+            Bones = bones;
         }
 
-        /// <summary>The version for <paramref name="variant"/>, or null when the game has none.</summary>
+        /// <summary>The clip for <paramref name="variant"/>, or null when the game has none.</summary>
         public ClipPose? Get(PoseVariant variant) => variant == PoseVariant.Jetpack ? Jetpack : Ground;
+
+        /// <summary>Whether there's anything to hold for <paramref name="variant"/>: its clip, or bones (which suit both).</summary>
+        public bool Offers(PoseVariant variant) => Get(variant).HasValue || Bones != null;
+
+        /// <summary>
+        /// The versions to list: one per clip, or just one for a pose made only of bones, since its bones are the same
+        /// either way.
+        /// </summary>
+        public IEnumerable<PoseVariant> ListedVariants()
+        {
+            if (Ground.HasValue || (!Jetpack.HasValue && Bones != null)) yield return PoseVariant.Ground;
+            if (Jetpack.HasValue) yield return PoseVariant.Jetpack;
+        }
     }
 }

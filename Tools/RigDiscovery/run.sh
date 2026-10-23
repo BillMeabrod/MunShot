@@ -4,19 +4,21 @@
 #   Tools/RigDiscovery/run.sh find '<regex>'     list game prefab addresses matching <regex>
 #   Tools/RigDiscovery/run.sh dump <address>     write a rig report to Tools/RigDiscovery/out/<address>.txt
 #   Tools/RigDiscovery/run.sh animator <address> write Animator layers/params/clips to out/<address>.animator.txt
+#   Tools/RigDiscovery/run.sh axes <address>     write each bone's rest rotation and axis directions to out/<address>.axes.txt
 # Needs: the MunShot editor open with the com.unity.pipeline package, and `unity` on PATH.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project="$(cd "$here/../.." && pwd)"
 
-usage() { sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -eq 2 ] || usage
 
 case "$1" in
   find) script="$here/find_prefabs.cs"; placeholder="__PATTERN__" ;;
   dump) script="$here/dump_rig.cs";     placeholder="__ADDRESS__" ;;
   animator) script="$here/probe_animator.cs"; placeholder="__ADDRESS__" ;;
+  axes) script="$here/dump_axes.cs"; placeholder="__ADDRESS__" ;;
   *) usage ;;
 esac
 
