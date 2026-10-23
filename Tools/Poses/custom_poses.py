@@ -207,20 +207,24 @@ def hanging_on():
     p.aim('l_elbow', (-1, 0, 0), unit((-0.80, 0.10, -0.55)), (0, 0, 1), (0, -1, 0))
     p.at_rest(*(f'l_{finger}_0{j}' for finger in ('pointer', 'middle', 'pinky', 'thumb') for j in (1, 2, 3)))
 
-    # Legs streaming away from the grip, flailing: the right swung back with the knee bent, the left kicking forward.
-    # Leg bones point along their own -X; the thigh and shin's front is their +Y
-    p.aim('r_thigh', (-1, 0, 0), unit((-0.45, -0.85, -0.25)), (0, 1, 0), (0, 0, 1))
-    p.aim('r_knee', (-1, 0, 0), unit((-0.40, -0.45, -0.80)), (0, 1, 0), (0, -1, 0))
-    p.aim('l_thigh', (-1, 0, 0), unit((-0.55, -0.80, 0.25)), (0, 1, 0), (0, 0, 1))
-    p.aim('l_knee', (-1, 0, 0), unit((-0.60, -0.75, 0.20)), (0, 1, 0), (0, 0, 1))
+    # Legs streaming away from the grip and behind, flailing: the right swung back with the knee bent, the left kicking
+    # back and out. Behind the hips they stay clear of the jetpack's thrusters, which deploy beside the hips at the
+    # front (checked in game: a leg kicking forward goes through one). With the jetpack deployed the left leg still
+    # touches the jetpack's arm a little; legs hanging straight down between the arms would clear it, but the user
+    # chose these more dramatic legs. Leg bones point along their own -X; the thigh and shin's front is their +Y
+    p.aim('r_thigh', (-1, 0, 0), unit((-0.30, -0.90, -0.30)), (0, 1, 0), (0, 0, 1))
+    p.aim('r_knee', (-1, 0, 0), unit((-0.25, -0.40, -0.88)), (0, 1, 0), (0, -1, 0))
+    p.aim('l_thigh', (-1, 0, 0), unit((-0.45, -0.75, -0.48)), (0, 1, 0), (0, 0, 1))
+    p.aim('l_knee', (-1, 0, 0), unit((-0.50, -0.55, -0.67)), (0, 1, 0), (0, 0, 1))
 
-    # Terrified face: head turned 25 degrees towards the fist (about +Y, + turns the face to the kerbal's right), jaw
-    # dropped, the mouth's corners pulled down and out into a grimace (kerbal mouths curve up at rest, so an open mouth
+    # Terrified face: head turned 25 degrees towards the fist (about +Y, + turns the face to the kerbal's right) and
+    # tipped back 10, which swings the chin up inside the helmet, jaw dropped as far as the helmet allows (checked in
+    # game: 18 degrees with the head level pokes the chin out under the neck ring), the mouth's corners pulled down and out into a grimace (kerbal mouths curve up at rest, so an open mouth
     # alone reads as a cheerful shout), eyes wide (lids pulled back from wherever the clip has them) staring at the fist
     # (eyeballs look along their own -Y; aimed as if the head weren't turned, since the head's turn adds to it)
-    p.turn_animated('head', turn(Y, 25))
-    p.bend('jaw_d', Z, 18)
-    p.bend('jaw_u', Z, -4)
+    p.turn_animated('head', mul(turn(Y, 25), turn(X, -10)))
+    p.bend('jaw_d', Z, 13)
+    p.bend('jaw_u', Z, -7)
     for side, out in (('l', -1), ('r', 1)):
         p.move_animated(f'jaw_u_lips_{side}_corner', (0.006 * out, -0.012, 0.0))
         p.move_animated(f'jaw_d_lips_{side}', (0.004 * out, -0.008, 0.0))

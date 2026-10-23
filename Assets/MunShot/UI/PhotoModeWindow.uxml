@@ -106,6 +106,7 @@
                                     <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
                                         <ui:ScrollView name="pose-list" class="pm-list pm-list--tall" />
                                     </uitk:InvertedCornerBox>
+                                    <ui:Toggle name="jetpack" label="#MunShot/UI/Jetpack" class="switch" />
                                     <ui:VisualElement class="pm-row">
                                         <uitk:OabButton name="tool-move" text="#MunShot/UI/Move" class="pm-grow">
                                             <Bindings>

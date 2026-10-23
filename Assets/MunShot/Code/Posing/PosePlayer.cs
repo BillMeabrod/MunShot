@@ -240,14 +240,14 @@ namespace MunShot.Posing
                 return found;
             }
             List<(Transform, Quaternion)> set = Find(bones.Rotations), turned = Find(bones.Turns);
-            List<(Transform, Vector3)> moved = Find(bones.Moves);
+            List<(Transform, Vector3)> moved = Find(bones.Moves), placed = Find(bones.Positions);
             if (missing.Count > 0)
                 _logError($"Pose on '{_animator.name}': no bones named {string.Join(", ", missing)} (without the "
                           + $"'{KerbalRig.BonePrefix}' prefix); those parts keep their animation.");
 
             if (_driver == null)
                 _driver = _animator.GetComponent<BonePoseDriver>() ?? _animator.gameObject.AddComponent<BonePoseDriver>();
-            _driver.Set(set, turned, moved);
+            _driver.Set(set, turned, moved, placed);
         }
 
         // Gives the kerbal eyelashes, or its own lids back

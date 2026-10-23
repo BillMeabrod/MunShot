@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace MunShot.Posing
 {
@@ -13,7 +12,9 @@ namespace MunShot.Posing
     /// <summary>
     /// A named pose: a game animation held at a moment, with a version for each <see cref="PoseVariant"/> the game has
     /// a clip for (some poses only exist on the ground, the flying ones only with the jetpack), and/or bones set by
-    /// hand (<see cref="Bones"/>), which go over the clip, or over the game's own animation when there's no clip.
+    /// hand (<see cref="Bones"/>), which go over the clip, or over the game's own animation when there's no clip. A pose
+    /// can be held either way: without the clip for a version, the other's is used with the jetpack's bones swapped
+    /// (<see cref="JetpackBones"/>).
     /// </summary>
     public sealed class PosePreset
     {
@@ -61,17 +62,15 @@ namespace MunShot.Posing
         /// <summary>The clip for <paramref name="variant"/>, or null when the game has none.</summary>
         public ClipPose? Get(PoseVariant variant) => variant == PoseVariant.Jetpack ? Jetpack : Ground;
 
-        /// <summary>Whether there's anything to hold for <paramref name="variant"/>: its clip, or bones (which suit both).</summary>
-        public bool Offers(PoseVariant variant) => Get(variant).HasValue || Bones != null;
-
         /// <summary>
-        /// The versions to list: one per clip, or just one for a pose made only of bones, since its bones are the same
-        /// either way.
+        /// The clip to hold with the jetpack deployed or folded: that version's, or else the other's (null when the pose
+        /// is only bones). <paramref name="exact"/>: it's that version's own clip, which has the jetpack as it should be.
         /// </summary>
-        public IEnumerable<PoseVariant> ListedVariants()
+        public ClipPose? ClipFor(bool jetpack, out bool exact)
         {
-            if (Ground.HasValue || (!Jetpack.HasValue && Bones != null)) yield return PoseVariant.Ground;
-            if (Jetpack.HasValue) yield return PoseVariant.Jetpack;
+            ClipPose? wanted = Get(jetpack ? PoseVariant.Jetpack : PoseVariant.Ground);
+            exact = wanted.HasValue;
+            return wanted ?? Get(jetpack ? PoseVariant.Ground : PoseVariant.Jetpack);
         }
     }
 }

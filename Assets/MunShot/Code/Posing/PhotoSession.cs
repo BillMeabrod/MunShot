@@ -28,6 +28,12 @@ namespace MunShot.Posing
             /// <summary>Which way is up where the double stands: away from the body the original's vessel orbits.</summary>
             public Vector3 Up { get; }
 
+            /// <summary>The pose the double holds, or null for its own animation.</summary>
+            public PosePreset Preset { get; internal set; }
+
+            /// <summary>Whether the double's jetpack is deployed for flying, or folded away.</summary>
+            public bool Jetpack { get; internal set; }
+
             internal Transform[] Bones;
             internal KerbalHitShape HitShape;
 

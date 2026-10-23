@@ -280,29 +280,59 @@ namespace MunShot
 
         // ---- The selected double ----
 
-        /// <summary>Holds a pose on the selected double; false (with a status note) if it couldn't.</summary>
-        public bool HoldPreset(PosePreset preset, PoseVariant variant)
+        /// <summary>
+        /// Holds a pose on the selected double, null for its own animation, with its jetpack as it's set
+        /// (<see cref="SetJetpack"/>); false (with a status note) if it couldn't.
+        /// </summary>
+        public bool HoldPreset(PosePreset preset)
         {
             PhotoSession.Entry selected = ReadySelected();
-            if (selected == null || preset == null) return false;
-            if (!preset.Offers(variant))
-            {
-                Status?.Invoke(variant == PoseVariant.Jetpack
-                    ? Localization.Format("MunShot/Status/NoJetpackVersion", preset.DisplayName)
-                    : Localization.Format("MunShot/Status/NoGroundVersion", preset.DisplayName));
-                return false;
-            }
-            bool held = selected.Player.Hold(selected.Double.Animator, preset.Get(variant), preset.Bones, preset.Eyes, preset.Lashes);
-            if (!held)
-                Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset.DisplayName));
+            if (selected == null) return false;
+            bool held = Hold(selected, preset);
             RaiseChanged();
             return held;
         }
 
-        public void ReleasePose()
+        /// <summary>Deploys or folds the selected double's jetpack, keeping its pose.</summary>
+        public void SetJetpack(bool deployed)
         {
-            ReadySelected()?.Player.Release();
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null) return;
+            selected.Jetpack = deployed;
+            Hold(selected, selected.Preset);
             RaiseChanged();
+        }
+
+        // A pose's own clip for the jetpack's setting has the jetpack right; otherwise (the other version's clip, a pose
+        // of bones only, or the double's own animation) the jetpack's bones are laid under the pose's own
+        private bool Hold(PhotoSession.Entry entry, PosePreset preset)
+        {
+            Animator animator = entry.Double.Animator;
+            ClipPose? clip = null;
+            bool exact = false;
+            if (preset != null) clip = preset.ClipFor(entry.Jetpack, out exact);
+
+            if (preset == null && !entry.Jetpack)
+            {
+                // The double's own animation has the jetpack folded
+                entry.Player.Release();
+                entry.Preset = null;
+                return true;
+            }
+
+            BonePose jetpack = null;
+            if (!exact)
+            {
+                jetpack = JetpackBones.For(animator, entry.Jetpack, out string problem);
+                if (jetpack == null)
+                    _logger.LogWarning($"Photo mode: {entry.Double.Source.Name}'s jetpack can't be {(entry.Jetpack ? "deployed" : "folded")} for "
+                                       + $"'{preset?.DisplayName ?? "their own animation"}': {problem}.");
+            }
+
+            bool held = entry.Player.Hold(animator, clip, BonePose.Over(jetpack, preset?.Bones), preset?.Eyes, preset?.Lashes ?? false);
+            if (held) entry.Preset = preset;
+            else Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset?.DisplayName ?? Localization.Translate(Localization.NoPose)));
+            return held;
         }
 
         public void SetHelmet(bool on)

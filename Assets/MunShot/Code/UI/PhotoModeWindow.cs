@@ -41,11 +41,8 @@ namespace MunShot.UI
         private readonly PanelRenderer _renderer;
         private readonly PhotoModeViewModel _model;
 
-        // The pose list's choices (see ListPoses)
-        private readonly List<(PosePreset preset, PoseVariant variant)> _poseChoices = new List<(PosePreset, PoseVariant)>();
-
-        // The pose last picked for each double, to show when it's selected again
-        private readonly Dictionary<PhotoSession.Entry, int> _poseOf = new Dictionary<PhotoSession.Entry, int>();
+        // The pose list's choices: "None", then each pose (see ListPoses)
+        private readonly List<PosePreset> _poseChoices = new List<PosePreset>();
 
         private PhotoModeTab _tab = PhotoModeTab.Kerbals;
 
@@ -69,6 +66,7 @@ namespace MunShot.UI
         private Toggle _helmet;
         private Toggle _visor;
         private Toggle _angleSnap;
+        private Toggle _jetpack;
         private Button _move;
         private Button _rotate;
         private Button _free;
@@ -230,6 +228,7 @@ namespace MunShot.UI
             _move = Required<Button>(root, "tool-move");
             _rotate = Required<Button>(root, "tool-rotate");
             _angleSnap = Required<Toggle>(root, "angle-snap");
+            _jetpack = Required<Toggle>(root, "jetpack");
             _free = Required<Button>(root, "camera-free");
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
@@ -237,6 +236,7 @@ namespace MunShot.UI
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
             _angleSnap?.RegisterValueChangedCallback(change => _photoMode.SetAngleSnap(change.newValue));
+            _jetpack?.RegisterValueChangedCallback(change => _photoMode.SetJetpack(change.newValue));
             if (_fieldOfView != null)
             {
                 _fieldOfView.lowValue = PhotoCamera.MinFieldOfView;
@@ -266,7 +266,6 @@ namespace MunShot.UI
         {
             if (open)
             {
-                _poseOf.Clear();
                 _hintsFor = null;
                 ListPoses();
                 _model.ToastVisible = false;
@@ -394,16 +393,15 @@ namespace MunShot.UI
 
         private void RefreshPoses(PhotoSession.Entry selected, bool ready)
         {
+            _jetpack?.SetEnabled(ready);
+            _jetpack?.SetValueWithoutNotify(ready && selected.Jetpack);
             if (_poseList == null) return;
             _poseList.Clear();
-            // Kerbals taken out are forgotten
-            foreach (PhotoSession.Entry gone in _poseOf.Keys.Where(e => !_photoMode.Session.Entries.Contains(e)).ToList())
-                _poseOf.Remove(gone);
-            int current = ready && _poseOf.TryGetValue(selected, out int chosen) ? chosen : 0;
-            for (int i = 0; i < _poseChoices.Count; i++)
+            PosePreset current = ready ? selected.Preset : null;
+            foreach (PosePreset preset in _poseChoices)
             {
-                int index = i;
-                Button item = Item(PoseLabel(_poseChoices[i]), ready && i == current, () => PickPose(index));
+                PosePreset choice = preset;
+                Button item = Item(PoseLabel(choice), ready && choice == current, () => _photoMode.HoldPreset(choice));
                 item.SetEnabled(ready);
                 _poseList.Add(item);
             }
@@ -464,34 +462,17 @@ namespace MunShot.UI
             return true;
         }
 
-        private void PickPose(int index)
-        {
-            PhotoSession.Entry selected = _photoMode.Session.Selected;
-            if (selected == null || index < 0 || index >= _poseChoices.Count) return;
-            (PosePreset preset, PoseVariant variant) = _poseChoices[index];
-            if (preset == null) _photoMode.ReleasePose();
-            else if (!_photoMode.HoldPreset(preset, variant)) return;
-            // Only what's actually held is remembered
-            _poseOf[selected] = index;
-        }
-
-        // One pose choice per preset version: "None" first, then e.g. "Wave", "Wave (jetpack)". Listed again each time
-        // photo mode opens, since it reads the pose files again then
+        // "None" first, then each pose once (the Jetpack switch picks its version). Listed again each time photo mode
+        // opens, since it reads the pose files again then
         private void ListPoses()
         {
             _poseChoices.Clear();
-            _poseChoices.Add((null, PoseVariant.Ground));
-            foreach (PosePreset preset in _photoMode.Presets)
-                foreach (PoseVariant variant in preset.ListedVariants())
-                    _poseChoices.Add((preset, variant));
+            _poseChoices.Add(null);
+            _poseChoices.AddRange(_photoMode.Presets);
         }
 
-        private static string PoseLabel((PosePreset preset, PoseVariant variant) choice)
-        {
-            if (choice.preset == null) return Localization.Translate(Localization.NoPose);
-            if (choice.variant == PoseVariant.Ground) return choice.preset.DisplayName;
-            return Localization.Format(Localization.JetpackPose, choice.preset.DisplayName);
-        }
+        private static string PoseLabel(PosePreset preset) =>
+            preset == null ? Localization.Translate(Localization.NoPose) : preset.DisplayName;
 
         // ---- Hints ----
 

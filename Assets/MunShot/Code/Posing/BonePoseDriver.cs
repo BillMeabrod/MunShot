@@ -5,14 +5,15 @@ namespace MunShot.Posing
 {
     /// <summary>
     /// Applies a kerbal's <see cref="BonePose"/> every frame after its animation, so it shows over the game's animation
-    /// and over a held clip: set bones are set, turned and moved bones are turned or slid from where the animation put
-    /// them this frame. On the Animator's GameObject; added and removed by <see cref="PosePlayer"/>. Runs late in
-    /// LateUpdate (which still runs while the game is paused) so other scripts moving bones come first.
+    /// and over a held clip: set bones are set (and placed), turned and moved bones are turned or slid from where the
+    /// animation put them this frame. On the Animator's GameObject; added and removed by <see cref="PosePlayer"/>. Runs
+    /// late in LateUpdate (which still runs while the game is paused) so other scripts moving bones come first.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     internal sealed class BonePoseDriver : MonoBehaviour
     {
         private readonly List<(Transform bone, Quaternion rotation)> _set = new List<(Transform, Quaternion)>();
+        private readonly List<(Transform bone, Vector3 position)> _placed = new List<(Transform, Vector3)>();
         private readonly List<Turned> _turned = new List<Turned>();
         private readonly List<Moved> _moved = new List<Moved>();
 
@@ -38,10 +39,12 @@ namespace MunShot.Posing
         }
 
         public void Set(IEnumerable<(Transform bone, Quaternion rotation)> set, IEnumerable<(Transform bone, Quaternion turn)> turned,
-                        IEnumerable<(Transform bone, Vector3 offset)> moved)
+                        IEnumerable<(Transform bone, Vector3 offset)> moved, IEnumerable<(Transform bone, Vector3 position)> placed)
         {
             _set.Clear();
             _set.AddRange(set);
+            _placed.Clear();
+            _placed.AddRange(placed);
             _turned.Clear();
             foreach ((Transform bone, Quaternion turn) in turned)
                 _turned.Add(new Turned { Bone = bone, Turn = turn });
@@ -55,6 +58,9 @@ namespace MunShot.Posing
             foreach ((Transform bone, Quaternion rotation) in _set)
                 if (bone != null)
                     bone.localRotation = rotation;
+            foreach ((Transform bone, Vector3 position) in _placed)
+                if (bone != null)
+                    bone.localPosition = position;
 
             foreach (Turned t in _turned)
             {

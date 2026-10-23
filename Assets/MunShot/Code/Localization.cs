@@ -21,7 +21,6 @@ namespace MunShot
         public const string EveryoneIsIn = "MunShot/UI/EveryoneIsIn";
         public const string NobodyIn = "MunShot/UI/NobodyIn";
         public const string NoPose = "MunShot/UI/NoPose";
-        public const string JetpackPose = "MunShot/UI/JetpackPose";
 
         // The hint bar: keys, and what they do
         public const string KeyRightMouse = "MunShot/UI/KeyRightMouse";
