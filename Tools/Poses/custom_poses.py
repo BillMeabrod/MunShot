@@ -11,7 +11,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from posemath import X, Y, Z, Pose, load_rest, mul, rotate, turn
+from posemath import HELMET_CLEARANCE, X, Y, Z, Pose, load_rest, mul, rotate, turn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'Assets', 'MunShot', 'Copied', 'Poses', 'custom.json')
@@ -25,6 +25,155 @@ def close(a, b, tolerance=0.1):
 def unit(v):
     n = sum(c * c for c in v) ** 0.5
     return tuple(c / n for c in v)
+
+
+# ---- Shared moves ----
+# Arm and leg bones point along their own -X. Fingers curl about their own +Z on both sides; the thumb swings across
+# the palm about the hand's up axis at rest, the mirrored way on the left
+
+FINGERS = ('pointer', 'middle', 'pinky')
+CURLED = (85, 95, 65)
+
+
+def out_of(side):
+    """+1 for the kerbal's right, -1 for its left: multiplies X to mirror a direction."""
+    return 1 if side == 'r' else -1
+
+
+def curl(p, side, fingers=FINGERS, joints=CURLED):
+    for finger in fingers:
+        for j, degrees in enumerate(joints, 1):
+            p.bend(f'{side}_{finger}_0{j}', Z, degrees)
+
+
+def thumb_across(p, side, swing, bend2, bend3):
+    p.turn(f'{side}_thumb_01', turn(Y, swing * out_of(side)))
+    p.bend(f'{side}_thumb_02', Z, bend2)
+    p.bend(f'{side}_thumb_03', Z, bend3)
+
+
+# The game's own hands, read with the pose lab's Dump rig from its Thumbs Up emote (kerbal_emote_thumbsup_loop at
+# 1 s), as local rotations (x, y, z, w). The thumbs-up hand's fingers roll into a neat stack (knuckles about 50
+# degrees, the next two joints about 80); the other hand's fist has the thumb across the fingers. (Checked in game:
+# fingers curled the same set angle at each joint hooked like claws, and the other hand's own fingers, bent about 83
+# degrees at the knuckle, sink their tips into the palm close up.)
+THUMBS_UP_FINGERS_RIGHT = {
+    'pointer_01': (0.0, 0.0, 0.361593, 0.932336),
+    'pointer_02': (0.0, 0.0, 0.674324, 0.738435),
+    'pointer_03': (0.0, 0.0, 0.657650, 0.753324),
+    'middle_01': (0.038311, -0.008121, 0.440413, 0.896941),
+    'middle_02': (0.0, 0.0, 0.627986, 0.778225),
+    'middle_03': (0.0, 0.0, 0.657649, 0.753324),
+    'pinky_01': (0.068179, -0.011974, 0.448325, 0.891186),
+    'pinky_02': (0.0, 0.0, 0.627986, 0.778225),
+    'pinky_03': (0.0, 0.0, 0.657649, 0.753324),
+}
+FIST_THUMB_LEFT = {
+    'thumb_01': (0.029992, 0.217327, 0.110884, 0.969317),
+    'thumb_02': (0.047261, 0.211179, -0.259010, -0.941320),
+    'thumb_03': (0.053811, 0.200827, -0.253163, -0.944818),
+}
+# How much less than the game's fist the thumb swings across the fingers (about the hand's up axis), so it lies on
+# them rather than through them (checked in game: the game's thumb showed the glove's inside poking through)
+FIST_THUMB_OUT = 10
+
+
+def mirrored(rotation):
+    """
+    A hand bone's local rotation for the other side: the two hands' local axes are each other's with Z flipped, so
+    (x, y, z, w) becomes (-x, -y, z, w).
+    """
+    x, y, z, w = rotation
+    return (-x, -y, z, w)
+
+
+def fist(p, side):
+    """The game's thumbs-up fingers (THUMBS_UP_FINGERS_RIGHT) with the game fist's thumb across them."""
+    for joint, rotation in THUMBS_UP_FINGERS_RIGHT.items():
+        p.set_local(f'{side}_{joint}', rotation if side == 'r' else mirrored(rotation))
+    for joint, rotation in FIST_THUMB_LEFT.items():
+        p.set_local(f'{side}_{joint}', rotation if side == 'l' else mirrored(rotation))
+    # thumb_across swings +angle across the palm on either side, so -angle swings it back out
+    p.set_local(f'{side}_thumb_01', mul(turn(Y, -FIST_THUMB_OUT * out_of(side)), p.bones[f'{side}_thumb_01']))
+
+
+
+def open_hand(p, side):
+    p.at_rest(*(f'{side}_{finger}_0{j}' for finger in FINGERS + ('thumb',) for j in (1, 2, 3)))
+
+
+def relaxed_hand(p, side):
+    curl(p, side, joints=(20, 25, 15))
+    thumb_across(p, side, 10, 10, 10)
+
+
+def pointing_hand(p, side):
+    p.at_rest(*(f'{side}_pointer_0{j}' for j in (1, 2, 3)))
+    curl(p, side, ('middle', 'pinky'))
+    thumb_across(p, side, 30, 40, 40)
+
+
+def leg(p, side, thigh, shin, foot=None):
+    """
+    Aims a leg: thigh, shin and (optionally) foot directions in body space. A leg bone's front (its +Y; the foot's
+    top) is taken square to it, on the forward or upper side, as a leg bends: forwards when it points down.
+    """
+    for bone, d in (('thigh', thigh), ('knee', shin), ('foot', foot)):
+        if d is None:
+            continue
+        d = unit(d)
+        p.aim(f'{side}_{bone}', (-1, 0, 0), d, (0, 1, 0), rotate(turn(X, -90), d))
+
+
+def shoulder(p, side):
+    return p.position(f'{side}_shoulder')
+
+
+def toward(p, side, direction, reach=0.31):
+    """The point `reach` metres from the shoulder in `direction` (a straight arm's fingertips reach about 0.31 m)."""
+    s0 = shoulder(p, side)
+    d = unit(direction)
+    return tuple(a + reach * b for a, b in zip(s0, d))
+
+
+def wide_eyes(p):
+    """Lids pulled back from wherever the clip has them."""
+    for side in ('l', 'r'):
+        p.turn_animated(f'{side}_eye_lid_u', turn(X, -20))
+        p.turn_animated(f'{side}_eye_lid_d', turn(X, 10))
+
+
+def grimace(p):
+    """Mouth corners pulled down and out, over an open jaw (kerbal mouths curve up at rest)."""
+    for side in ('l', 'r'):
+        out = out_of(side)
+        p.move_animated(f'jaw_u_lips_{side}_corner', (0.006 * out, -0.012, 0.0))
+        p.move_animated(f'jaw_d_lips_{side}', (0.004 * out, -0.008, 0.0))
+
+
+def reach(p, side, target, **kwargs):
+    """Pose.reach, failing loudly if the hand can't get within 4 cm of the target."""
+    miss = p.reach(side, target, **kwargs)
+    assert miss < 0.04, f'{side} hand misses its target {target} by {miss:.3f} m'
+    return miss
+
+
+def fling(p, side, direction, fallback=None, **kwargs):
+    """
+    A straight arm flung `direction` (its fingertips at full reach), or as near it as the helmet allows: the direction
+    eases towards `fallback` (default: straight out to the side at shoulder height) until the arm clears. Prints how
+    far it had to ease.
+    """
+    fallback = fallback or (out_of(side), 0.0, 0.0)
+    d, f = unit(direction), unit(fallback)
+    for step in range(11):
+        t = step / 10
+        aimed = unit(tuple(a + t * (b - a) for a, b in zip(d, f)))
+        if p.reach(side, toward(p, side, aimed), end='tip', **kwargs) < 0.01:
+            if t:
+                print(f'    {side} arm eased {t:.0%} of the way from {direction} to {fallback} to clear the helmet')
+            return aimed
+    raise AssertionError(f'{side} arm can clear the helmet neither towards {direction} nor {fallback}')
 
 
 def rock_on(slant=1):
@@ -234,15 +383,217 @@ def hanging_on():
     return p, clip
 
 
+def superman():
+    """
+    Flying like Superman: both fists punched out ahead, as high as the helmet lets them go, legs together with the left
+    knee bent a little, toes pointed, head tipped back to look where it's going. Made upright: tip the kerbal forward
+    with the rings to fly.
+    """
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_exp_happy_01', 1.0)}
+    # Head tipped back (about +X, - tips the face up), which also lifts the helmet's front out of the arms' way
+    p.turn_animated('neck_ach', turn(X, -25))
+    p.turn('spine_lower', turn(X, -8))
+    # Arms straight ahead and up past the head as far as the helmet allows, else straight ahead and level, knuckles up
+    for side in ('r', 'l'):
+        out = out_of(side)
+        fling(p, side, (0.12 * out, 0.8, 0.6), fallback=(0.12 * out, -0.05, 0.99), palm=(0, -1, 0), hand_palm=(0, -1, 0),
+              elbow=(out, 0, 0))
+        fist(p, side)
+    # Toes pointed straight down
+    leg(p, 'r', (0.04, -1, 0.0), (0.03, -1, 0.0), (0.0, -1, 0.05))
+    leg(p, 'l', (-0.04, -1, 0.05), (-0.03, -0.85, -0.5), (0.0, -1, 0.05))
+    return p, clip
+
+
+def floating_asleep():
+    """Asleep in zero g: the game's Sleeping emote, arms drifting up in front, knees drifting up a little."""
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_emote_sleeping', 2.0), 'jetpack': ('kerbal_jp_emote_sleeping', 2.0)}
+    # Head drooping further forward than the emote has it (about +X, + tips the face down), helmet and all
+    p.turn_animated('neck_ach', turn(X, 20))
+    p.turn_animated('head', turn(X, 12))
+    for side in ('r', 'l'):
+        out = out_of(side)
+        reach(p, side, (0.25 * out, 0.27, 0.17), palm=(0.3 * out, -0.9, 0.3), hand=(0.35 * out, -0.25, 0.9),
+              elbow=(out, -0.4, 0))
+        relaxed_hand(p, side)
+    leg(p, 'r', (0.08, -0.85, 0.5), (0.05, -0.9, -0.4), (0.05, -0.75, 0.6))
+    leg(p, 'l', (-0.1, -0.9, 0.35), (-0.05, -0.92, -0.35), (-0.05, -0.75, 0.6))
+    return p, clip
+
+
+def spacewalk_tumble():
+    """
+    Tumbling out of control: amazed, arms and legs flung out every which way, body twisted, head thrown back and
+    sideways. Tip the kerbal any way with the rings.
+    """
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_exp_amazed_01', 1.0)}
+    p.turn('spine_lower', mul(turn(Y, 15), turn(Z, -8)))
+    p.turn('pelvis', turn(Y, -10))
+    p.turn_animated('neck_ach', mul(turn(Z, 15), turn(X, -10)))
+    fling(p, 'r', (0.85, 0.4, -0.35), palm=(0, -0.5, -0.8))
+    open_hand(p, 'r')
+    fling(p, 'l', (-0.75, -0.4, 0.5), palm=(0, -0.6, 0.8))
+    open_hand(p, 'l')
+    leg(p, 'r', (0.45, -0.65, 0.6), (0.35, -0.9, -0.25))
+    leg(p, 'l', (-0.45, -0.8, -0.4), (-0.35, -0.9, 0.25))
+    p.bend('jaw_d', Z, 12)
+    p.bend('jaw_u', Z, -6)
+    wide_eyes(p)
+    return p, clip
+
+
+def planting_the_flag():
+    """The game's flag-planting animation, held as the pole goes in. (No flag in hand yet.)"""
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_flag_plant', 4.0)}
+    return p, clip
+
+
+def hand_on_hip(p, side):
+    """A fist resting on the hip, elbow out to the side and back."""
+    out = out_of(side)
+    # The fist carries straight on from the forearm (checked in game: setting the palm and hand directions as well
+    # wrung the wrist)
+    reach(p, side, (0.19 * out, 0.23, 0.0), elbow=(out, 0, -0.4))
+    fist(p, side)
+
+
+def thumbs_up():
+    """Jeb's thumbs up: the game's Thumbs Up emote with the other fist on the hip and a cocky tilt of the head."""
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_emote_thumbsup_loop', 1.0), 'jetpack': ('kerbal_jp_emote_thumbsup_loop', 1.0)}
+    hand_on_hip(p, 'l')
+    p.turn_animated('head', turn(Z, -8))
+    return p, clip
+
+
+def raised_fists(p, forward=0.35):
+    """Both fists punched up and out as high as the helmet allows."""
+    for side in ('r', 'l'):
+        out = out_of(side)
+        fling(p, side, (0.8 * out, 0.6, forward), palm=(0, 0, 1), elbow=(out, -0.5, 0))
+        fist(p, side)
+
+
+def victory_jump():
+    """Leaping for joy: both fists up in a V, head back shouting, right knee tucked up, left leg kicked back."""
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_exp_happy_02', 1.0)}
+    p.turn_animated('neck_ach', turn(X, -15))
+    raised_fists(p)
+    leg(p, 'r', (0.1, -0.2, 0.98), (0.05, -0.95, -0.3), (0.0, -0.8, 0.6))
+    leg(p, 'l', (-0.05, -0.97, -0.2), (-0.05, -0.75, -0.65), (0.0, -0.95, -0.3))
+    p.bend('jaw_d', Z, 12)
+    p.bend('jaw_u', Z, -6)
+    return p, clip
+
+
+def running_away():
+    """Running away in a panic: mid-stride, arms flailing up, looking back over the right shoulder, terrified."""
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_run', 0.13)}
+    # The face turns to the kerbal's right (about +Y, +), helmet and all
+    p.turn_animated('neck_ach', turn(Y, 40))
+    p.turn_animated('head', turn(Y, 25))
+    fling(p, 'r', (0.6, 0.5, -0.6), palm=(0, 0, -1))
+    open_hand(p, 'r')
+    fling(p, 'l', (-0.55, 0.55, 0.6), palm=(0, 0, 1))
+    open_hand(p, 'l')
+    p.bend('jaw_d', Z, 13)
+    p.bend('jaw_u', Z, -7)
+    grimace(p)
+    wide_eyes(p)
+    return p, clip
+
+
+def sitting_on_the_edge():
+    """Sitting on a ledge, legs dangling (one kicked forward), hands on the edge beside the hips, looking down."""
+    p = Pose(REST)
+    p.turn('spine_lower', turn(X, 8))
+    leg(p, 'r', (0.12, -0.1, 0.99), (0.03, -0.95, 0.3))
+    leg(p, 'l', (-0.12, -0.1, 0.99), (-0.03, -0.97, -0.2))
+    for side in ('r', 'l'):
+        out = out_of(side)
+        reach(p, side, (0.19 * out, 0.17, 0.03), palm=(0, -1, 0), hand=(0.3 * out, -0.1, 0.95), hand_palm=(0, -1, 0),
+              elbow=(0, 0, -1))
+        curl(p, side, joints=(30, 20, 10))
+    p.turn_animated('head', mul(turn(Z, 8), turn(X, 10)))
+    return p, None
+
+
+def dramatic_point():
+    """
+    Pointing dramatically into the distance: lunging forward, right arm straight out and up, left arm flung back,
+    head up following the arm, eyes narrowed.
+    """
+    p = Pose(REST)
+    p.turn('spine_lower', turn(X, 8))
+    p.turn_animated('neck_ach', mul(turn(X, -10), turn(Y, 10)))
+    fling(p, 'r', (0.35, 0.4, 0.85), fallback=(0.45, -0.1, 0.89), palm=(-0.5, -0.5, 0), elbow=(0, -1, 0))
+    pointing_hand(p, 'r')
+    fling(p, 'l', (-0.6, -0.5, -0.6), palm=(0, -0.3, -1))
+    open_hand(p, 'l')
+    leg(p, 'r', (0.1, -0.6, 0.8), (0.05, -0.95, 0.15))
+    leg(p, 'l', (-0.08, -0.85, -0.5), (-0.08, -0.85, -0.5))
+    for side in ('l', 'r'):
+        p.turn_animated(f'{side}_eye_lid_u', turn(X, 8))
+    return p, None
+
+
+def cheerleader():
+    """
+    A cheer: right fist up high, left fist down low on the other diagonal, right knee up with its foot at the left
+    knee, hips swayed, big smile.
+    """
+    p = Pose(REST)
+    clip = {'ground': ('kerbal_exp_happy_02', 1.0)}
+    p.turn_animated('pelvis', turn(Z, -8))
+    fling(p, 'r', (0.8, 0.6, 0.25), palm=(0, 0, 1), elbow=(1, -0.5, 0))
+    fist(p, 'r')
+    fling(p, 'l', (-0.75, -0.65, 0.1), palm=(0, 0, 1))
+    fist(p, 'l')
+    leg(p, 'l', (-0.04, -1, 0.0), (-0.03, -1, 0.0))
+    leg(p, 'r', (0.45, -0.15, 0.88), (0, -1, 0))
+    # The shin swings in from the raised knee to the standing knee
+    knee, target = p.position('r_knee'), p.position('l_knee')
+    leg(p, 'r', (0.45, -0.15, 0.88), tuple(t - k for t, k in zip(target, knee)), (-0.3, -0.6, 0.7))
+    p.turn_animated('head', turn(Z, 12))
+    return p, clip
+
+
 POSES = [
     ('rock-on', 'Rock on', rock_on),
     ('anime-girl', 'Anime Girl', anime_girl),
     ('hanging-on', 'Hanging On', hanging_on),
+    ('superman', 'Superman', superman),
+    ('floating-asleep', 'Floating Asleep', floating_asleep),
+    ('spacewalk-tumble', 'Spacewalk Tumble', spacewalk_tumble),
+    ('planting-the-flag', 'Planting the Flag', planting_the_flag),
+    ('thumbs-up', 'Thumbs Up', thumbs_up),
+    ('victory-jump', 'Victory Jump', victory_jump),
+    ('running-away', 'Running Away', running_away),
+    ('sitting-on-the-edge', 'Sitting on the Edge', sitting_on_the_edge),
+    ('dramatic-point', 'Dramatic Point', dramatic_point),
+    ('cheerleader', 'Cheerleader', cheerleader),
 ]
+
+
+def helmet_report(pose_id, pose):
+    """Prints each posed arm's nearest point to the helmet, flagging any closer than HELMET_CLEARANCE."""
+    for side in ('r', 'l'):
+        if f'{side}_shoulder' not in pose.bones:
+            continue
+        gap, point = pose.helmet_report(side)[0]
+        flag = '  <- check in game' if gap < HELMET_CLEARANCE else ''
+        print(f'  {pose_id:22} {side} arm: nearest the helmet: {point} at {gap:+.3f} m{flag}')
 
 
 def entry(pose_id, name, recipe):
     pose, clip = recipe()
+    helmet_report(pose_id, pose)
     e = {'id': pose_id, 'name': name}
     for version, (clip_name, time) in (clip or {}).items():
         e[version] = {'clip': clip_name, 'time': time}

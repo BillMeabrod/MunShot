@@ -39,7 +39,8 @@ namespace MunShot.Tools
         /// <summary>
         /// Writes the assembled rig under <paramref name="animator"/> to a text file next to the game's log and
         /// returns the file's path. The file has every skinned mesh with its root bone and bones, then the full
-        /// transform tree.
+        /// transform tree, with each kerbal bone's local rotation as it is now (e.g. while a pose is held), to copy
+        /// into hand-made poses.
         /// </summary>
         public static string DumpRig(Animator animator, string kerbalName, string clipDescription)
         {
@@ -66,7 +67,7 @@ namespace MunShot.Tools
             }
 
             report.AppendLine();
-            report.AppendLine("## Transform tree under the Animator");
+            report.AppendLine("## Transform tree under the Animator (kerbal bones: local rotation as a quaternion x y z w, then Euler angles)");
             WriteTree(report, root, 0);
 
             string directory = Path.Combine(Application.persistentDataPath, "MunShot");
@@ -232,6 +233,13 @@ namespace MunShot.Tools
         {
             report.Append(' ', depth * 2).Append(t.name);
             if (!t.gameObject.activeSelf) report.Append("  (inactive)");
+            if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
+            {
+                Quaternion q = t.localRotation;
+                Vector3 e = t.localEulerAngles;
+                report.Append(string.Format(CultureInfo.InvariantCulture, "  rot {0:R} {1:R} {2:R} {3:R}  euler {4:0.00} {5:0.00} {6:0.00}",
+                                            q.x, q.y, q.z, q.w, e.x, e.y, e.z));
+            }
             report.AppendLine();
             for (int i = 0; i < t.childCount; i++) WriteTree(report, t.GetChild(i), depth + 1);
         }

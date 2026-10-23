@@ -1,7 +1,8 @@
 // Bone axes for one game prefab, loaded in memory from the game's bundles (nothing is added to the project): for every
 // bone_kerbal_* transform, in the prefab's rest pose and in the prefab root's space (the kerbal faces +Z, up is +Y),
 // where it is, its rest local rotation, which way each of its local axes points, and which way it points (towards its
-// first child). Writes Tools/RigDiscovery/out/<address>.axes.txt, the exact rotations to <address>.axes.quats.txt, and
+// first child). Writes Tools/RigDiscovery/out/<address>.axes.txt, the exact rotations and positions to
+// <address>.axes.quats.txt, and
 // returns a summary.
 // Run through run.sh, which fills in __ADDRESS__ (e.g. body_spacesuit_01.prefab).
 // eval_file body: no using directives, fully qualified names only.
@@ -21,9 +22,10 @@ foreach (var e in Ksp2UnityTools.Editor.LinkedAddressables.LinkedAddressableEdit
 if (entry == null) return $"[MunShot] Axes dump: no GameObject entry with address '{ADDRESS}' in the linked catalog.";
 
 var sb = new System.Text.StringBuilder();
-// Exact rotations for tools: bone, local quaternion (x y z w), root-space quaternion (x y z w), parent
+// Exact values for tools: bone, local quaternion (x y z w), root-space quaternion (x y z w), parent, root-space position
+// (x y z, metres)
 var quats = new System.Text.StringBuilder();
-quats.AppendLine("# bone lx ly lz lw rx ry rz rw parent");
+quats.AppendLine("# bone lx ly lz lw rx ry rz rw parent px py pz");
 int bones = 0;
 Begin();
 try
@@ -62,7 +64,8 @@ try
         }
         sb.AppendLine($"{t.name.Replace("bone_kerbal_", ""),-22} | {(t.parent ? t.parent.name.Replace("bone_kerbal_", "") : "-"),-18} | pos {V(r.InverseTransformPoint(t.position))} | euler {V(t.localEulerAngles)} | X {V(x)} {Name(x),-3} Y {V(y)} {Name(y),-3} Z {V(z)} {Name(z),-3} | {along}");
         UnityEngine.Quaternion lq = t.localRotation, wq = UnityEngine.Quaternion.Inverse(r.rotation) * t.rotation;
-        quats.AppendLine($"{t.name} {lq.x:R} {lq.y:R} {lq.z:R} {lq.w:R} {wq.x:R} {wq.y:R} {wq.z:R} {wq.w:R} {(t.parent ? t.parent.name : "-")}");
+        UnityEngine.Vector3 rp = r.InverseTransformPoint(t.position);
+        quats.AppendLine($"{t.name} {lq.x:R} {lq.y:R} {lq.z:R} {lq.w:R} {wq.x:R} {wq.y:R} {wq.z:R} {wq.w:R} {(t.parent ? t.parent.name : "-")} {rp.x:R} {rp.y:R} {rp.z:R}");
     }
 }
 finally { End(); }

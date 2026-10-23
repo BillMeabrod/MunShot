@@ -10,6 +10,7 @@ into +Y, +90 about +X turns +Z (forward) into -Y (down), +90 about +Y turns +Z i
 """
 import math
 import os
+from collections import namedtuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PREFIX = 'bone_kerbal_'
@@ -75,8 +76,14 @@ def same_rotation(a, b, tolerance=1e-3):
 
 # ---- The rig at rest ----
 
+IDENTITY = (0.0, 0.0, 0.0, 1.0)
+
+# A bone at rest: its local rotation, its rotation and position in body space, and its parent's name
+RestBone = namedtuple('RestBone', 'local world parent position')
+
+
 def load_rest(path=os.path.join(HERE, 'rest_pose.txt')):
-    """{bone: (local rotation, rotation in body space, parent)}, names without the bone_kerbal_ prefix."""
+    """{bone: RestBone}, names without the bone_kerbal_ prefix."""
     rest = {}
     for line in open(path, encoding='utf-8'):
         if line.startswith('#') or not line.strip():
@@ -84,8 +91,31 @@ def load_rest(path=os.path.join(HERE, 'rest_pose.txt')):
         f = line.split()
         name = f[0][len(PREFIX):] if f[0].startswith(PREFIX) else f[0]
         parent = f[9][len(PREFIX):] if f[9].startswith(PREFIX) else f[9]
-        rest[name] = (tuple(map(float, f[1:5])), tuple(map(float, f[5:9])), parent)
+        rest[name] = RestBone(tuple(map(float, f[1:5])), tuple(map(float, f[5:9])), parent, tuple(map(float, f[10:13])))
     return rest
+
+
+# Points along an arm the helmet check looks at, and how far a fingertip reaches past the last finger joint
+ARM_POINTS = ('elbow', 'hand', 'hand_ach')
+FINGERS = ('pointer', 'middle', 'pinky', 'thumb')
+FINGERTIP = 0.03
+
+# How far (degrees) a forearm may twist its palm either way from where it sits untwisted
+MAX_FOREARM_TWIST = 90
+
+# The helmet's shell (mesh_helmet_01's bounds, with the visor's bulge at the front), in body space at rest, as a
+# rounded box (|x/a|^3 + |y/b|^3 + |z/c|^3 = 1; the shell stays wide further down than an ellipsoid would). It hangs on
+# neck_ach, so it tips with it. Checked against poses tried in game: hands 3.5 cm or less outside it touched the helmet
+# or only just cleared it, so keep them at least HELMET_CLEARANCE out
+HELMET_CENTRE = (0.0, 0.618, 0.037)
+HELMET_HALF_SIZE = (0.30, 0.276, 0.265)
+HELMET_ROUNDNESS = 3
+HELMET_CLEARANCE = 0.04
+
+# The suit's torso (mesh_spacesuit_01_hardware's bounds, a little rounder), in body space at rest, the same way. It
+# moves with spine_lower
+BODY_CENTRE = (0.0, 0.28, 0.02)
+BODY_HALF_SIZE = (0.13, 0.10, 0.13)
 
 
 class Pose:
@@ -105,9 +135,7 @@ class Pose:
         at rest. Goes in the pose file's "moves".
         """
         self._check(bone)
-        _, _, parent = self.rest[bone]
-        parent_world = self.rest[parent][1] if parent in self.rest else (0.0, 0.0, 0.0, 1.0)
-        self.moves[bone] = rotate(inv(parent_world), offset)
+        self.moves[bone] = rotate(inv(self._parent_rest_world(bone)), offset)
 
     def eye_image(self, image, size, depth=1.0):
         """
@@ -128,39 +156,44 @@ class Pose:
         self._check(bone)
         if bone in self.bones:
             raise ValueError(f"'{bone}' is already set by this pose; a bone is either set or turned.")
-        _, _, parent = self.rest[bone]
-        parent_world = self.rest[parent][1] if parent in self.rest else (0.0, 0.0, 0.0, 1.0)
+        parent_world = self._parent_rest_world(bone)
         self.turns[bone] = mul(mul(inv(parent_world), rotation), parent_world)
 
     def _check(self, bone):
         if bone not in self.rest:
             raise KeyError(f"No bone '{bone}' in the rig (names are without '{PREFIX}').")
 
+    def _parent_rest_world(self, bone):
+        parent = self.rest[bone].parent
+        return self.rest[parent].world if parent in self.rest else IDENTITY
+
     def at_rest(self, *bones):
         """Holds bones in their rest pose (e.g. a straight elbow or finger), whatever the animation does."""
         for bone in bones:
             self._check(bone)
-            self.bones[bone] = self.rest[bone][0]
+            self.bones[bone] = self.rest[bone].local
+
+    def set_local(self, bone, rotation):
+        """Sets a bone's local rotation (relative to its parent) directly, e.g. one read from the game."""
+        self._check(bone)
+        self.bones[bone] = rotation
 
     def turn(self, bone, rotation):
         """Turns a bone by a body-space rotation (from turn()), starting from rest, with its parent at rest."""
         self._check(bone)
-        local, world, parent = self.rest[bone]
-        parent_world = self.rest[parent][1] if parent in self.rest else (0.0, 0.0, 0.0, 1.0)
-        self.bones[bone] = mul(inv(parent_world), mul(rotation, world))
+        self.bones[bone] = mul(inv(self._parent_rest_world(bone)), mul(rotation, self.rest[bone].world))
 
     def bend(self, bone, axis, degrees):
         """Turns a bone about one of its own axes (X, Y or Z), on top of where this pose has it (or rest)."""
         self._check(bone)
-        start = self.bones.get(bone, self.rest[bone][0])
+        start = self.bones.get(bone, self.rest[bone].local)
         self.bones[bone] = mul(start, turn(axis, degrees))
 
     def world(self, bone):
         """A bone's rotation in body space with this pose applied to it and its parents (unposed ones at rest)."""
         if bone not in self.rest:
-            return (0.0, 0.0, 0.0, 1.0)
-        _, _, parent = self.rest[bone]
-        return mul(self.world(parent), self.bones.get(bone, self.rest[bone][0]))
+            return IDENTITY
+        return mul(self.world(self.rest[bone].parent), self.bones.get(bone, self.rest[bone].local))
 
     def aim(self, bone, along, target, side, target_side):
         """
@@ -169,12 +202,133 @@ class Pose:
         down a chain: aim a parent first, and its children are aimed relative to where it now is.
         """
         self._check(bone)
-        rest_world = self.rest[bone][1]
+        rest_world = self.rest[bone].world
         frame_from = _frame(rotate(rest_world, along), rotate(rest_world, side))
         frame_to = _frame(target, target_side)
         world = mul(mul(frame_to, inv(frame_from)), rest_world)
-        _, _, parent = self.rest[bone]
-        self.bones[bone] = mul(inv(self.world(parent)), world)
+        self.bones[bone] = mul(inv(self.world(self.rest[bone].parent)), world)
+
+    # ---- Where things end up, for checking a pose before trying it in game ----
+    # Bones the pose doesn't set are taken at rest, with its turns and moves on top. A base clip moves them
+    # differently, so these are a guide for what the pose sets (arms, legs), not for what it leaves to the clip.
+
+    def _posed_world(self, bone):
+        """A bone's body-space rotation with this pose's sets and turns (turns applied to the rest pose)."""
+        if bone not in self.rest:
+            return IDENTITY
+        rest = self.rest[bone]
+        local = self.bones.get(bone)
+        if local is None:
+            local = mul(self.turns[bone], rest.local) if bone in self.turns else rest.local
+        return mul(self._posed_world(rest.parent), local)
+
+    def position(self, bone):
+        """A bone's position in body space (metres) with this pose applied."""
+        rest = self.rest[bone]
+        if rest.parent not in self.rest:
+            return rest.position
+        parent = self.rest[rest.parent]
+        parent_turn = mul(self._posed_world(rest.parent), inv(parent.world))
+        at = _add(self.position(rest.parent), rotate(parent_turn, _sub(rest.position, parent.position)))
+        if bone in self.moves:
+            at = _add(at, rotate(self._posed_world(rest.parent), self.moves[bone]))
+        return at
+
+    def tip(self, bone, length):
+        """The point `length` metres along a bone from its joint, the way it points (its own -X, as limbs and fingers do)."""
+        return _add(self.position(bone), _scale(rotate(self._posed_world(bone), (-1.0, 0.0, 0.0)), length))
+
+    def _helmet(self):
+        """The helmet's turn from rest and its middle, in body space: it tips with neck_ach."""
+        pivot = self.rest['neck_ach']
+        tipped = mul(self._posed_world('neck_ach'), inv(pivot.world))
+        return tipped, _add(self.position('neck_ach'), rotate(tipped, _sub(HELMET_CENTRE, pivot.position)))
+
+    def helmet_gap(self, point):
+        """Roughly how far (metres) a body-space point is outside the helmet's shell; negative is inside."""
+        tipped, centre = self._helmet()
+        return _box_gap(point, centre, tipped, HELMET_HALF_SIZE)
+
+    def body_gap(self, point):
+        """Roughly how far (metres) a body-space point is outside the suit's torso; negative is inside."""
+        pivot = self.rest['spine_lower']
+        turned = mul(self._posed_world('spine_lower'), inv(pivot.world))
+        centre = _add(self.position('spine_lower'), rotate(turned, _sub(BODY_CENTRE, pivot.position)))
+        return _box_gap(point, centre, turned, BODY_HALF_SIZE)
+
+    def helmet_report(self, side):
+        """The arm's points nearest the helmet: [(gap in metres, point)], nearest first."""
+        gaps = [(self.helmet_gap(self.position(f'{side}_{b}')), b) for b in ARM_POINTS]
+        gaps += [(self.helmet_gap(self.tip(f'{side}_{f}_03', FINGERTIP)), f'{f} tip') for f in FINGERS]
+        return sorted(gaps)
+
+    def reach(self, side, target, end='hand_ach', palm=None, hand=None, hand_palm=None, elbow=None, helmet=True):
+        """
+        Aims an arm (shoulder, elbow, hand; the collar at rest) so that `end` lands on body-space point `target`:
+        'hand_ach' is the middle of the palm, 'tip' the middle fingertip (with the fingers straight). The elbow bends
+        only the way the rig's does (towards the upper arm's front at rest, its own +Y on both sides), up to 150
+        degrees. Optional body-space directions: `palm`, the way the forearm's palm side faces (default: as at rest,
+        relative to the bend); `hand`, the way the hand points (default: on along the forearm, bending up to 80 degrees
+        at the wrist); `hand_palm`, the way the hand's palm faces (default: the forearm's); `elbow`, the way the
+        elbow's point should face if it can. With `helmet`, the arm and fingers keep HELMET_CLEARANCE out of the
+        helmet; the elbow and wrist always keep out of the torso. Returns how far (metres) `end` ends up from `target`.
+        """
+        upper, fore, hand_bone = f'{side}_shoulder', f'{side}_elbow', f'{side}_hand'
+        palm_side = (0, 0, -1) if side == 'r' else (0, 0, 1)
+        front = (0, 1, 0)
+        self.at_rest(f'{side}_collar')
+
+        def place(v):
+            yaw, pitch, twist, bend = v
+            u = (math.cos(pitch) * math.sin(yaw), math.sin(pitch), math.cos(pitch) * math.cos(yaw))
+            # The way the elbow bends: square to the upper arm, turned about it by the twist
+            n0 = _normalize(_cross(u, (0.0, 1.0, 0.0)) if abs(u[1]) < 0.95 else _cross(u, (0.0, 0.0, 1.0)))
+            n = rotate(turn(u, math.degrees(twist)), n0)
+            bent = max(0.0, min(math.radians(150), bend))
+            f = _add(_scale(u, math.cos(bent)), _scale(n, math.sin(bent)))
+            fore_front = _add(_scale(u, -math.sin(bent)), _scale(n, math.cos(bent)))
+            self.aim(upper, (-1, 0, 0), u, front, n)
+            self.aim(fore, (-1, 0, 0), f, front, fore_front)
+            fore_palm = rotate(self.world(fore), palm_side)
+            if palm:
+                # The forearm twists its palm towards `palm`, but no more than 90 degrees from where it sits untwisted
+                # (checked in game: more wrings the wrist like a sweet wrapper)
+                fore_palm = _twist_towards(fore_palm, palm, f, math.radians(MAX_FOREARM_TWIST))
+                self.aim(fore, (-1, 0, 0), f, palm_side, fore_palm)
+            self.aim(hand_bone, (-1, 0, 0), hand or f, (0, -1, 0), hand_palm or fore_palm)
+            return n, f
+
+        def point():
+            return self.tip(f'{side}_middle_03', FINGERTIP) if end == 'tip' else self.position(f'{side}_{end}')
+
+        def cost(v):
+            n, f = place(v)
+            c = 1e4 * sum(m * m for m in _sub(point(), target))
+            c += 1e2 * (max(0.0, v[3] - math.radians(150)) + max(0.0, -v[3])) ** 2
+            if hand:
+                wrist = math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(f, _normalize(hand))))))
+                c += 1e1 * max(0.0, wrist - math.radians(80)) ** 2
+            if elbow:
+                # The elbow's point faces away from the way it bends
+                c += 0.05 * (1.0 + sum(x * y for x, y in zip(n, _normalize(elbow))))
+            if helmet:
+                for g, _ in self.helmet_report(side):
+                    c += 1e4 * max(0.0, HELMET_CLEARANCE - g) ** 2
+            # The elbow and wrist stay out of the torso (the hand may rest on it)
+            for joint in (fore, hand_bone):
+                c += 1e4 * max(0.0, 0.01 - self.body_gap(self.position(joint))) ** 2
+            return c
+
+        d = _normalize(_sub(target, self.position(upper)))
+        yaw0, pitch0 = math.atan2(d[0], d[2]), math.asin(max(-1.0, min(1.0, d[1])))
+        best = None
+        for twist0 in (0.0, 1.57, 3.14, 4.71):
+            for bend0 in (0.3, 1.2):
+                v, c = _nelder_mead(cost, [yaw0, pitch0, twist0, bend0], 0.4)
+                if best is None or c < best[1]:
+                    best = (v, c)
+        place(best[0])
+        return math.sqrt(sum(m * m for m in _sub(point(), target)))
 
     def to_json_bones(self):
         """The pose file's "bones": Unity Euler angles, checked to give back the same rotation."""
@@ -194,6 +348,68 @@ def _to_euler_list(rotations):
             raise ValueError(f'{bone}: Euler angles {e} do not round-trip')
         out[bone] = [round(a, 2) for a in e]
     return out
+
+
+def _twist_towards(v, want, axis, limit):
+    """`v` turned about `axis` towards `want` (both taken square to `axis`), by at most `limit` radians."""
+    axis = _normalize(axis)
+
+    def square(w):
+        d = sum(a * b for a, b in zip(w, axis))
+        return _normalize(_sub(w, _scale(axis, d)))
+    a, b = square(v), square(want)
+    angle = math.atan2(sum(x * y for x, y in zip(_cross(a, b), axis)), sum(x * y for x, y in zip(a, b)))
+    angle = max(-limit, min(limit, angle))
+    return rotate(turn(axis, math.degrees(angle)), a)
+
+
+def _box_gap(point, centre, rotation, half_size):
+    """Roughly how far a point is outside a rounded box (see HELMET_ROUNDNESS) turned by `rotation`; negative inside."""
+    local = rotate(inv(rotation), _sub(point, centre))
+    k = sum(abs(c / h) ** HELMET_ROUNDNESS for c, h in zip(local, half_size)) ** (1 / HELMET_ROUNDNESS)
+    return (k - 1.0) * min(half_size)
+
+
+def _nelder_mead(f, x0, step, iterations=400):
+    """Minimises f from x0 (a small Nelder-Mead); returns (x, f(x))."""
+    pts = [list(x0)] + [[x + (step if i == j else 0.0) for j, x in enumerate(x0)] for i in range(len(x0))]
+    vals = [f(x) for x in pts]
+    for _ in range(iterations):
+        order = sorted(range(len(pts)), key=vals.__getitem__)
+        pts, vals = [pts[i] for i in order], [vals[i] for i in order]
+        if vals[-1] - vals[0] < 1e-10:
+            break
+        centre = [sum(x[i] for x in pts[:-1]) / (len(pts) - 1) for i in range(len(x0))]
+        reflect = [c + (c - w) for c, w in zip(centre, pts[-1])]
+        fr = f(reflect)
+        if fr < vals[0]:
+            expand = [c + 2 * (c - w) for c, w in zip(centre, pts[-1])]
+            fe = f(expand)
+            pts[-1], vals[-1] = (expand, fe) if fe < fr else (reflect, fr)
+        elif fr < vals[-2]:
+            pts[-1], vals[-1] = reflect, fr
+        else:
+            contract = [c + 0.5 * (w - c) for c, w in zip(centre, pts[-1])]
+            fc = f(contract)
+            if fc < vals[-1]:
+                pts[-1], vals[-1] = contract, fc
+            else:
+                pts = [pts[0]] + [[b + 0.5 * (x - b) for x, b in zip(p, pts[0])] for p in pts[1:]]
+                vals = [vals[0]] + [f(x) for x in pts[1:]]
+    i = min(range(len(pts)), key=vals.__getitem__)
+    return pts[i], vals[i]
+
+
+def _add(a, b):
+    return tuple(p + q for p, q in zip(a, b))
+
+
+def _sub(a, b):
+    return tuple(p - q for p, q in zip(a, b))
+
+
+def _scale(v, k):
+    return tuple(c * k for c in v)
 
 
 def _normalize(v):
@@ -226,14 +442,3 @@ def _frame(forward, up):
         return ((m01 + m10) / s, 0.25 * s, (m12 + m21) / s, (m02 - m20) / s)
     s = math.sqrt(1.0 + m22 - m00 - m11) * 2
     return ((m02 + m20) / s, (m12 + m21) / s, 0.25 * s, (m10 - m01) / s)
-
-
-def direction(pose, bone, rest_direction):
-    """
-    Where a body-space direction attached to a bone at rest (e.g. +X, the way the right arm points) ends up once
-    posed, with the bone's parent at rest. For checking a move before trying it in game.
-    """
-    _, world_rest, parent = pose.rest[bone]
-    parent_world = pose.rest[parent][1] if parent in pose.rest else (0.0, 0.0, 0.0, 1.0)
-    world = mul(parent_world, pose.bones.get(bone, pose.rest[bone][0]))
-    return rotate(mul(world, inv(world_rest)), rest_direction)
