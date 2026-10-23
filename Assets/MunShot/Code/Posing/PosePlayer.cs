@@ -25,6 +25,7 @@ namespace MunShot.Posing
         private const ushort OutputSortingOrder = 1000;
 
         private readonly Action<string> _logError;
+        private readonly Action<string> _logInfo;
         private readonly Func<Animator, float> _gameSpeedFor;
 
         private PlayableGraph _graph;
@@ -32,6 +33,8 @@ namespace MunShot.Posing
         private AnimationClip _clip;
         private Animator _animator;
         private BonePoseDriver _driver;
+        private EyeOverlay _eyes;
+        private EyeLashes _lashes;
         private bool _baseFrozen;
 
         /// <summary>The clip pose being held, or null when no clip is held.</summary>
@@ -39,6 +42,12 @@ namespace MunShot.Posing
 
         /// <summary>The bone pose being held, or null when none is.</summary>
         public BonePose CurrentBones { get; private set; }
+
+        /// <summary>The eye look shown, or null when the kerbal's own eyes show.</summary>
+        public EyeStyle CurrentEyes { get; private set; }
+
+        /// <summary>Whether the kerbal has been given eyelashes (<see cref="EyeLashes"/>).</summary>
+        public bool CurrentLashes { get; private set; }
 
         /// <summary>
         /// Whether a pose is held and its Animator still exists (the kerbal can be destroyed while posed, e.g. on
@@ -53,14 +62,16 @@ namespace MunShot.Posing
         public bool FreezeBaseAnimation { get; private set; }
 
         /// <param name="logError">Where failures are reported.</param>
+        /// <param name="logInfo">Where what was done is reported (e.g. how an eye look was fitted).</param>
         /// <param name="gameSpeedFor">
         /// The speed the game would give an Animator right now, used to hand it back after freezing it. The game
         /// only sets the speed when the time-warp rate changes, so restoring a remembered value could leave a stale
         /// speed if warp changed while frozen.
         /// </param>
-        public PosePlayer(Action<string> logError, Func<Animator, float> gameSpeedFor)
+        public PosePlayer(Action<string> logError, Action<string> logInfo, Func<Animator, float> gameSpeedFor)
         {
             _logError = logError ?? throw new ArgumentNullException(nameof(logError));
+            _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _gameSpeedFor = gameSpeedFor ?? throw new ArgumentNullException(nameof(gameSpeedFor));
         }
 
@@ -86,14 +97,16 @@ namespace MunShot.Posing
 
         /// <summary>
         /// Holds <paramref name="animator"/> in <paramref name="clip"/> (or the game's own animation, if null) with
-        /// <paramref name="bones"/> (if any) set over it. Holding the same Animator in another pose swaps the clip if
-        /// it changed and moves the held frame; a different Animator releases the previous one first.
+        /// <paramref name="bones"/> (if any) set over it, <paramref name="eyes"/> (if any) laid over its eyes, and
+        /// eyelashes if <paramref name="lashes"/>.
+        /// Holding the same Animator in another pose swaps the clip if it changed and moves the held frame; a
+        /// different Animator releases the previous one first.
         /// </summary>
         /// <returns>
         /// False, with the reason logged, when there's nothing to hold or the Animator has no clip of that name. Bones
         /// the kerbal doesn't have are logged and skipped; the rest of the pose still holds.
         /// </returns>
-        public bool Hold(Animator animator, ClipPose? clip, BonePose bones)
+        public bool Hold(Animator animator, ClipPose? clip, BonePose bones, EyeStyle eyes = null, bool lashes = false)
         {
             string what = clip.HasValue ? (bones != null ? $"{clip.Value} with {bones}" : clip.Value.ToString()) : bones?.ToString();
             if (animator == null)
@@ -138,6 +151,8 @@ namespace MunShot.Posing
             }
 
             SetBones(bones);
+            SetEyes(eyes);
+            SetLashes(lashes);
             ApplyBaseFreeze();
             return true;
         }
@@ -148,6 +163,8 @@ namespace MunShot.Posing
             UnfreezeBase();
             ReleaseClip();
             SetBones(null);
+            SetEyes(null);
+            SetLashes(false);
             _animator = null;
         }
 
@@ -212,10 +229,10 @@ namespace MunShot.Posing
                     byName[t.name.Substring(KerbalRig.BonePrefix.Length)] = t;
 
             var missing = new List<string>();
-            List<(Transform, Quaternion)> Find(IReadOnlyDictionary<string, Quaternion> list)
+            List<(Transform, T)> Find<T>(IReadOnlyDictionary<string, T> list)
             {
-                var found = new List<(Transform, Quaternion)>();
-                foreach (KeyValuePair<string, Quaternion> bone in list)
+                var found = new List<(Transform, T)>();
+                foreach (KeyValuePair<string, T> bone in list)
                 {
                     if (byName.TryGetValue(bone.Key, out Transform t)) found.Add((t, bone.Value));
                     else missing.Add(bone.Key);
@@ -223,13 +240,33 @@ namespace MunShot.Posing
                 return found;
             }
             List<(Transform, Quaternion)> set = Find(bones.Rotations), turned = Find(bones.Turns);
+            List<(Transform, Vector3)> moved = Find(bones.Moves);
             if (missing.Count > 0)
                 _logError($"Pose on '{_animator.name}': no bones named {string.Join(", ", missing)} (without the "
                           + $"'{KerbalRig.BonePrefix}' prefix); those parts keep their animation.");
 
             if (_driver == null)
                 _driver = _animator.GetComponent<BonePoseDriver>() ?? _animator.gameObject.AddComponent<BonePoseDriver>();
-            _driver.Set(set, turned);
+            _driver.Set(set, turned, moved);
+        }
+
+        // Gives the kerbal eyelashes, or its own lids back
+        private void SetLashes(bool lashes)
+        {
+            if (lashes == CurrentLashes && (_lashes != null) == lashes) return;
+            _lashes?.Release();
+            _lashes = null;
+            CurrentLashes = lashes;
+            if (lashes && _animator != null) _lashes = EyeLashes.Apply(_animator.transform, _logInfo, _logError);
+        }
+
+        // Shows the eye look over the kerbal's eyes, in place of any shown before; null takes it away
+        private void SetEyes(EyeStyle eyes)
+        {
+            _eyes?.Destroy();
+            _eyes = null;
+            CurrentEyes = eyes;
+            if (eyes != null && _animator != null) _eyes = EyeOverlay.Create(_animator.transform, eyes, _logInfo, _logError);
         }
 
         private void SetClip(AnimationClip clip)

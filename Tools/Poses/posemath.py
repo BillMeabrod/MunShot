@@ -95,6 +95,30 @@ class Pose:
         self.rest = rest
         self.bones = {}
         self.turns = {}
+        self.moves = {}
+        self.eyes = None
+        self.lashes = False
+
+    def move_animated(self, bone, offset):
+        """
+        Slides a bone from wherever the animation has it, by a body-space offset in metres, given as if its parent were
+        at rest. Goes in the pose file's "moves".
+        """
+        self._check(bone)
+        _, _, parent = self.rest[bone]
+        parent_world = self.rest[parent][1] if parent in self.rest else (0.0, 0.0, 0.0, 1.0)
+        self.moves[bone] = rotate(inv(parent_world), offset)
+
+    def eye_image(self, image, size, depth=1.0):
+        """
+        Lays an image from the poses folder over the eyeballs, covering `size` (0.1 to 0.95) of each, at `depth` (0.5
+        to 1.5) of the way from the eyeball's middle to its front.
+        """
+        if not 0.1 <= size <= 0.95:
+            raise ValueError(f'eye image size {size} must be from 0.1 to 0.95')
+        if not 0.5 <= depth <= 1.5:
+            raise ValueError(f'eye image depth {depth} must be from 0.5 to 1.5')
+        self.eyes = {'image': image, 'size': size, 'depth': depth}
 
     def turn_animated(self, bone, rotation):
         """

@@ -35,7 +35,14 @@ namespace MunShot.Posing
         /// <summary>Bones set by hand, in both versions; null when the preset is only a clip.</summary>
         public BonePose Bones { get; }
 
-        public PosePreset(string id, string name, ClipPose? ground, ClipPose? jetpack, BonePose bones = null)
+        /// <summary>A look laid over the kerbal's eyes, in both versions; null for the kerbal's own eyes.</summary>
+        public EyeStyle Eyes { get; }
+
+        /// <summary>Whether the kerbal is given eyelashes (<see cref="EyeLashes"/>), in both versions.</summary>
+        public bool Lashes { get; }
+
+        public PosePreset(string id, string name, ClipPose? ground, ClipPose? jetpack, BonePose bones = null, EyeStyle eyes = null,
+                          bool lashes = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A pose preset needs an id.", nameof(id));
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException($"Pose preset '{id}' needs a name.", nameof(name));
@@ -47,6 +54,8 @@ namespace MunShot.Posing
             Ground = ground;
             Jetpack = jetpack;
             Bones = bones;
+            Eyes = eyes;
+            Lashes = lashes;
         }
 
         /// <summary>The clip for <paramref name="variant"/>, or null when the game has none.</summary>

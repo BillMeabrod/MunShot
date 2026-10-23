@@ -16,14 +16,19 @@ namespace MunShot.Posing
     ///     "ground":  { "clip": "kerbal_emote_wave",    "time": 0 },
     ///     "jetpack": { "clip": "kerbal_jp_emote_wave", "time": 0 },
     ///     "bones":   { "r_shoulder": [0, 90, 0], "jaw_d": [0, 0, 0, 1] },
-    ///     "turns":   { "l_eye_lid_u": [0, 0, 15] } } ] }
+    ///     "turns":   { "l_eye_lid_u": [0, 0, 15] },
+    ///     "moves":   { "jaw_u_lips_l_corner": [0.03, 0, 0] },
+    ///     "eyes":    { "image": "anime_teal.png", "size": 0.6 },
+    ///     "lashes":  true } ] }
     /// </code>
-    /// "ground", "jetpack", "bones" and "turns" are each optional, but a preset needs at least one. "bones" sets bones
-    /// by hand over the clip (or over the game's animation, with no clip): each is the bone's name without
-    /// "bone_kerbal_" and its local rotation. "turns" turns bones further from where the animation has them, by a
-    /// rotation in the bone's parent's frame. Rotations are Unity's Euler angles in degrees [x, y, z] (as the Inspector
-    /// shows them) or a quaternion [x, y, z, w]. Clip and bone names are checked when a pose is held, against the
-    /// kerbal's own, not here.
+    /// A preset needs a "ground" or "jetpack" version, or some "bones", "turns" or "moves"; the rest is optional.
+    /// "bones" sets bones by hand over the clip (or over the game's animation, with no clip): each is the bone's name
+    /// without "bone_kerbal_" and its local rotation. "turns" turns bones further from where the animation has them, by
+    /// a rotation in the bone's parent's frame; "moves" slides them, by metres in the parent's frame. Rotations are
+    /// Unity's Euler angles in degrees [x, y, z] (as the Inspector shows them) or a quaternion [x, y, z, w]. "eyes" lays
+    /// an image from the same folder over the eyeballs (<see cref="EyeOverlay"/>), covering "size" of each; "lashes"
+    /// gives the kerbal eyelashes (<see cref="EyeLashes"/>). Clip and
+    /// bone names are checked when a pose is held, against the kerbal's own, not here.
     /// </summary>
     public static class PosePresetLibrary
     {
@@ -130,11 +135,20 @@ namespace MunShot.Posing
                 if (!TryReadVersion(entry, "ground", where, warn, out ClipPose? ground)
                     || !TryReadVersion(entry, "jetpack", where, warn, out ClipPose? jetpack)
                     || !TryReadRotations(entry, "bones", where, warn, out Dictionary<string, Quaternion> set)
-                    || !TryReadRotations(entry, "turns", where, warn, out Dictionary<string, Quaternion> turns))
+                    || !TryReadRotations(entry, "turns", where, warn, out Dictionary<string, Quaternion> turns)
+                    || !TryReadMoves(entry, where, warn, out Dictionary<string, Vector3> moves)
+                    || !TryReadEyes(entry, Path.GetDirectoryName(file), where, warn, out EyeStyle eyes))
                     continue;
-                if (!ground.HasValue && !jetpack.HasValue && set == null && turns == null)
+                JToken lashesToken = entry["lashes"];
+                if (lashesToken != null && lashesToken.Type != JTokenType.Boolean && lashesToken.Type != JTokenType.Null)
                 {
-                    warn($"{where} has no \"ground\" or \"jetpack\" version, no \"bones\" and no \"turns\"; skipped.");
+                    warn($"{where}: \"lashes\" must be true or false; skipped.");
+                    continue;
+                }
+                bool lashes = lashesToken != null && lashesToken.Type == JTokenType.Boolean && lashesToken.Value<bool>();
+                if (!ground.HasValue && !jetpack.HasValue && set == null && turns == null && moves == null)
+                {
+                    warn($"{where} has no \"ground\" or \"jetpack\" version and no \"bones\", \"turns\" or \"moves\"; skipped.");
                     continue;
                 }
                 string both = set != null && turns != null ? set.Keys.FirstOrDefault(turns.ContainsKey) : null;
@@ -143,9 +157,9 @@ namespace MunShot.Posing
                     warn($"{where}: bone '{both}' is in both \"bones\" and \"turns\"; give it one or the other; skipped.");
                     continue;
                 }
-                BonePose bones = set != null || turns != null ? new BonePose(set, turns) : null;
+                BonePose bones = set != null || turns != null || moves != null ? new BonePose(set, turns, moves) : null;
 
-                presets.Add(new PosePreset(id, name, ground, jetpack, bones));
+                presets.Add(new PosePreset(id, name, ground, jetpack, bones, eyes, lashes));
             }
 
             return presets;
@@ -192,6 +206,111 @@ namespace MunShot.Posing
                 rotations[bone.Name] = new Quaternion(q.x / length, q.y / length, q.z / length, q.w / length);
             }
             return true;
+        }
+
+        // "moves": bone names and slides in metres [x, y, z]; missing is fine (null), malformed skips the preset
+        private static bool TryReadMoves(JObject entry, string where, Action<string> warn, out Dictionary<string, Vector3> moves)
+        {
+            moves = null;
+            JToken token = entry["moves"];
+            if (token == null || token.Type == JTokenType.Null) return true;
+            if (!(token is JObject list) || !list.HasValues)
+            {
+                warn($"{where}: \"moves\" must be an object of bone names and slides, with at least one bone; skipped.");
+                return false;
+            }
+
+            moves = new Dictionary<string, Vector3>(StringComparer.Ordinal);
+            foreach (JProperty bone in list.Properties())
+            {
+                float[] values = bone.Value is JArray array
+                                 && array.All(v => v.Type == JTokenType.Float || v.Type == JTokenType.Integer)
+                    ? array.Select(v => v.Value<float>()).ToArray()
+                    : null;
+                if (values == null || values.Length != 3 || values.Any(float.IsNaN) || values.Any(float.IsInfinity))
+                {
+                    warn($"{where}: move '{bone.Name}' must be [x, y, z] in metres; skipped.");
+                    return false;
+                }
+                moves[bone.Name] = new Vector3(values[0], values[1], values[2]);
+            }
+            return true;
+        }
+
+        // "eyes": { "image": "<png next to the pose file>", "size": <0.1 to 0.95>, "depth": <0.5 to 1.5, default 1> }. Missing is fine (null); a
+        // malformed entry or an image that can't be read skips the preset, so a pose never shows with half its look
+        private static bool TryReadEyes(JObject entry, string folder, string where, Action<string> warn, out EyeStyle eyes)
+        {
+            eyes = null;
+            JToken token = entry["eyes"];
+            if (token == null || token.Type == JTokenType.Null) return true;
+            string image = (token as JObject)?.Value<string>("image");
+            JToken sizeToken = (token as JObject)?["size"];
+            float size = sizeToken != null && (sizeToken.Type == JTokenType.Float || sizeToken.Type == JTokenType.Integer)
+                ? sizeToken.Value<float>()
+                : float.NaN;
+            JToken depthToken = (token as JObject)?["depth"];
+            float depth = depthToken == null || depthToken.Type == JTokenType.Null
+                ? 1f
+                : depthToken.Type == JTokenType.Float || depthToken.Type == JTokenType.Integer ? depthToken.Value<float>() : float.NaN;
+            if (string.IsNullOrWhiteSpace(image) || !(size >= 0.1f && size <= 0.95f) || !(depth >= 0.5f && depth <= 1.5f))
+            {
+                warn($"{where}: \"eyes\" must be {{ \"image\": \"<file>.png\", \"size\": <0.1 to 0.95>, \"depth\": <0.5 to 1.5, "
+                     + "optional> }; skipped.");
+                return false;
+            }
+            if (Path.GetFileName(image) != image)
+            {
+                warn($"{where}: eye image '{image}' must be a file name in the poses folder, without folders; skipped.");
+                return false;
+            }
+
+            Texture2D texture = LoadImage(Path.Combine(folder, image), out string problem);
+            if (texture == null)
+            {
+                warn($"{where}: eye image '{image}' {problem}; skipped.");
+                return false;
+            }
+            eyes = new EyeStyle(image, texture, size, depth);
+            return true;
+        }
+
+        // Eye images, kept while their file is unchanged, since pose files are read again each time photo mode opens
+        private static readonly Dictionary<string, (DateTime written, Texture2D texture)> Images =
+            new Dictionary<string, (DateTime, Texture2D)>(StringComparer.OrdinalIgnoreCase);
+
+        private static Texture2D LoadImage(string path, out string problem)
+        {
+            problem = null;
+            if (!File.Exists(path))
+            {
+                problem = $"isn't there ('{path}')";
+                return null;
+            }
+            DateTime written = File.GetLastWriteTimeUtc(path);
+            if (Images.TryGetValue(path, out (DateTime written, Texture2D texture) cached) && cached.written == written && cached.texture != null)
+                return cached.texture;
+
+            byte[] bytes;
+            try
+            {
+                bytes = File.ReadAllBytes(path);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                problem = $"couldn't be read ({e.Message})";
+                return null;
+            }
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, true) { name = Path.GetFileName(path), wrapMode = TextureWrapMode.Clamp };
+            if (!ImageConversion.LoadImage(texture, bytes))
+            {
+                UnityEngine.Object.Destroy(texture);
+                problem = "isn't a PNG or JPG Unity can read";
+                return null;
+            }
+            // A changed file gets a new texture; kerbals posed with the old one keep it until they're posed again
+            Images[path] = (written, texture);
+            return texture;
         }
 
         // Missing is fine (null); present but malformed skips the whole preset

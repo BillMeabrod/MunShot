@@ -89,6 +89,7 @@ namespace MunShot
 
         // After a freeze, a kerbal's Animator gets the speed the game gives it for the current time warp
         private PosePlayer NewPosePlayer() => new PosePlayer(message => SWLogger.LogError(message),
+            message => SWLogger.LogInfo(message),
             _ => AnimationManager.GetAnimSpeedForTimeWarpRate(Game?.ViewController?.TimeWarp?.CurrentRate ?? 1f));
 
         private IReadOnlyList<PosePreset> LoadPresets()

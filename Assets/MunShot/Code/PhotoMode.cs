@@ -292,7 +292,7 @@ namespace MunShot
                     : Localization.Format("MunShot/Status/NoGroundVersion", preset.DisplayName));
                 return false;
             }
-            bool held = selected.Player.Hold(selected.Double.Animator, preset.Get(variant), preset.Bones);
+            bool held = selected.Player.Hold(selected.Double.Animator, preset.Get(variant), preset.Bones, preset.Eyes, preset.Lashes);
             if (!held)
                 Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset.DisplayName));
             RaiseChanged();

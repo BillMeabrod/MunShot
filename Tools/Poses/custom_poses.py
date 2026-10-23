@@ -84,8 +84,156 @@ def rock_on(slant=1):
     return p, clip
 
 
+def anime_girl():
+    """
+    Both hands in peace signs held forward under the helmet, the right leg kicked up behind, hips swayed, head tilted,
+    a small mouth and anime eyes: the idol pose.
+    """
+    p = Pose(REST)
+
+    # Both arms reaching forward, a little down and out, elbows straight, so the hands sit in front of the chest under
+    # the helmet's front edge; wrists bent so the peace signs point up, lean in towards each other, and tip forward
+    # towards the camera to keep the fingers out of the helmet; palms facing forward.
+    # Left bones mirror the right: they point along their own -X too, but the upper arm and forearm's palm side is +Z
+    palm_forward = (0.0, 0.0, 1.0)
+    # (Checked in game: kerbal arms can't put fingers leaning in towards the head clear of the helmet's side; held
+    # forward, with the fingers upright, they touch the helmet's front, and still a little tipped 35 degrees forward,
+    # so they tip 45)
+    for side, out, palm in (('r', 1, (0, 0, -1)), ('l', -1, (0, 0, 1))):
+        arm = unit((0.30 * out, -0.25, 0.92))
+        fingers_up = unit((-0.30 * out, 0.68, 0.67))     # up, leaning in about 20 degrees and forward about 45
+        p.at_rest(f'{side}_collar')
+        p.aim(f'{side}_shoulder', (-1, 0, 0), arm, palm, palm_forward)
+        p.aim(f'{side}_elbow', (-1, 0, 0), arm, palm, palm_forward)
+        p.aim(f'{side}_hand', (-1, 0, 0), fingers_up, (0, -1, 0), palm_forward)
+        assert close(rotate(p.world(f'{side}_hand'), (-1, 0, 0)), fingers_up), f'{side} hand should point up'
+        # (tipping the fingers forward tips the palm up)
+        assert rotate(p.world(f'{side}_hand'), (0, -1, 0))[2] > 0.65, f'{side} palm should face forward'
+
+        # Peace sign: pointer and middle straight, pinky curled into the palm, thumb swung across the palm and curled
+        # over the pinky. Fingers curl about their own +Z on both sides; the thumb swings the mirrored way on the left
+        p.at_rest(*(f'{side}_{finger}_0{j}' for finger in ('pointer', 'middle') for j in (1, 2, 3)))
+        p.bend(f'{side}_pinky_01', Z, 85)
+        p.bend(f'{side}_pinky_02', Z, 95)
+        p.bend(f'{side}_pinky_03', Z, 65)
+        p.turn(f'{side}_thumb_01', turn(Y, 50 * out))
+        p.bend(f'{side}_thumb_02', Z, 35)
+        p.bend(f'{side}_thumb_03', Z, 35)
+
+    # Right leg kicked up behind: the thigh swings a little back, the knee bends so the shin points back and slightly
+    # up, and the foot points back with its sole to the sky. Leg bones point along their own -X; the thigh and shin's
+    # front is their +Y, the foot's top is its +Y
+    thigh = unit((0.1, -0.96, -0.26))
+    shin = unit((0.05, 0.17, -0.98))
+    toes = unit((0.0, -0.6, -0.8))
+    p.aim('r_thigh', (-1, 0, 0), thigh, (0, 1, 0), (0, 0, 1))
+    p.aim('r_knee', (-1, 0, 0), shin, (0, 1, 0), (0, -1, 0))
+    p.aim('r_foot', (-1, 0, 0), toes, (0, 1, 0), (0, -0.8, 0.6))
+    assert close(rotate(p.world('r_knee'), (-1, 0, 0)), shin), 'shin should point back'
+
+    # Hips: the pelvis tips about 14 degrees, the standing (left) leg's hip up and out, and the lower spine leans back
+    # the other way so the upper body stays upright: a gentle S-curve. Turns on top of the animation (about +Z, +
+    # raises the kerbal's right side)
+    p.turn_animated('pelvis', turn(Z, -14))
+    p.turn_animated('spine_lower', turn(Z, 9))
+
+    # Face: head tilted a little to the side, mouth closed and small, anime eyes. The lids keep the game's animation,
+    # open and blinking
+    p.at_rest('jaw_d', 'jaw_u')
+    p.turn_animated('head', turn(Z, 10))
+
+    # A small mouth: the lip bones slide in towards the middle, following the face's curve forward (the corners sit
+    # 4 cm further back than the middle of the lips), the corners a touch up into a little smile
+    for side, out in (('l', -1), ('r', 1)):
+        p.move_animated(f'jaw_u_lips_{side}_corner', (-0.035 * out, 0.004, 0.025))
+        p.move_animated(f'jaw_u_lips_{side}', (-0.028 * out, 0.0, 0.02))
+        p.move_animated(f'jaw_d_lips_{side}', (-0.025 * out, 0.0, 0.018))
+        p.move_animated(f'jaw_u_lips_{side}c', (-0.008 * out, 0.0, 0.003))
+        p.move_animated(f'jaw_d_lips_{side}c', (-0.008 * out, 0.0, 0.003))
+
+    # Anime eyes: each eyeball aimed straight ahead (at rest they turn 15 degrees outward), so both look at the camera;
+    # eyeballs look along their own -Y with +Z up. Then the teal iris laid over each
+    for side in ('l', 'r'):
+        p.aim(f'{side}_eye', (0, -1, 0), (0, 0, 1), (0, 0, 1), (0, 1, 0))
+        assert close(rotate(p.world(f'{side}_eye'), (0, -1, 0)), (0, 0, 1)), f'{side} eye should look ahead'
+    p.eye_image('anime_teal.png', 0.6, 1.0)
+    # Eyelashes, from the game's female eyelids
+    p.lashes = True
+    return p, None
+
+
+def hanging_on():
+    """
+    Holding on for dear life: the right fist gripping out to the side, the body leaning away from it with the legs
+    streaming and flailing and the left arm flung back, the head and helmet tipped away from the grip, terrified and
+    staring at the hand. Turn the kerbal with the rings so the fist is on a hull and the body is swept back in the wind.
+    (Checked in game: a grip above about 10 degrees over the shoulder ends up inside an upright helmet, and leaning the
+    body hard away from a sideways grip folds the kerbal at the waist; so the helmet tips away and the lean is gentle.)
+    """
+    p = Pose(REST)
+    # The game's Panic expression for the mouth's shape, which the bones below build on
+    clip = {'ground': ('kerbal_exp_panic_01', 1.0)}
+
+    # Leaning gently away from the grip: the lower spine 15 degrees and the hips 25 degrees towards the kerbal's left
+    # (about +Z, + tips "up" towards the left). Set, so the arms and legs are aimed from where these leave them
+    p.turn('spine_lower', turn(Z, 15))
+    p.turn('pelvis', turn(Z, -25))
+
+    # The helmet hangs on the neck attachment bone (with the neck and head), so tipping that 20 degrees to the left
+    # takes the helmet away from the gripping arm, which can then come up higher
+    p.turn_animated('neck_ach', turn(Z, 20))
+
+    # Right arm out to the side, 20 degrees up and a little forward, palm down, in a tight fist (fingers curl about
+    # their own +Z; the thumb swings across the fingers and curls over them). Arm bones point along their own -X; the
+    # upper arm and forearm's palm side is their -Z, the hand's its -Y
+    grip = unit((0.91, 0.34, 0.24))
+    p.at_rest('r_collar')
+    p.aim('r_shoulder', (-1, 0, 0), grip, (0, 0, -1), (0, -1, 0))
+    p.aim('r_elbow', (-1, 0, 0), grip, (0, 0, -1), (0, -1, 0))
+    p.aim('r_hand', (-1, 0, 0), grip, (0, -1, 0), (0, -1, 0))
+    assert close(rotate(p.world('r_hand'), (-1, 0, 0)), grip), 'gripping hand should point out to the side'
+    for finger in ('pointer', 'middle', 'pinky'):
+        p.bend(f'r_{finger}_01', Z, 85)
+        p.bend(f'r_{finger}_02', Z, 95)
+        p.bend(f'r_{finger}_03', Z, 65)
+    p.turn('r_thumb_01', turn(Y, 30))
+    p.bend('r_thumb_02', Z, 40)
+    p.bend('r_thumb_03', Z, 40)
+
+    # Left arm flung out and back, a little below the shoulder so the tipped helmet clears it, elbow slightly bent,
+    # hand open (the left arm's palm side is +Z)
+    p.at_rest('l_collar')
+    p.aim('l_shoulder', (-1, 0, 0), unit((-0.85, -0.10, -0.50)), (0, 0, 1), (0, -1, 0))
+    p.aim('l_elbow', (-1, 0, 0), unit((-0.80, 0.10, -0.55)), (0, 0, 1), (0, -1, 0))
+    p.at_rest(*(f'l_{finger}_0{j}' for finger in ('pointer', 'middle', 'pinky', 'thumb') for j in (1, 2, 3)))
+
+    # Legs streaming away from the grip, flailing: the right swung back with the knee bent, the left kicking forward.
+    # Leg bones point along their own -X; the thigh and shin's front is their +Y
+    p.aim('r_thigh', (-1, 0, 0), unit((-0.45, -0.85, -0.25)), (0, 1, 0), (0, 0, 1))
+    p.aim('r_knee', (-1, 0, 0), unit((-0.40, -0.45, -0.80)), (0, 1, 0), (0, -1, 0))
+    p.aim('l_thigh', (-1, 0, 0), unit((-0.55, -0.80, 0.25)), (0, 1, 0), (0, 0, 1))
+    p.aim('l_knee', (-1, 0, 0), unit((-0.60, -0.75, 0.20)), (0, 1, 0), (0, 0, 1))
+
+    # Terrified face: head turned 25 degrees towards the fist (about +Y, + turns the face to the kerbal's right), jaw
+    # dropped, the mouth's corners pulled down and out into a grimace (kerbal mouths curve up at rest, so an open mouth
+    # alone reads as a cheerful shout), eyes wide (lids pulled back from wherever the clip has them) staring at the fist
+    # (eyeballs look along their own -Y; aimed as if the head weren't turned, since the head's turn adds to it)
+    p.turn_animated('head', turn(Y, 25))
+    p.bend('jaw_d', Z, 18)
+    p.bend('jaw_u', Z, -4)
+    for side, out in (('l', -1), ('r', 1)):
+        p.move_animated(f'jaw_u_lips_{side}_corner', (0.006 * out, -0.012, 0.0))
+        p.move_animated(f'jaw_d_lips_{side}', (0.004 * out, -0.008, 0.0))
+        p.turn_animated(f'{side}_eye_lid_u', turn(X, -20))
+        p.turn_animated(f'{side}_eye_lid_d', turn(X, 10))
+        p.aim(f'{side}_eye', (0, -1, 0), unit((0.41, 0.15, 0.90)), (0, 0, 1), (0, 1, 0))
+    return p, clip
+
+
 POSES = [
     ('rock-on', 'Rock on', rock_on),
+    ('anime-girl', 'Anime Girl', anime_girl),
+    ('hanging-on', 'Hanging On', hanging_on),
 ]
 
 
@@ -98,6 +246,12 @@ def entry(pose_id, name, recipe):
         e['bones'] = pose.to_json_bones()
     if pose.turns:
         e['turns'] = pose.to_json_turns()
+    if pose.moves:
+        e['moves'] = {b: [round(c, 4) for c in v] for b, v in pose.moves.items()}
+    if pose.eyes:
+        e['eyes'] = pose.eyes
+    if pose.lashes:
+        e['lashes'] = True
     return e
 
 
@@ -111,7 +265,9 @@ def write(poses):
     for e in poses:
         parts = [f'      "id": {json.dumps(e["id"])}', f'      "name": {json.dumps(e["name"])}']
         parts += [f'      "{v}": {json.dumps(e[v])}' for v in ('ground', 'jetpack') if v in e]
-        parts += [block(k, e[k]) for k in ('bones', 'turns') if k in e]
+        parts += [block(k, e[k]) for k in ('bones', 'turns', 'moves') if k in e]
+        parts += [f'      "eyes": {json.dumps(e["eyes"])}'] if 'eyes' in e else []
+        parts += ['      "lashes": true'] if e.get('lashes') else []
         items.append('    {\n' + ',\n'.join(parts) + '\n    }')
     text = '{\n  "version": 1,\n  "poses": [\n' + ',\n'.join(items) + '\n  ]\n}\n'
     json.loads(text)
