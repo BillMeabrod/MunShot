@@ -366,7 +366,7 @@ namespace MunShot
 
         /// <summary>Stands every double selected for moving (or the posed one, when none are) on the surface below.</summary>
         public void SnapToSurface() =>
-            ForEachToPlace(Session.DropToSurface, "MunShot/Status/AllOnSurface", "{0} kerbals are standing on the surface.");
+            ForEachToPlace(Session.DropToSurface, "MunShot/Status/AllOnSurface");
 
         /// <summary>
         /// Turns every double selected for moving (or the posed one, when none are) upright on screen: along the
@@ -382,14 +382,15 @@ namespace MunShot
             }
             Vector3 up = camera.transform.up;
             ForEachToPlace((PhotoSession.Entry entry, out string message) => Session.StandUpright(entry, up, out message),
-                           "MunShot/Status/AllUpright", "{0} kerbals are standing upright.");
+                           "MunShot/Status/AllUpright");
         }
 
         // Runs a placing action on the moving selection, or the posed double when nothing's selected for moving. One
-        // double says what happened to it; several say how many it worked for, or the first that it didn't
+        // double says what happened to it; several say how many it worked for (allKey, with {0} for the count), or the
+        // first that it didn't
         private delegate bool PlaceAction(PhotoSession.Entry entry, out string message);
 
-        private void ForEachToPlace(PlaceAction place, string allKey, string allFallback)
+        private void ForEachToPlace(PlaceAction place, string allKey)
         {
             var targets = new List<PhotoSession.Entry>(Manipulator.Moving);
             if (targets.Count == 0) targets.Add(Session.Selected);
@@ -401,7 +402,7 @@ namespace MunShot
                 else failure ??= message;
                 first ??= message;
             }
-            Status?.Invoke(targets.Count == 1 ? first : failure ?? Localization.Format(allKey, allFallback, placed));
+            Status?.Invoke(targets.Count == 1 ? first : failure ?? Localization.Format(allKey, placed));
         }
 
         // ---- Camera and photo ----

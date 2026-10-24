@@ -34,6 +34,13 @@ namespace MunShot
         public const string HintRoll = "MunShot/UI/HintRoll";
         public const string HintLevel = "MunShot/UI/HintLevel";
         public const string KeyDrag = "MunShot/UI/KeyDrag";
+        public const string KeyShift = "MunShot/UI/KeyShift";
+        public const string KeyCtrl = "MunShot/UI/KeyCtrl";
+        public const string KeyAlt = "MunShot/UI/KeyAlt";
+        public const string KeySpace = "MunShot/UI/KeySpace";
+        public const string KeyEnter = "MunShot/UI/KeyEnter";
+        public const string KeyEsc = "MunShot/UI/KeyEsc";
+        public const string KeyNumpad = "MunShot/UI/KeyNumpad";
         public const string HintTurn = "MunShot/UI/HintTurn";
         public const string HintLean = "MunShot/UI/HintLean";
         public const string HintTip = "MunShot/UI/HintTip";

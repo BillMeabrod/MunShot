@@ -435,7 +435,7 @@ namespace MunShot.UI
         }
 
         private void ShowFieldOfView() =>
-            _model.FieldOfViewText = _photoMode.Camera.FieldOfView.ToString("0", CultureInfo.CurrentCulture) + "°";
+            _model.FieldOfViewText = _photoMode.Camera.FieldOfView.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;
 
         // ---- Controls ----
 
@@ -538,30 +538,31 @@ namespace MunShot.UI
             return string.Join(" + ", parts);
         }
 
-        // Unity's key names, the way a keyboard labels them: no "Left", short modifier names, digits as digits
+        // Unity's key names, the way a keyboard in the game's language labels them: no "Left", short modifier names,
+        // digits as digits. Letter and function keys read the same everywhere, so they stay Unity's
         private static string KeyName(KeyCode key)
         {
             switch (key)
             {
                 case KeyCode.LeftShift:
                 case KeyCode.RightShift:
-                    return "Shift";
+                    return Localization.Translate(Localization.KeyShift);
                 case KeyCode.LeftControl:
                 case KeyCode.RightControl:
-                    return "Ctrl";
+                    return Localization.Translate(Localization.KeyCtrl);
                 case KeyCode.LeftAlt:
                 case KeyCode.RightAlt:
-                    return "Alt";
+                    return Localization.Translate(Localization.KeyAlt);
                 case KeyCode.Space:
-                    return "Space";
+                    return Localization.Translate(Localization.KeySpace);
                 case KeyCode.Return:
-                    return "Enter";
+                    return Localization.Translate(Localization.KeyEnter);
                 case KeyCode.Escape:
-                    return "Esc";
+                    return Localization.Translate(Localization.KeyEsc);
             }
             string name = key.ToString();
             if (name.StartsWith("Alpha", StringComparison.Ordinal) && name.Length == 6) return name.Substring(5);
-            if (name.StartsWith("Keypad", StringComparison.Ordinal)) return "Num " + name.Substring(6);
+            if (name.StartsWith("Keypad", StringComparison.Ordinal)) return Localization.Format(Localization.KeyNumpad, name.Substring(6));
             return name;
         }
 
