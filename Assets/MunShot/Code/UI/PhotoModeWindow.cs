@@ -282,6 +282,7 @@ namespace MunShot.UI
         private void OnLanguageChanged()
         {
             _hintsFor = null;
+            ListPoses();   // sorted by their names in the new language
             Refresh();
         }
 
@@ -462,13 +463,14 @@ namespace MunShot.UI
             return true;
         }
 
-        // "None" first, then each pose once (the Jetpack switch picks its version). Listed again each time photo mode
-        // opens, since it reads the pose files again then
+        // "None" first, then each pose once (the Jetpack switch picks its version), in alphabetical order of the names
+        // shown, in the game's language. Listed again each time photo mode opens (it reads the pose files again then)
+        // and when the language changes
         private void ListPoses()
         {
             _poseChoices.Clear();
             _poseChoices.Add(null);
-            _poseChoices.AddRange(_photoMode.Presets);
+            _poseChoices.AddRange(_photoMode.Presets.OrderBy(preset => preset.DisplayName, Localization.NameOrder));
         }
 
         private static string PoseLabel(PosePreset preset) =>

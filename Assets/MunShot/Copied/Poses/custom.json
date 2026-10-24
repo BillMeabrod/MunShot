@@ -314,11 +314,6 @@
       }
     },
     {
-      "id": "planting-the-flag",
-      "name": "Planting the Flag",
-      "ground": {"clip": "kerbal_flag_plant", "time": 4.0}
-    },
-    {
       "id": "thumbs-up",
       "name": "Thumbs Up",
       "ground": {"clip": "kerbal_emote_thumbsup_loop", "time": 1.0},

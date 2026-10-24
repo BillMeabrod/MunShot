@@ -131,6 +131,18 @@ T = {
     "MunShot/Pose/fly-left": ["Nach links fliegen", "Voler à gauche", "Vola a sinistra", "Volar a la izquierda", "左へ飛行", "왼쪽으로 비행", "Lot w lewo", "Полёт влево", "向左飞", "Voar para a esquerda", "向左飛"],
     "MunShot/Pose/fly-right": ["Nach rechts fliegen", "Voler à droite", "Vola a destra", "Volar a la derecha", "右へ飛行", "오른쪽으로 비행", "Lot w prawo", "Полёт вправо", "向右飞", "Voar para a direita", "向右飛"],
     "MunShot/Pose/fly-up": ["Aufwärts fliegen", "Voler vers le haut", "Vola in alto", "Volar hacia arriba", "上昇飛行", "위로 비행", "Lot w górę", "Полёт вверх", "向上飞", "Voar para cima", "向上飛"],
+    "MunShot/Pose/rock-on": ["Rock on", "Rock'n'roll", "Rock!", "¡A rockear!", "ロックンロール", "록 스피릿", "Rock and roll", "Рок-н-ролл", "摇滚起来", "Rock on", "搖滾起來"],
+    "MunShot/Pose/anime-girl": ["Anime-Mädchen", "Fille d'anime", "Ragazza anime", "Chica anime", "アニメ少女", "애니 소녀", "Dziewczyna z anime", "Аниме-девочка", "动漫少女", "Garota de anime", "動漫少女"],
+    "MunShot/Pose/hanging-on": ["Festklammern", "Accroché", "Aggrappato", "Agarrado", "しがみつく", "매달리기", "Kurczowy chwyt", "Вцепиться", "死死抓住", "Agarrado", "死命抓住"],
+    "MunShot/Pose/superman": ["Superman", "Superman", "Superman", "Superman", "スーパーマン", "슈퍼맨", "Superman", "Супермен", "超人", "Super-Homem", "超人"],
+    "MunShot/Pose/floating-asleep": ["Schwebend schlafen", "Endormi en apesanteur", "Addormentato fluttuante", "Dormido flotando", "浮かんで居眠り", "떠서 잠들기", "Sen w nieważkości", "Сон в невесомости", "漂浮入睡", "Dormindo flutuando", "漂浮入睡"],
+    "MunShot/Pose/spacewalk-tumble": ["Taumeln im All", "Culbute spatiale", "Capriola spaziale", "Voltereta espacial", "宇宙できりもみ", "우주 공중제비", "Koziołkowanie w kosmosie", "Кувырок в космосе", "太空翻滚", "Cambalhota espacial", "太空翻滾"],
+    "MunShot/Pose/thumbs-up": ["Daumen hoch", "Pouce levé", "Pollice in su", "Pulgar arriba", "グッド", "엄지 척", "Kciuk w górę", "Класс!", "竖大拇指", "Joinha", "比讚"],
+    "MunShot/Pose/victory-jump": ["Siegessprung", "Saut de victoire", "Salto di vittoria", "Salto de victoria", "勝利のジャンプ", "승리의 점프", "Skok zwycięstwa", "Прыжок победы", "胜利跳跃", "Salto da vitória", "勝利跳躍"],
+    "MunShot/Pose/running-away": ["Weglaufen", "Fuite", "Fuga", "Huir", "逃げる", "도망치기", "Ucieczka", "Бегство", "逃跑", "Fugindo", "逃跑"],
+    "MunShot/Pose/sitting-on-the-edge": ["Auf der Kante sitzen", "Assis au bord", "Seduto sul bordo", "Sentado en el borde", "縁に座る", "가장자리에 앉기", "Siedzenie na krawędzi", "Сидя на краю", "坐在边缘", "Sentado na beirada", "坐在邊緣"],
+    "MunShot/Pose/dramatic-point": ["Dramatisch zeigen", "Geste dramatique", "Indicazione drammatica", "Señalar dramático", "ドラマチックに指差し", "극적으로 가리키기", "Dramatyczne wskazanie", "Драматичный жест", "戏剧性指向", "Apontar dramático", "戲劇性指向"],
+    "MunShot/Pose/cheerleader": ["Cheerleader", "Pom-pom girl", "Cheerleader", "Animadora", "チアリーダー", "치어리더", "Cheerleaderka", "Чирлидер", "啦啦队", "Líder de torcida", "啦啦隊"],
 }
 T["Menu/Escape/MunShotPhotoMode"] = T["MunShot/UI/Title"]
 
@@ -139,4 +151,9 @@ POSE_ENGLISH = {
     "existential-crisis": "Existential Crisis", "point": "Point", "shrug": "Shrug", "wave": "Wave",
     "butt-scratch": "Butt scratch", "thinking": "Thinking", "fly-back": "Fly back", "fly-down": "Fly down",
     "fly-forward": "Fly forward", "fly-left": "Fly left", "fly-right": "Fly right", "fly-up": "Fly up",
+    # Hand-made poses (Tools/Poses/custom_poses.py)
+    "rock-on": "Rock on", "anime-girl": "Anime Girl", "hanging-on": "Hanging On", "superman": "Superman",
+    "floating-asleep": "Floating Asleep", "spacewalk-tumble": "Spacewalk Tumble", "thumbs-up": "Thumbs Up",
+    "victory-jump": "Victory Jump", "running-away": "Running Away", "sitting-on-the-edge": "Sitting on the Edge",
+    "dramatic-point": "Dramatic Point", "cheerleader": "Cheerleader",
 }

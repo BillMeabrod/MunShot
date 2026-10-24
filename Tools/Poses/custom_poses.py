@@ -454,13 +454,6 @@ def spacewalk_tumble():
     return p, clip
 
 
-def planting_the_flag():
-    """The game's flag-planting animation, held as the pole goes in. (No flag in hand yet.)"""
-    p = Pose(REST)
-    clip = {'ground': ('kerbal_flag_plant', 4.0)}
-    return p, clip
-
-
 def hand_on_hip(p, side):
     """A fist resting on the hip, elbow out to the side and back."""
     out = out_of(side)
@@ -579,7 +572,6 @@ POSES = [
     ('superman', 'Superman', superman),
     ('floating-asleep', 'Floating Asleep', floating_asleep),
     ('spacewalk-tumble', 'Spacewalk Tumble', spacewalk_tumble),
-    ('planting-the-flag', 'Planting the Flag', planting_the_flag),
     ('thumbs-up', 'Thumbs Up', thumbs_up),
     ('victory-jump', 'Victory Jump', victory_jump),
     ('running-away', 'Running Away', running_away),

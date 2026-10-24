@@ -97,7 +97,8 @@ namespace MunShot.Posing
                 foreach (KerbalInfo kerbal in roster.GetAllKerbals())
                     if (kerbal != null && !inScene.Contains(kerbal))
                         listing.Elsewhere.Add(KerbalCandidate.Elsewhere(kerbal));
-                listing.Elsewhere.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));
+                StringComparer byName = Localization.NameOrder;
+                listing.Elsewhere.Sort((a, b) => byName.Compare(a.Name, b.Name));
             }
 
             logInfo?.Invoke($"Photo mode: {listing.InScene.Count} kerbal(s) in the scene and {listing.Elsewhere.Count} elsewhere can be brought in "

@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using I2.Loc;
 
@@ -41,6 +42,13 @@ namespace MunShot
         public const string HintHideUi = "MunShot/UI/HintHideUi";
         public const string HintTakePhoto = "MunShot/UI/HintTakePhoto";
         public const string HintExit = "MunShot/UI/HintExit";
+
+        /// <summary>
+        /// Compares names shown in lists (poses, kerbals) alphabetically, ignoring case, by the rules of the game's
+        /// language rather than Windows', so lists sort the way a player of that language expects.
+        /// </summary>
+        public static StringComparer NameOrder =>
+            StringComparer.Create(LocalizationManager.CurrentCulture ?? CultureInfo.CurrentCulture, ignoreCase: true);
 
         /// <summary>Translates one of MunShot's keys with {0}-style placeholders and fills them in.</summary>
         public static string Format(string key, params object[] args) =>
