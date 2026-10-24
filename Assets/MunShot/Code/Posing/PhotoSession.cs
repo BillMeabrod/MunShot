@@ -25,7 +25,10 @@ namespace MunShot.Posing
             public PosePlayer Player { get; }
             public bool IsReady => Double.State == PhotoDouble.BuildState.Ready;
 
-            /// <summary>Which way is up where the double stands: away from the body the original's vessel orbits.</summary>
+            /// <summary>
+            /// Which way is up where the double stands: away from the body the original's vessel orbits. Only for
+            /// standing it on the ground (<see cref="DropToSurface"/>); upright otherwise means upright on screen.
+            /// </summary>
             public Vector3 Up { get; }
 
             /// <summary>The pose the double holds, or null for its own animation.</summary>
@@ -139,11 +142,13 @@ namespace MunShot.Posing
                     result?.Invoke(Localization.Format("MunShot/Status/NoActiveVessel", candidate.Name));
                     return;
                 }
+                // Brought in upright on screen (the camera's up, as in space, where there's no up), facing the camera;
+                // the planet's up is kept for standing it on the ground later
                 Transform cam = camera.transform;
-                Vector3 up = Planet.UpAt(cam.position + cam.forward * DistanceInFront, cam.up);
-                Place(candidate, camera, up, parent, out Vector3 position, out Quaternion rotation, out string placement);
+                Vector3 planetUp = Planet.UpAt(cam.position + cam.forward * DistanceInFront, cam.up);
+                Place(candidate, camera, cam.up, parent, out Vector3 position, out Quaternion rotation, out string placement);
                 PhotoDouble photoDouble = _factory.Create(candidate, position, rotation, parent);
-                var entry = new Entry(photoDouble, hideOriginal ? new KerbalHider(candidate.Model.gameObject) : null, _newPlayer(), up);
+                var entry = new Entry(photoDouble, hideOriginal ? new KerbalHider(candidate.Model.gameObject) : null, _newPlayer(), planetUp);
                 _entries.Add(entry);
                 Select(entry);
                 _logInfo($"Photo mode: building a double of {candidate}, {placement}.");
@@ -212,12 +217,12 @@ namespace MunShot.Posing
         }
 
         /// <summary>
-        /// Turns a double back to standing straight up (its up along the planet's up), still facing the way it faced,
-        /// turning about the middle of its body so it doesn't jump. A double lying down ends up facing the way its head
-        /// pointed.
+        /// Turns a double upright on screen (its up along <paramref name="up"/>, the camera's), still facing the way it
+        /// faced, turning about the middle of its body so it doesn't jump. A double lying down ends up facing the way its
+        /// head pointed.
         /// </summary>
         /// <returns>False, with <paramref name="message"/> saying why, when there's no built double to stand up.</returns>
-        public bool StandUpright(Entry entry, out string message)
+        public bool StandUpright(Entry entry, Vector3 up, out string message)
         {
             if (entry == null || !entry.IsReady || entry.Root == null)
             {
@@ -226,10 +231,10 @@ namespace MunShot.Posing
             }
 
             Transform root = entry.Root;
-            Vector3 facing = Vector3.ProjectOnPlane(root.forward, entry.Up);
-            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.up, entry.Up);
-            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.right, entry.Up);
-            Quaternion upright = Quaternion.LookRotation(facing.normalized, entry.Up);
+            Vector3 facing = Vector3.ProjectOnPlane(root.forward, up);
+            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.up, up);
+            if (facing.sqrMagnitude < 1e-4f) facing = Vector3.ProjectOnPlane(root.right, up);
+            Quaternion upright = Quaternion.LookRotation(facing.normalized, up);
 
             Vector3 centre = BoundsOf(entry, out Bounds bounds) ? bounds.center : root.position;
             Quaternion turn = upright * Quaternion.Inverse(root.rotation);

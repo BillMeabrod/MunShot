@@ -380,14 +380,14 @@ namespace MunShot.Posing
                 }
                 else
                 {
-                    // Turning is about up; tilting about the camera's sideways and forward directions, kept level
+                    // About the camera's own axes, as in space, where there's no up: turning about the screen's
+                    // vertical, tipping about its sideways, leaning about its depth. So the mouse moves the kerbal
+                    // the way it moves across the screen, however the camera is turned
                     _spinStartMouse = mouse;
                     _spinCentre = Centre();
-                    _turnAxis = Planet.UpAt(_spinCentre, _primary != null ? _primary.Root.up : Vector3.up);
-                    Vector3 sideways = Vector3.Cross(_turnAxis, camera.transform.forward);
-                    if (sideways.sqrMagnitude < 1e-6f) sideways = camera.transform.right;
-                    _tipAxis = sideways.normalized;
-                    _leanAxis = Vector3.Cross(_tipAxis, _turnAxis).normalized;
+                    _turnAxis = camera.transform.up;
+                    _tipAxis = camera.transform.right;
+                    _leanAxis = camera.transform.forward;
                 }
             }
 

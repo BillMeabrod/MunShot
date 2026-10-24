@@ -368,9 +368,22 @@ namespace MunShot
         public void SnapToSurface() =>
             ForEachToPlace(Session.DropToSurface, "MunShot/Status/AllOnSurface", "{0} kerbals are standing on the surface.");
 
-        /// <summary>Turns every double selected for moving (or the posed one, when none are) back upright.</summary>
-        public void StandUpright() =>
-            ForEachToPlace(Session.StandUpright, "MunShot/Status/AllUpright", "{0} kerbals are standing upright.");
+        /// <summary>
+        /// Turns every double selected for moving (or the posed one, when none are) upright on screen: along the
+        /// camera's up, as in space, where there's no up. Snap to surface stands them on the ground instead.
+        /// </summary>
+        public void StandUpright()
+        {
+            UnityEngine.Camera camera = CurrentCamera();
+            if (camera == null)
+            {
+                Status?.Invoke(Localization.Translate("MunShot/Status/NoCamera"));
+                return;
+            }
+            Vector3 up = camera.transform.up;
+            ForEachToPlace((PhotoSession.Entry entry, out string message) => Session.StandUpright(entry, up, out message),
+                           "MunShot/Status/AllUpright", "{0} kerbals are standing upright.");
+        }
 
         // Runs a placing action on the moving selection, or the posed double when nothing's selected for moving. One
         // double says what happened to it; several say how many it worked for, or the first that it didn't

@@ -115,7 +115,7 @@ namespace MunShot
             _right = Key(camera, "Fly Right", "FlyRight", KeyCode.D, "Free camera: fly right.");
             _rollLeft = Key(camera, "Roll Left", "RollLeft", KeyCode.Q, "Tilts the photo camera to the left.");
             _rollRight = Key(camera, "Roll Right", "RollRight", KeyCode.E, "Tilts the photo camera to the right.");
-            _level = Key(camera, "Level Horizon", "LevelHorizon", KeyCode.R, "Takes the tilt off the photo camera.");
+            _level = Key(camera, "Level Horizon", "LevelHorizon", KeyCode.R, "Turns the photo camera back to a level horizon, still looking the same way.");
             _fast = Key(camera, "Fast", "Fast", KeyCode.LeftShift,
                 "Hold to move the photo camera five times faster, speeding up the longer it's held while flying. Also "
                 + "adds kerbals to the selection when clicking or dragging a box, and turns rings in finer steps.");

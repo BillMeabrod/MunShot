@@ -32,7 +32,7 @@ MunShot/UI/HintUpDown,Text,Hint bar: what the mouse wheel does in free camera,Up
 MunShot/UI/HintCircle,Text,Hint bar: what holding right mouse does in orbit camera,Circle,Kreisen,Tourner autour,Gira intorno,Rodear,周回,회전,Krąż,Облёт,环绕,Circular,環繞
 MunShot/UI/HintCloser,Text,Hint bar: what the mouse wheel does in orbit camera,Closer/further,Näher/weiter,Rapprocher/éloigner,Avvicina/allontana,Acercar/alejar,近づく/離れる,가까이/멀리,Bliżej/dalej,Ближе/дальше,拉近/拉远,Aproximar/afastar,拉近/拉遠
 MunShot/UI/HintRoll,Text,Hint bar: what the roll keys do,Roll,Rollen,Roulis,Rollio,Alabeo,ロール,롤,Przechył,Крен,翻滚,Rolagem,翻滾
-MunShot/UI/HintLevel,Text,Hint bar: what the level horizon key does (takes the camera's roll off),Level,Ausrichten,Niveler,Livella,Nivelar,水平に戻す,수평 맞추기,Wypoziomuj,Выровнять,水平校正,Nivelar,水平校正
+MunShot/UI/HintLevel,Text,Hint bar: what the level horizon key does (turns the camera back to a level horizon),Level,Ausrichten,Niveler,Livella,Nivelar,水平に戻す,수평 맞추기,Wypoziomuj,Выровнять,水平校正,Nivelar,水平校正
 MunShot/UI/HintTurn,Text,"Hint bar, while dragging kerbals: holding the right button too turns them",Turn,Drehen,Pivoter,Ruota,Girar,回転,회전,Obróć,Повернуть,旋转,Girar,旋轉
 MunShot/UI/HintLean,Text,"Hint bar, while dragging kerbals: holding this key leans them to the side",Lean,Seitlich neigen,Pencher,Piega di lato,Ladear,横に傾ける,옆으로 기울이기,Przechyl na bok,Наклонить вбок,侧倾,Inclinar para o lado,側傾
 MunShot/UI/HintTip,Text,"Hint bar, while dragging kerbals: holding these keys tips them forward and back",Tip forward/back,Vor/zurück kippen,Basculer avant/arrière,Inclina avanti/indietro,Inclinar adelante/atrás,前後に傾ける,앞뒤로 기울이기,Przechyl w przód/w tył,Наклонить вперёд/назад,前后倾斜,Inclinar para frente/trás,前後傾斜

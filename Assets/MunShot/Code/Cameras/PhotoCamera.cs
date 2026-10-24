@@ -28,23 +28,21 @@ namespace MunShot.Cameras
     /// <item>Free: fly in first person: look around, fly forward, back and sideways, and straight up and down.</item>
     /// <item>Orbit: circle an <see cref="OrbitTarget"/>, looking at it; up and down bring it closer or further.</item>
     /// </list>
-    /// In both, Roll tilts the camera and Level takes the tilt off; Fast and Slow scale every movement. Flying with
-    /// Fast held keeps speeding up the longer it's held, for long distances. The controls come from the keyboard and
-    /// mouse (<see cref="PhotoCameraIntent"/>).
-    /// Looking turns around the planet's up, like a tripod head, so the horizon stays put while you look around and
-    /// tilt is a separate angle on top.
+    /// In both, Roll turns the camera about its look and Level rights it against the planet (straight horizon, same
+    /// heading); Fast and Slow scale every movement. Flying with Fast held keeps speeding up the longer it's held, for
+    /// long distances. The controls come from the keyboard and mouse (<see cref="PhotoCameraIntent"/>).
+    /// Every movement is the camera's own, as in space, where there's no up: looking turns about the camera's up and
+    /// right, flying goes along its look, right and up, and orbiting circles about its up. So left on the mouse or
+    /// keys is always left on the screen, however the camera is turned, upside down included.
     ///
-    /// Where the camera is and which way it looks are kept in the simulation's own terms (<see cref="Position"/>,
-    /// <see cref="Vector"/>), so the floating origin moving under it doesn't move it. It runs on unscaled time: photo
+    /// Where the camera is and how it's turned are kept in the simulation's own terms (<see cref="Position"/>,
+    /// <see cref="Rotation"/>), so the floating origin moving under it doesn't move it. It runs on unscaled time: photo
     /// mode keeps the game paused.
     /// </summary>
     public sealed class PhotoCamera : ICameraShotProvider, ICameraShot, ICameraNearClipProvider
     {
         // Close enough to put the camera right up to a kerbal's face; what Redux's first-person camera uses
         private const float NearClip = 0.05f;
-
-        // Looking never goes quite straight up or down, where "turn left" would have no meaning
-        private const float MinAngleFromVertical = 1f;
 
         // Degrees per second of roll at normal speed
         private const float RollSpeed = 45f;
@@ -76,10 +74,9 @@ namespace MunShot.Cameras
         private IPhysicsSpaceProvider _physicsSpace;
         private bool _gameInputWasEnabled;
 
-        // Where the camera is, which way it looks (always level: roll is kept apart) and its tilt
+        // Where the camera is and how it's turned
         private Position _position;
-        private Vector _forward;
-        private float _roll;
+        private Rotation _rotation;
         private double _fieldOfView;
 
         private float _orbitDistance;
@@ -106,9 +103,9 @@ namespace MunShot.Cameras
         // ICameraShotProvider / ICameraShot / ICameraNearClipProvider: what the game's camera manager reads every frame
         public ICameraShot Shot => this;
         public Position CameraPosition => _position;
-        public Rotation CameraRotation => _physicsSpace.PhysicsToRotation(PhysicsRotation());
-        public Vector CameraForward => ToVector(PhysicsRotation() * Vector3.forward);
-        public Vector CameraUp => ToVector(PhysicsRotation() * Vector3.up);
+        public Rotation CameraRotation => _rotation;
+        public Vector CameraForward => _physicsSpace.PhysicsToVector(PhysicsRotation() * Vector3.forward);
+        public Vector CameraUp => _physicsSpace.PhysicsToVector(PhysicsRotation() * Vector3.up);
         public bool IsOrthographic => false;
         double ICameraShot.FieldOfView => _fieldOfView;
 
@@ -165,7 +162,7 @@ namespace MunShot.Cameras
             _physicsSpace = physicsSpace;
             _position = current.CameraPosition;
             _fieldOfView = current.FieldOfView > 0 ? Mathf.Clamp((float)current.FieldOfView, MinFieldOfView, MaxFieldOfView) : 60.0;
-            StartFrom(physicsSpace.RotationToPhysics(current.CameraRotation));
+            _rotation = current.CameraRotation;
 
             _gameInputWasEnabled = cameraManager.InputEnabled;
             cameraManager.DisableInput();
@@ -269,21 +266,24 @@ namespace MunShot.Cameras
             PhotoCameraIntent intent = _keyboardMouse.Read(mouseTaken, keyboardTaken);
             float speed = intent.Fast ? FastMultiplier : intent.Slow ? SlowMultiplier : 1f;
 
-            // Look (Free) or circle (Orbit): both turn which way the camera faces
-            Vector3 up = PlanetUp();
-            Vector3 forward = Turn(PhysicsForward(up), up, intent.Look.x, -intent.Look.y);
+            // Look (Free) or circle (Orbit): both turn the camera, about its own up (mouse left and right), right (up and
+            // down) and look (roll)
+            Quaternion rotation = PhysicsRotation();
+            float roll = intent.Roll * RollSpeed * speed * deltaTime;
+            rotation = Quaternion.AngleAxis(intent.Look.x, rotation * Vector3.up)
+                       * Quaternion.AngleAxis(-intent.Look.y, rotation * Vector3.right)
+                       * Quaternion.AngleAxis(roll, rotation * Vector3.forward)
+                       * rotation;
+            if (intent.Level) rotation = Levelled(rotation);
+            _rotation = _physicsSpace.PhysicsToRotation(rotation);
 
-            _roll = Mathf.Repeat(_roll + intent.Roll * RollSpeed * speed * deltaTime + 180f, 360f) - 180f;
-            if (intent.Level) _roll = 0f;
-
-            if (Mode == PhotoCameraMode.Orbit) TickOrbit(forward, intent, speed);
-            else TickFree(forward, up, intent, speed, deltaTime);
+            if (Mode == PhotoCameraMode.Orbit) TickOrbit(rotation * Vector3.forward, intent, speed);
+            else TickFree(rotation, intent, speed, deltaTime);
         }
 
-        private void TickFree(Vector3 forward, Vector3 up, PhotoCameraIntent intent, float speed, float deltaTime)
+        private void TickFree(Quaternion rotation, PhotoCameraIntent intent, float speed, float deltaTime)
         {
-            Vector3 right = Vector3.Cross(up, forward).normalized;
-            Vector3 flying = forward * intent.Move.y + right * intent.Move.x;
+            Vector3 flying = rotation * new Vector3(intent.Move.x, 0f, intent.Move.y);
 
             float flySpeed = MunShotSettings.FlySpeed * speed;
             bool boosting = intent.Fast && flying.sqrMagnitude > 0.01f;
@@ -291,9 +291,10 @@ namespace MunShot.Cameras
             float heldSpeed = boosting
                 ? Mathf.Min(flySpeed * Mathf.Pow(2f, _boostSeconds / BoostDoublingSeconds), Mathf.Max(MaxBoostSpeed, flySpeed))
                 : flySpeed;
+            Vector3 up = rotation * Vector3.up;
             Vector3 offset = Vector3.ClampMagnitude(flying, 1f) * (heldSpeed * deltaTime) + up * (intent.Steps * flySpeed * WheelStepSeconds);
 
-            SetPose(PhysicsPosition() + offset, forward);
+            _position = _physicsSpace.PhysicsToPosition(PhysicsPosition() + offset);
         }
 
         private void TickOrbit(Vector3 forward, PhotoCameraIntent intent, float speed)
@@ -307,20 +308,22 @@ namespace MunShot.Cameras
             }
             float closer = Mathf.Pow(OrbitZoomPerStep, intent.Steps * speed);
             _orbitDistance = Mathf.Clamp(_orbitDistance * closer, MinOrbitDistance, MaxOrbitDistance);
-            SetPose(centre - forward * _orbitDistance, forward);
+            _position = _physicsSpace.PhysicsToPosition(centre - forward * _orbitDistance);
         }
 
-        // Orbit starts from where the camera is: facing the target, at the distance it's at, so nothing jumps
+        // Orbit starts from where the camera is: turned the least it can be to face the target, at the distance it's
+        // at, so nothing jumps
         private bool BeginOrbit()
         {
             if (Target == null || !Target.TryGetCentre(out Vector3 centre)) return false;
+            Quaternion rotation = PhysicsRotation();
             Vector3 toTarget = centre - PhysicsPosition();
             float distance = toTarget.magnitude;
-            if (distance < 1e-3f) toTarget = PhysicsForward(PlanetUp());
-            Vector3 up = PlanetUp();
-            Vector3 forward = KeepOffVertical(toTarget.normalized, up);
+            if (distance > 1e-3f)
+                rotation = Quaternion.FromToRotation(rotation * Vector3.forward, toTarget / distance) * rotation;
+            _rotation = _physicsSpace.PhysicsToRotation(rotation);
             _orbitDistance = Mathf.Clamp(distance, MinOrbitDistance, MaxOrbitDistance);
-            SetPose(centre - forward * _orbitDistance, forward);
+            _position = _physicsSpace.PhysicsToPosition(centre - rotation * Vector3.forward * _orbitDistance);
             return true;
         }
 
@@ -333,50 +336,18 @@ namespace MunShot.Cameras
             Changed?.Invoke();
         }
 
-        // The camera's starting look and tilt, read off a rotation: the look is where it points, the tilt how far its
-        // up leans away from the planet's up around that look
-        private void StartFrom(Quaternion rotation)
+        // The camera turned upright against the planet, still looking the same way: a straight horizon. Looking straight
+        // up or down, it keeps the way the top of the picture points, levelled
+        private Quaternion Levelled(Quaternion rotation)
         {
             Vector3 up = PlanetUp();
-            Vector3 forward = KeepOffVertical(rotation * Vector3.forward, up);
-            Quaternion level = Quaternion.LookRotation(forward, up);
-            _roll = Vector3.SignedAngle(level * Vector3.up, rotation * Vector3.up, forward);
-            _forward = ToVector(forward);
+            Vector3 forward = rotation * Vector3.forward;
+            if (Vector3.Cross(forward, up).sqrMagnitude > 1e-6f) return Quaternion.LookRotation(forward, up);
+            Vector3 heading = Vector3.ProjectOnPlane(rotation * Vector3.up, up);
+            return heading.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(forward, heading) : rotation;
         }
 
-        private void SetPose(Vector3 physicsPosition, Vector3 forward)
-        {
-            _position = _physicsSpace.PhysicsToPosition(physicsPosition);
-            _forward = ToVector(forward);
-        }
-
-        // Yaw turns around the planet's up; pitch around the camera's level right, never past straight up or down
-        private static Vector3 Turn(Vector3 forward, Vector3 up, float yawDegrees, float pitchDegrees)
-        {
-            forward = Quaternion.AngleAxis(yawDegrees, up) * forward;
-            Vector3 right = Vector3.Cross(up, forward).normalized;
-            float fromUp = Vector3.Angle(up, forward);
-            float pitch = Mathf.Clamp(pitchDegrees, MinAngleFromVertical - fromUp, 180f - MinAngleFromVertical - fromUp);
-            return (Quaternion.AngleAxis(pitch, right) * forward).normalized;
-        }
-
-        private static Vector3 KeepOffVertical(Vector3 forward, Vector3 up)
-        {
-            float fromUp = Vector3.Angle(up, forward);
-            if (fromUp >= MinAngleFromVertical && fromUp <= 180f - MinAngleFromVertical) return forward.normalized;
-            // Straight up or down: lean towards any horizontal direction
-            Vector3 horizontal = Vector3.Cross(up, Mathf.Abs(Vector3.Dot(up, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
-            return Turn(horizontal, up, 0f, fromUp < 90f ? -(90f - MinAngleFromVertical) : 90f - MinAngleFromVertical);
-        }
-
-        private Quaternion PhysicsRotation()
-        {
-            Vector3 up = PlanetUp();
-            Vector3 forward = PhysicsForward(up);
-            return Quaternion.AngleAxis(_roll, forward) * Quaternion.LookRotation(forward, up);
-        }
-
-        private Vector3 PhysicsForward(Vector3 up) => KeepOffVertical(_physicsSpace.VectorToPhysics(_forward), up);
+        private Quaternion PhysicsRotation() => _physicsSpace.RotationToPhysics(_rotation);
 
         private Vector3 PhysicsPosition() => _physicsSpace.PositionToPhysics(_position);
 
@@ -384,6 +355,5 @@ namespace MunShot.Cameras
         // kerbals on EVA (KerbalBehavior's horizon up). The physics space's own up when there's no body to go by.
         private Vector3 PlanetUp() => Planet.UpAt(PhysicsPosition(), _physicsSpace.transform.up);
 
-        private Vector ToVector(Vector3 v) => _physicsSpace.PhysicsToVector(v);
     }
 }

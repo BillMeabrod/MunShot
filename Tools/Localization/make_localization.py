@@ -49,7 +49,7 @@ rows = [
     ("MunShot/UI/HintCircle", "Hint bar: what holding right mouse does in orbit camera", "Circle"),
     ("MunShot/UI/HintCloser", "Hint bar: what the mouse wheel does in orbit camera", "Closer/further"),
     ("MunShot/UI/HintRoll", "Hint bar: what the roll keys do", "Roll"),
-    ("MunShot/UI/HintLevel", "Hint bar: what the level horizon key does (takes the camera's roll off)", "Level"),
+    ("MunShot/UI/HintLevel", "Hint bar: what the level horizon key does (turns the camera back to a level horizon)", "Level"),
     ("MunShot/UI/HintTurn", "Hint bar, while dragging kerbals: holding the right button too turns them", "Turn"),
     ("MunShot/UI/HintLean", "Hint bar, while dragging kerbals: holding this key leans them to the side", "Lean"),
     ("MunShot/UI/HintTip", "Hint bar, while dragging kerbals: holding these keys tips them forward and back", "Tip forward/back"),
