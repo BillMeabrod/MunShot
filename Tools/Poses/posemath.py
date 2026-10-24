@@ -100,8 +100,10 @@ ARM_POINTS = ('elbow', 'hand', 'hand_ach')
 FINGERS = ('pointer', 'middle', 'pinky', 'thumb')
 FINGERTIP = 0.03
 
-# How far (degrees) a forearm may twist its palm either way from where it sits untwisted
+# How far (degrees) a forearm may twist its palm either way from where it sits untwisted, and an upper arm roll about
+# itself either way from where it sits when swung straight round from rest
 MAX_FOREARM_TWIST = 90
+MAX_UPPER_ARM_TWIST = 35
 
 # The helmet's shell (mesh_helmet_01's bounds, with the visor's bulge at the front), in body space at rest, as a
 # rounded box (|x/a|^3 + |y/b|^3 + |z/c|^3 = 1; the shell stays wide further down than an ellipsoid would). It hangs on
@@ -118,14 +120,38 @@ BODY_CENTRE = (0.0, 0.28, 0.02)
 BODY_HALF_SIZE = (0.13, 0.10, 0.13)
 
 
+class _Watched(dict):
+    """A dict that calls `changed` whenever it's written to, so a Pose can drop results worked out from it."""
+
+    def __init__(self, changed):
+        super().__init__()
+        self._changed = changed
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self._changed()
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        self._changed()
+
+    def _refuse(self, *args, **kwargs):
+        raise TypeError('Set pose entries one at a time, so cached results are dropped.')
+
+    update = setdefault = pop = popitem = clear = _refuse
+
+
 class Pose:
     """One pose being written: each move sets a bone's local rotation; bones not moved aren't in the pose."""
 
     def __init__(self, rest):
         self.rest = rest
-        self.bones = {}
-        self.turns = {}
-        self.moves = {}
+        # Each bone's body-space rotation and position are worked out from its parents again and again (the reach
+        # solver asks thousands of times), so they're kept until the pose changes
+        self._world, self._posed, self._position = {}, {}, {}
+        self.bones = _Watched(self._changed)
+        self.turns = _Watched(self._changed)
+        self.moves = _Watched(self._changed)
         self.eyes = None
         self.lashes = False
 
@@ -158,6 +184,11 @@ class Pose:
             raise ValueError(f"'{bone}' is already set by this pose; a bone is either set or turned.")
         parent_world = self._parent_rest_world(bone)
         self.turns[bone] = mul(mul(inv(parent_world), rotation), parent_world)
+
+    def _changed(self):
+        self._world.clear()
+        self._posed.clear()
+        self._position.clear()
 
     def _check(self, bone):
         if bone not in self.rest:
@@ -193,7 +224,9 @@ class Pose:
         """A bone's rotation in body space with this pose applied to it and its parents (unposed ones at rest)."""
         if bone not in self.rest:
             return IDENTITY
-        return mul(self.world(self.rest[bone].parent), self.bones.get(bone, self.rest[bone].local))
+        if bone not in self._world:
+            self._world[bone] = mul(self.world(self.rest[bone].parent), self.bones.get(bone, self.rest[bone].local))
+        return self._world[bone]
 
     def aim(self, bone, along, target, side, target_side):
         """
@@ -216,14 +249,18 @@ class Pose:
         """A bone's body-space rotation with this pose's sets and turns (turns applied to the rest pose)."""
         if bone not in self.rest:
             return IDENTITY
-        rest = self.rest[bone]
-        local = self.bones.get(bone)
-        if local is None:
-            local = mul(self.turns[bone], rest.local) if bone in self.turns else rest.local
-        return mul(self._posed_world(rest.parent), local)
+        if bone not in self._posed:
+            rest = self.rest[bone]
+            local = self.bones.get(bone)
+            if local is None:
+                local = mul(self.turns[bone], rest.local) if bone in self.turns else rest.local
+            self._posed[bone] = mul(self._posed_world(rest.parent), local)
+        return self._posed[bone]
 
     def position(self, bone):
         """A bone's position in body space (metres) with this pose applied."""
+        if bone in self._position:
+            return self._position[bone]
         rest = self.rest[bone]
         if rest.parent not in self.rest:
             return rest.position
@@ -232,6 +269,7 @@ class Pose:
         at = _add(self.position(rest.parent), rotate(parent_turn, _sub(rest.position, parent.position)))
         if bone in self.moves:
             at = _add(at, rotate(self._posed_world(rest.parent), self.moves[bone]))
+        self._position[bone] = at
         return at
 
     def tip(self, bone, length):
@@ -278,12 +316,19 @@ class Pose:
         front = (0, 1, 0)
         self.at_rest(f'{side}_collar')
 
+        # The upper arm as it sits at rest under its (posed) parents: the way it points and its front
+        at_rest = mul(self.world(self.rest[upper].parent), self.rest[upper].local)
+        rest_along, rest_front = rotate(at_rest, (-1, 0, 0)), rotate(at_rest, front)
+        max_twist = math.radians(MAX_UPPER_ARM_TWIST)
+
         def place(v):
             yaw, pitch, twist, bend = v
             u = (math.cos(pitch) * math.sin(yaw), math.sin(pitch), math.cos(pitch) * math.cos(yaw))
-            # The way the elbow bends: square to the upper arm, turned about it by the twist
-            n0 = _normalize(_cross(u, (0.0, 1.0, 0.0)) if abs(u[1]) < 0.95 else _cross(u, (0.0, 0.0, 1.0)))
-            n = rotate(turn(u, math.degrees(twist)), n0)
+            # The way the elbow bends: the upper arm's front swung straight round from rest to its new direction,
+            # then rolled about the arm by the twist, at most MAX_UPPER_ARM_TWIST (checked in game: rolling it freely
+            # to aim the elbow wrung the shoulder)
+            n0 = rotate(_swing(rest_along, u), rest_front)
+            n = rotate(turn(u, math.degrees(max(-max_twist, min(max_twist, twist)))), n0)
             bent = max(0.0, min(math.radians(150), bend))
             f = _add(_scale(u, math.cos(bent)), _scale(n, math.sin(bent)))
             fore_front = _add(_scale(u, -math.sin(bent)), _scale(n, math.cos(bent)))
@@ -305,6 +350,10 @@ class Pose:
             n, f = place(v)
             c = 1e4 * sum(m * m for m in _sub(point(), target))
             c += 1e2 * (max(0.0, v[3] - math.radians(150)) + max(0.0, -v[3])) ** 2
+            c += 1e2 * max(0.0, abs(v[2]) - max_twist) ** 2
+            # Rolling the upper arm only as far as it helps: each radian costs about as much as the elbow facing
+            # the wrong way
+            c += 0.1 * v[2] ** 2
             if hand:
                 wrist = math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(f, _normalize(hand))))))
                 c += 1e1 * max(0.0, wrist - math.radians(80)) ** 2
@@ -322,7 +371,7 @@ class Pose:
         d = _normalize(_sub(target, self.position(upper)))
         yaw0, pitch0 = math.atan2(d[0], d[2]), math.asin(max(-1.0, min(1.0, d[1])))
         best = None
-        for twist0 in (0.0, 1.57, 3.14, 4.71):
+        for twist0 in (-0.6, 0.0, 0.6):
             for bend0 in (0.3, 1.2):
                 v, c = _nelder_mead(cost, [yaw0, pitch0, twist0, bend0], 0.4)
                 if best is None or c < best[1]:
@@ -348,6 +397,20 @@ def _to_euler_list(rotations):
             raise ValueError(f'{bone}: Euler angles {e} do not round-trip')
         out[bone] = [round(a, 2) for a in e]
     return out
+
+
+def _swing(a, b):
+    """The smallest rotation taking direction `a` to direction `b`."""
+    a, b = _normalize(a), _normalize(b)
+    axis = _cross(a, b)
+    sin = math.sqrt(sum(c * c for c in axis))
+    cos = sum(x * y for x, y in zip(a, b))
+    if sin < 1e-9:
+        if cos > 0:
+            return IDENTITY
+        # Opposite: half a turn about any axis square to them
+        axis = _cross(a, (0.0, 1.0, 0.0) if abs(a[1]) < 0.9 else (1.0, 0.0, 0.0))
+    return turn(axis, math.degrees(math.atan2(sin, cos)))
 
 
 def _twist_towards(v, want, axis, limit):

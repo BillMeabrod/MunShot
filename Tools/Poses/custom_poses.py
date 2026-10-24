@@ -4,7 +4,9 @@ Each pose is a recipe: optionally a game clip to start from (as the stock poses 
 directions (see posemath.py), turned into the bones a pose file sets ("bones") or turns further from the clip
 ("turns"). Bones a pose doesn't touch keep the clip, or the game's animation. Edit a recipe here, never the JSON by
 hand.
-Run: python Tools/Poses/custom_poses.py
+Run: python Tools/Poses/custom_poses.py                  (every pose)
+     python Tools/Poses/custom_poses.py superman cheerleader   (just these; the rest are kept from custom.json)
+Rebuild every pose after changing anything they share (posemath.py, fist(), the other helpers).
 """
 import json
 import os
@@ -87,14 +89,25 @@ def mirrored(rotation):
     return (-x, -y, z, w)
 
 
-def fist(p, side):
-    """The game's thumbs-up fingers (THUMBS_UP_FINGERS_RIGHT) with the game fist's thumb across them."""
-    for joint, rotation in THUMBS_UP_FINGERS_RIGHT.items():
-        p.set_local(f'{side}_{joint}', rotation if side == 'r' else mirrored(rotation))
+def curled_finger(p, side, finger):
+    """A finger rolled into the palm, as the game's thumbs-up hand has it (THUMBS_UP_FINGERS_RIGHT)."""
+    for j in (1, 2, 3):
+        rotation = THUMBS_UP_FINGERS_RIGHT[f'{finger}_0{j}']
+        p.set_local(f'{side}_{finger}_0{j}', rotation if side == 'r' else mirrored(rotation))
+
+
+def tucked_thumb(p, side):
+    """The thumb across curled fingers, as the game's fist has it (FIST_THUMB_LEFT), swung FIST_THUMB_OUT less."""
     for joint, rotation in FIST_THUMB_LEFT.items():
         p.set_local(f'{side}_{joint}', rotation if side == 'l' else mirrored(rotation))
     # thumb_across swings +angle across the palm on either side, so -angle swings it back out
     p.set_local(f'{side}_thumb_01', mul(turn(Y, -FIST_THUMB_OUT * out_of(side)), p.bones[f'{side}_thumb_01']))
+
+
+def fist(p, side):
+    for finger in FINGERS:
+        curled_finger(p, side, finger)
+    tucked_thumb(p, side)
 
 
 
@@ -202,15 +215,11 @@ def rock_on(slant=1):
     assert close(rotate(p.world('r_hand'), (-1, 0, 0)), fingers_up), 'hand should point up'
     assert rotate(p.world('r_hand'), (0, -1, 0))[2] > 0.9, 'palm should face forward'
 
-    # Horns: pointer and pinky straight; middle finger curled into the palm (fingers curl about their own +Z); thumb
-    # swung across the palm towards the fingers (about the hand's up axis at rest) and curled over the middle finger
+    # Horns: pointer and pinky straight, the middle finger rolled into the palm and the thumb tucked over it, as the
+    # game's own hands curl them (checked in game: curling each joint a set angle crumpled them together)
     p.at_rest('r_pointer_01', 'r_pointer_02', 'r_pointer_03', 'r_pinky_01', 'r_pinky_02', 'r_pinky_03')
-    p.bend('r_middle_01', Z, 85)
-    p.bend('r_middle_02', Z, 95)
-    p.bend('r_middle_03', Z, 65)
-    p.turn('r_thumb_01', turn(Y, 45))
-    p.bend('r_thumb_02', Z, 30)
-    p.bend('r_thumb_03', Z, 35)
+    curled_finger(p, 'r', 'middle')
+    tucked_thumb(p, 'r')
 
     # Screaming: jaw open as wide as the helmet allows (the lower jaw turns about the kerbal's right axis, its own +Z;
     # checked in game: 20 degrees or more pokes the chin out under the helmet's neck ring), the upper jaw lifted a
@@ -248,6 +257,9 @@ def anime_girl():
     # (Checked in game: kerbal arms can't put fingers leaning in towards the head clear of the helmet's side; held
     # forward, with the fingers upright, they touch the helmet's front, and still a little tipped 35 degrees forward,
     # so they tip 45)
+    # The hands go where a straight arm pointing `arm` puts them (checked in game: there they clear the helmet), but
+    # the arm gets there through the reach solver, which rolls the upper arm only a little and turns the palm with
+    # the forearm (checked in game: aiming each arm bone to face its palm forward wrung the shoulders)
     for side, out, palm in (('r', 1, (0, 0, -1)), ('l', -1, (0, 0, 1))):
         arm = unit((0.30 * out, -0.25, 0.92))
         fingers_up = unit((-0.30 * out, 0.68, 0.67))     # up, leaning in about 20 degrees and forward about 45
@@ -255,19 +267,16 @@ def anime_girl():
         p.aim(f'{side}_shoulder', (-1, 0, 0), arm, palm, palm_forward)
         p.aim(f'{side}_elbow', (-1, 0, 0), arm, palm, palm_forward)
         p.aim(f'{side}_hand', (-1, 0, 0), fingers_up, (0, -1, 0), palm_forward)
+        reach(p, side, p.position(f'{side}_hand_ach'), palm=palm_forward, hand=fingers_up, hand_palm=palm_forward)
         assert close(rotate(p.world(f'{side}_hand'), (-1, 0, 0)), fingers_up), f'{side} hand should point up'
         # (tipping the fingers forward tips the palm up)
         assert rotate(p.world(f'{side}_hand'), (0, -1, 0))[2] > 0.65, f'{side} palm should face forward'
 
-        # Peace sign: pointer and middle straight, pinky curled into the palm, thumb swung across the palm and curled
-        # over the pinky. Fingers curl about their own +Z on both sides; the thumb swings the mirrored way on the left
+        # Peace sign: pointer and middle straight, the pinky rolled into the palm and the thumb tucked over it, as the
+        # game's own hands curl them (checked in game: curling each joint a set angle hooked them like claws)
         p.at_rest(*(f'{side}_{finger}_0{j}' for finger in ('pointer', 'middle') for j in (1, 2, 3)))
-        p.bend(f'{side}_pinky_01', Z, 85)
-        p.bend(f'{side}_pinky_02', Z, 95)
-        p.bend(f'{side}_pinky_03', Z, 65)
-        p.turn(f'{side}_thumb_01', turn(Y, 50 * out))
-        p.bend(f'{side}_thumb_02', Z, 35)
-        p.bend(f'{side}_thumb_03', Z, 35)
+        curled_finger(p, side, 'pinky')
+        tucked_thumb(p, side)
 
     # Right leg kicked up behind: the thigh swings a little back, the knee bends so the shin points back and slightly
     # up, and the foot points back with its sole to the sky. Leg bones point along their own -X; the thigh and shin's
@@ -411,8 +420,8 @@ def floating_asleep():
     p = Pose(REST)
     clip = {'ground': ('kerbal_emote_sleeping', 2.0), 'jetpack': ('kerbal_jp_emote_sleeping', 2.0)}
     # Head drooping further forward than the emote has it (about +X, + tips the face down), helmet and all
-    p.turn_animated('neck_ach', turn(X, 20))
-    p.turn_animated('head', turn(X, 12))
+    p.turn_animated('neck_ach', turn(X, 30))
+    p.turn_animated('head', turn(X, 20))
     for side in ('r', 'l'):
         out = out_of(side)
         reach(p, side, (0.25 * out, 0.27, 0.17), palm=(0.3 * out, -0.9, 0.3), hand=(0.35 * out, -0.25, 0.9),
@@ -545,8 +554,8 @@ def dramatic_point():
 
 def cheerleader():
     """
-    A cheer: right fist up high, left fist down low on the other diagonal, right knee up with its foot at the left
-    knee, hips swayed, big smile.
+    A cheer: right fist up high, left fist down low on the other diagonal, right knee lifted high in front with the
+    toes pointed down, hips swayed, big smile.
     """
     p = Pose(REST)
     clip = {'ground': ('kerbal_exp_happy_02', 1.0)}
@@ -556,10 +565,9 @@ def cheerleader():
     fling(p, 'l', (-0.75, -0.65, 0.1), palm=(0, 0, 1))
     fist(p, 'l')
     leg(p, 'l', (-0.04, -1, 0.0), (-0.03, -1, 0.0))
-    leg(p, 'r', (0.45, -0.15, 0.88), (0, -1, 0))
-    # The shin swings in from the raised knee to the standing knee
-    knee, target = p.position('r_knee'), p.position('l_knee')
-    leg(p, 'r', (0.45, -0.15, 0.88), tuple(t - k for t, k in zip(target, knee)), (-0.3, -0.6, 0.7))
+    # Thigh lifted level in front and a little out, shin hanging straight down, toes pointed. (Checked in game: with
+    # kerbal legs this short, a foot brought in to the other knee crosses the hips sideways, sole out)
+    leg(p, 'r', (0.3, -0.05, 0.95), (0.08, -1, 0.05), (0.05, -0.95, 0.3))
     p.turn_animated('head', turn(Z, 12))
     return p, clip
 
@@ -630,11 +638,30 @@ def write(poses):
         f.write(text)
 
 
-def main():
-    poses = [entry(*p) for p in POSES]
+def written():
+    """The poses in custom.json as last written, by id; none if there's no file yet."""
+    if not os.path.exists(OUT):
+        return {}
+    with open(OUT, encoding='utf-8') as f:
+        return {e['id']: e for e in json.load(f)['poses']}
+
+
+def main(only):
+    known = [pose_id for pose_id, _, _ in POSES]
+    unknown = [pose_id for pose_id in only if pose_id not in known]
+    if unknown:
+        sys.exit(f'No pose {", ".join(unknown)}. Poses: {", ".join(known)}')
+    kept = written() if only else {}
+    poses, rebuilt = [], 0
+    for pose_id, name, recipe in POSES:
+        if only and pose_id not in only and pose_id in kept:
+            poses.append(dict(kept[pose_id], name=name))
+        else:
+            poses.append(entry(pose_id, name, recipe))
+            rebuilt += 1
     write(poses)
-    print(f'{len(poses)} poses -> {os.path.normpath(OUT)}')
+    print(f'{len(poses)} poses ({rebuilt} rebuilt) -> {os.path.normpath(OUT)}')
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
