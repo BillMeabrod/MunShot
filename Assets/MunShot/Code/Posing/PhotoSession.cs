@@ -200,7 +200,9 @@ namespace MunShot.Posing
             }
 
             entry.Bones ??= SurfaceSnap.FindBones(entry.Root);
-            if (!SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch()))
+            bool dropped = SurfaceSnap.TryDrop(entry.Root, entry.Bones, entry.Up, DropReach, IgnoredInSurfaceSearch(), out string landedOn);
+            _logInfo($"Photo mode: snapping {entry.Double.Source.Name} to the surface: {landedOn}.");
+            if (!dropped)
             {
                 message = Localization.Format("MunShot/Status/NothingBelow", DropReach, entry.Double.Source.Name);
                 return false;
