@@ -26,6 +26,8 @@ namespace MunShot.UI
         private bool _hasKerbals;
         private string _selectedName = string.Empty;
         private string _fieldOfViewText = string.Empty;
+        private string _focusDistanceText = string.Empty;
+        private string _apertureText = string.Empty;
         private string _toast = string.Empty;
         private bool _toastVisible;
         private bool _isOrbiting;
@@ -48,6 +50,7 @@ namespace MunShot.UI
             StandUprightCommand = new RelayCommand(photoMode.StandUpright);
             FreeCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Free));
             OrbitCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Orbit));
+            FocusOnSelectedCommand = new RelayCommand(photoMode.FocusOnSelected);
             TakePhotoCommand = new RelayCommand(photoMode.TakePhoto);
         }
 
@@ -64,6 +67,9 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand StandUprightCommand { get; }
         [CreateProperty] public RelayCommand FreeCameraCommand { get; }
         [CreateProperty] public RelayCommand OrbitCameraCommand { get; }
+
+        /// <summary>Focuses on the selected kerbal, turning depth of field on.</summary>
+        [CreateProperty] public RelayCommand FocusOnSelectedCommand { get; }
 
         /// <summary>The shutter: takes the photo, as the screenshot key does.</summary>
         [CreateProperty] public RelayCommand TakePhotoCommand { get; }
@@ -107,6 +113,22 @@ namespace MunShot.UI
         {
             get => _fieldOfViewText;
             set => SetField(ref _fieldOfViewText, value);
+        }
+
+        /// <summary>How far away things are sharp, as shown next to its slider ("12 m").</summary>
+        [CreateProperty]
+        public string FocusDistanceText
+        {
+            get => _focusDistanceText;
+            set => SetField(ref _focusDistanceText, value);
+        }
+
+        /// <summary>The aperture, as shown next to the blur slider ("f/2.8").</summary>
+        [CreateProperty]
+        public string ApertureText
+        {
+            get => _apertureText;
+            set => SetField(ref _apertureText, value);
         }
 
         /// <summary>The last thing photo mode had to say (brought in, saved, nothing below to stand on…).</summary>

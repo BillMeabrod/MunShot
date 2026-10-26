@@ -72,6 +72,10 @@ namespace MunShot.UI
         private Button _free;
         private Button _orbit;
         private Slider _fieldOfView;
+        private Toggle _depthOfField;
+        private VisualElement _focusControls;
+        private Slider _focusDistance;
+        private Slider _blur;
 
         /// <summary>
         /// False once the game has torn down the UI the overlay lived in (it builds its UI afresh for each campaign);
@@ -232,6 +236,10 @@ namespace MunShot.UI
             _free = Required<Button>(root, "camera-free");
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
+            _depthOfField = Required<Toggle>(root, "depth-of-field");
+            _focusControls = Required<VisualElement>(root, "focus-controls");
+            _focusDistance = Required<Slider>(root, "focus-distance");
+            _blur = Required<Slider>(root, "blur");
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
@@ -247,6 +255,9 @@ namespace MunShot.UI
                     ShowFieldOfView();
                 });
             }
+            _depthOfField?.RegisterValueChangedCallback(change => _photoMode.SetDepthOfField(change.newValue));
+            _focusDistance?.RegisterValueChangedCallback(change => _photoMode.SetFocusDistance(FocusDistanceAt(change.newValue)));
+            _blur?.RegisterValueChangedCallback(change => _photoMode.SetAperture(ApertureAt(change.newValue)));
 
             ShowTab(_tab);
             Refresh();
@@ -368,6 +379,7 @@ namespace MunShot.UI
             RefreshOrbitTargets(camera);
             _fieldOfView?.SetValueWithoutNotify(camera.FieldOfView);
             ShowFieldOfView();
+            RefreshFocus(_photoMode.Look);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
         }
 
@@ -433,6 +445,26 @@ namespace MunShot.UI
             element?.EnableInClassList(ActiveClass, active);
             element?.EnableInClassList(SelectedClass, active);
         }
+
+        private void RefreshFocus(PhotoLook look)
+        {
+            _depthOfField?.SetValueWithoutNotify(look.DepthOfField);
+            _focusControls?.SetEnabled(look.DepthOfField);
+            _focusDistance?.SetValueWithoutNotify(SliderAt(look.FocusDistance, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance));
+            _blur?.SetValueWithoutNotify(SliderAt(look.Aperture, PhotoLook.MaxAperture, PhotoLook.MinAperture));
+            _model.FocusDistanceText = look.FocusDistance.ToString(look.FocusDistance < 10f ? "0.0" : "0", CultureInfo.CurrentCulture)
+                                       + " " + KSP.Units.SymbolMeters;
+            _model.ApertureText = "f/" + look.Aperture.ToString("0.#", CultureInfo.CurrentCulture);
+        }
+
+        // The focus and blur sliders run from 0 to 1 along a curve, as a lens's rings do: each step is the same share
+        // nearer or further (a few centimetres up close, hundreds of metres far off), and each step of blur the same
+        // fraction of an f-stop. Blur runs from the narrowest aperture (least blur) to the widest
+        private static float FocusDistanceAt(float slider) => ValueAt(slider, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
+        private static float ApertureAt(float slider) => ValueAt(slider, PhotoLook.MaxAperture, PhotoLook.MinAperture);
+
+        private static float ValueAt(float slider, float from, float to) => from * Mathf.Pow(to / from, Mathf.Clamp01(slider));
+        private static float SliderAt(float value, float from, float to) => Mathf.Clamp01(Mathf.Log(value / from) / Mathf.Log(to / from));
 
         private void ShowFieldOfView() =>
             _model.FieldOfViewText = _photoMode.Camera.FieldOfView.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;

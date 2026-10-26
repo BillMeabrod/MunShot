@@ -158,7 +158,7 @@
 }
 
 .pm-value {
-    min-width: 40px;
+    min-width: 52px;
     -unity-text-align: middle-right;
 }
 

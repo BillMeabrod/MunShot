@@ -81,6 +81,8 @@
     "Unity.Addressables",
     "Unity.ResourceManager",
     "Unity.InputSystem",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime",
     "uitkforksp2.controls.Runtime"
   ]
 }

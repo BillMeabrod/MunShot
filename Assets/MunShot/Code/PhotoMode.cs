@@ -15,9 +15,10 @@ namespace MunShot
 {
     /// <summary>
     /// Photo mode itself, apart from any window showing it. Opening it pauses the game, hides the game's UI, locks the
-    /// game's controls and hands the camera to the <see cref="PhotoCamera"/>; closing it puts all of that back and
-    /// takes every photo double out, so the scene is exactly as it was. In between it holds the photo session (the
-    /// doubles, their poses, helmets and handles), the camera and photo capture, and everything the UI offers on them.
+    /// game's controls, hands the camera to the <see cref="PhotoCamera"/> and lays photo mode's own look over the game's
+    /// (<see cref="PhotoLook"/>); closing it puts all of that back and takes every photo double out, so the scene is
+    /// exactly as it was. In between it holds the photo session (the doubles, their poses, helmets and handles), the
+    /// camera, the look and photo capture, and everything the UI offers on them.
     /// The player's window and the developer's pose lab both work through it; neither owns any of this.
     /// </summary>
     public sealed class PhotoMode
@@ -39,6 +40,7 @@ namespace MunShot
         public PhotoSession Session { get; }
         public DoubleManipulator Manipulator { get; }
         public PhotoCamera Camera { get; }
+        public PhotoLook Look { get; }
         public PhotoCapture Capture { get; }
         /// <summary>The pose presets, read from the mod's pose files again each time photo mode opens.</summary>
         public IReadOnlyList<PosePreset> Presets { get; private set; } = Array.Empty<PosePreset>();
@@ -83,6 +85,7 @@ namespace MunShot
             _pause = new GamePause(Info, Warn);
             _uiHider = new UiHider(Info, Warn);
             _inputLock = new PhotoModeInputLock(Info, Warn);
+            Look = new PhotoLook(Info, Warn);
             Manipulator = new DoubleManipulator(session, Info, message => _logger.LogError(message));
 
             Session.EntryChanged += OnEntryChanged;
@@ -126,6 +129,7 @@ namespace MunShot
             _pause.Engage();
             _inputLock.Engage();
             _uiHider.Engage();
+            Look.Engage();
             ListenToScreenshotKey(true);
 
             UnityEngine.Camera view = CurrentCamera();
@@ -157,6 +161,7 @@ namespace MunShot
             ListenToScreenshotKey(false);
             Capture.Cancel();
             Camera.Release();
+            Look.Release();
             _uiHider.Release();
             _inputLock.Release();
             _pause.Release();
@@ -179,6 +184,7 @@ namespace MunShot
             Capture.Tick();
             Session.Tick();
             if (!IsOpen) return;
+            Look.Tick(CurrentCamera());
 
             // While a photo is taken the handles are hidden and the camera holds still; while the UI is hidden to
             // frame the shot, the handles are too but the camera moves
@@ -420,6 +426,57 @@ namespace MunShot
         }
 
         public void TakePhoto() => Capture.Take();
+
+        // ---- Look ----
+
+        public void SetDepthOfField(bool on)
+        {
+            Look.DepthOfField = on;
+            RaiseChanged();
+        }
+
+        public void SetFocusDistance(float metres)
+        {
+            Look.FocusDistance = Mathf.Clamp(metres, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
+            RaiseChanged();
+        }
+
+        public void SetAperture(float fNumber)
+        {
+            Look.Aperture = Mathf.Clamp(fNumber, PhotoLook.MinAperture, PhotoLook.MaxAperture);
+            RaiseChanged();
+        }
+
+        /// <summary>
+        /// Focuses on the selected kerbal: how far in front of the camera their middle is (depth of field measures
+        /// along the camera's look, not straight to them). Turns depth of field on, as that's what focusing is for.
+        /// </summary>
+        public void FocusOnSelected()
+        {
+            PhotoSession.Entry entry = ReadySelected();
+            if (entry == null) return;
+            UnityEngine.Camera camera = CurrentCamera();
+            if (camera == null)
+            {
+                Status?.Invoke(Localization.Translate("MunShot/Status/NoCamera"));
+                return;
+            }
+            string name = entry.Double.Source.Name;
+            if (!PhotoSession.BoundsOf(entry, out Bounds bounds))
+            {
+                _logger.LogWarning($"Photo mode: can't focus on {name}; their double has no bounds.");
+                return;
+            }
+            float depth = Vector3.Dot(bounds.center - camera.transform.position, camera.transform.forward);
+            if (depth < PhotoLook.MinFocusDistance)
+            {
+                Status?.Invoke(Localization.Format("MunShot/Status/FocusBehind", name));
+                return;
+            }
+            Look.DepthOfField = true;
+            SetFocusDistance(depth);
+            Status?.Invoke(Localization.Format("MunShot/Status/FocusedOn", name));
+        }
 
         // ---- Inside ----
 
