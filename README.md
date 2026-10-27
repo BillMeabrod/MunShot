@@ -42,9 +42,6 @@
 ![A party of kerbals on a station gantry above Jool, some floating and some dancing, with the sun blazing behind them](Screenshots/JoolStationParty.png)
 *A station party above Jool.*
 
-![The photo mode overlay on Duna: the panel on the left with the Pose tab open, three kerbals posed on a capsule, the shutter button and the key hints along the bottom](Screenshots/PhotoMode.png)
-*The photo mode overlay: the panel on the left, the shutter at the bottom, and the keys along the bottom edge.*
-
 ## Controls
 
 | Key | In photo mode |
