@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KSP.Game;
 using KSP.Sim.impl;
+using Redux.Rendering;
 using UnityEngine;
 
 namespace MunShot.Posing
@@ -54,6 +55,8 @@ namespace MunShot.Posing
 
             /// <summary>The middle of the double's body.</summary>
             public Vector3 Centre => BoundsOf(this, out Bounds bounds) ? bounds.center : Root.position;
+
+            public bool CanTurn => true;
         }
 
         // Where a double appears: where the camera looks, this far ahead, or just short of whatever it's looking at
@@ -279,6 +282,9 @@ namespace MunShot.Posing
                     {
                         // Shown and hidden in the same frame, so the kerbal is never seen twice
                         entry.Hider?.Hide();
+                        // Its light layers at once, rather than when Redux's sweep reaches it, so lights for kerbals
+                        // only light it from the start
+                        LegacyLightCullingMask.SyncHierarchy(entry.Root.gameObject);
                         _logInfo($"Photo mode: {entry.Double.Source.Name}'s double is ready"
                                  + (entry.Hider != null ? "; the original is hidden." : " (built from the roster; they're not in the scene)."));
                         if (entry.Double.FaceWarning != null) _logError(entry.Double.FaceWarning);
@@ -387,6 +393,9 @@ namespace MunShot.Posing
                 : null;
             return vessel != null ? vessel.transform.parent : ActivePhysicsSpace();
         }
+
+        /// <summary>The layer doubles are drawn on (<see cref="PhotoDoubleFactory.KerbalLayer"/>).</summary>
+        public int KerbalLayer => _factory.KerbalLayer;
 
         /// <summary>
         /// The object the active vessel lives under, which the game moves when the floating origin shifts: what

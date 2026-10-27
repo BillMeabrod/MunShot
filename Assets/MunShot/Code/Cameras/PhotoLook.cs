@@ -1,5 +1,6 @@
 using System;
 using Redux.Rendering.PostProcessing;
+using SpaceWarp2.API;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -129,7 +130,8 @@ namespace MunShot.Cameras
             _colorAdjustments = _profile.Add<ColorAdjustments>(overrides: false);
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
 
-            _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave };
+            // On the layer the game keeps its post-processing volumes on, which its cameras read
+            _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave, layer = Layers.LayerRenderPostProcessing };
             var volume = _holder.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.priority = Priority;
@@ -266,7 +268,8 @@ namespace MunShot.Cameras
             FilmHeightMillimetres * 0.5f / Mathf.Tan(Mathf.Clamp(verticalFieldOfView, 1f, 179f) * 0.5f * Mathf.Deg2Rad);
 
         // A camera only blends volumes on its volume layers, which Redux copies from the game's post-processing each
-        // frame; the volume goes on the first of them
+        // frame. The volume starts on the game's post-processing layer; if a camera ever reads others, it moves to the
+        // first of them, and says so
         private void FollowVolumeLayers(Camera camera)
         {
             int layers = camera.GetUniversalAdditionalCameraData().volumeLayerMask.value;

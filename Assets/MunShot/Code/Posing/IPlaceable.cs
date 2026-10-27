@@ -16,5 +16,8 @@ namespace MunShot.Posing
 
         /// <summary>Its middle: where the handles sit, and what it turns about.</summary>
         Vector3 Centre { get; }
+
+        /// <summary>Whether it has a way it faces to turn (a point light shines all round, so it doesn't).</summary>
+        bool CanTurn { get; }
     }
 }

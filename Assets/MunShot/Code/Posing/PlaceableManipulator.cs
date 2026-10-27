@@ -17,13 +17,13 @@ namespace MunShot.Posing
     /// moving selection only. Dragging a box on empty space selects everything inside it for moving (Shift adds to the
     /// selection); it doesn't change who's posed. Clicking empty space clears the moving selection; the posed double
     /// stays.</item>
-    /// <item>With the move tool, dragging a selected double moves the whole selection across the screen (up, down and
+    /// <item>With the move tool, dragging a selected double or light moves the whole selection across the screen (up, down and
     /// sideways as seen, keeping its distance from the camera), and dragging an arrow moves it along that axis; with
     /// the rotate tool, dragging a ring turns the selection about that axis, around its middle. With angle snap on (as
     /// the VAB starts), a ring turns in 15° steps from where the drag began, or 5° with the fine modifier held, as the
-    /// VAB's widget does.</item>
-    /// <item>While dragging a selected double, holding the right button too turns the selection about "up" (away from
-    /// the planet) as the mouse moves left and right; holding the tilt key (Ctrl) leans it sideways as the mouse moves
+    /// VAB's widget does. A selection of point lights alone, which have no way they face, shows the move arrows only.</item>
+    /// <item>While dragging a selected double or light, holding the right button too turns the selection about the
+    /// screen's up as the mouse moves left and right; holding the tilt key (Ctrl) leans it sideways as the mouse moves
     /// left and right; and the tilt key with the tip key (Alt) tips it away from the camera or towards it as the mouse moves up and
     /// down. Each works on that one axis only, around the selection's middle, with either tool, and follows angle
     /// snap as the rings do (Shift for finer steps); letting go goes back to moving.</item>
@@ -114,20 +114,23 @@ namespace MunShot.Posing
 
         public HandleMode Mode { get; private set; } = HandleMode.Move;
 
+        // What the handles show: the tool, except the move arrows when nothing selected can turn (point lights only)
+        private HandleMode? _shownMode;
+
         /// <summary>Whether rings turn in steps (on, as the VAB starts) or freely.</summary>
         public bool AngleSnap { get; set; } = true;
 
-        /// <summary>Whether any drag (a double, a handle or a selection box) is under way, so the mouse is taken.</summary>
+        /// <summary>Whether any drag (a double, a light, a handle or a selection box) is under way, so the mouse is taken.</summary>
         public bool IsDragging => _drag != Drag.None;
 
         /// <summary>Whether selected things are being dragged by the body, so turning and tilting them are on offer.</summary>
-        public bool IsDraggingDoubles => _drag == Drag.Body;
+        public bool IsDraggingBody => _drag == Drag.Body;
 
         /// <summary>What's selected for moving, doubles and lights: outlined, and moved and turned together by the handles.</summary>
         public IReadOnlyList<IPlaceable> Moving => _moving;
 
         /// <summary>
-        /// The box being dragged to select doubles, in screen coordinates (y up), while one is; null otherwise. Only
+        /// The box being dragged to select doubles and lights, in screen coordinates (y up), while one is; null otherwise. Only
         /// counts once the mouse has moved far enough for it not to be a click.
         /// </summary>
         public Rect? SelectionBox => _drag == Drag.Box && (_boxEnd - _boxStart).magnitude >= BoxThreshold
@@ -164,7 +167,7 @@ namespace MunShot.Posing
         public void SetMode(HandleMode mode)
         {
             Mode = mode;
-            _handles?.SetMode(mode);
+            ShowMode();
         }
 
         /// <summary>
@@ -172,7 +175,7 @@ namespace MunShot.Posing
         /// left button goes down/up, <paramref name="held"/> while it's down. Presses over the UI are ignored.
         /// <paramref name="adding"/>: the add-to-selection modifier (Shift) is held. <paramref name="fine"/>: the fine
         /// modifier is held, so rings snap in small steps. <paramref name="turn"/>: the right button is held too, which
-        /// turns doubles being dragged instead of moving them; <paramref name="tilt"/>: the tilt key is held, which leans
+        /// turns what's being dragged instead of moving it; <paramref name="tilt"/>: the tilt key is held, which leans
         /// them sideways, or tips them forward and back with <paramref name="tip"/> (Alt) held too. Turning wins if
         /// both are held.
         /// </summary>
@@ -182,11 +185,13 @@ namespace MunShot.Posing
             _fine = fine;
             EnsureHandles();
             PruneMoving();
+            // A double newly posed (brought in, picked in the UI) becomes the moving selection; none posed any more (the
+            // last one taken out) leaves the rest, lights included, as they are
             PhotoSession.Entry selected = _session.Selected;
             if (selected != _lastSelected)
             {
                 _lastSelected = selected;
-                SelectOnly(selected);
+                if (selected != null) SelectOnly(selected);
             }
             if (_waitingFor != null && _waitingFor.IsPlaceable)
             {
@@ -194,6 +199,7 @@ namespace MunShot.Posing
                 SelectOnly(ready);
             }
 
+            ShowMode();
             bool showHandles = camera != null && _primary != null;
             _handles?.SetVisible(showHandles);
             if (showHandles) _handles?.Follow(Centre(), _primary.Root.rotation, camera);
@@ -302,7 +308,7 @@ namespace MunShot.Posing
 
         private void BeginDrag(Ray ray, Vector2 mouse, Camera camera, bool adding)
         {
-            // A shown handle takes the click before any double does
+            // A shown handle takes the click before any double or light does
             if (_primary != null && _handles != null && _handles.TryPick(ray, out HandleHit hit))
             {
                 _dragAxis = hit.Axis;
@@ -414,7 +420,7 @@ namespace MunShot.Posing
             }
         }
 
-        // Moves the dragged doubles with the mouse, turns them while the right button is held too, or leans or tips them
+        // Moves what's dragged with the mouse, turns it while the right button is held too, or leans or tips it
         // while the tilt key is. Each switch starts from where they are, so nothing jumps
         private void DragBody(Ray ray, Vector2 mouse, Camera camera, BodyAction action)
         {
@@ -535,19 +541,18 @@ namespace MunShot.Posing
                     placeable.Root.position = position + offset;
         }
 
-        // The handles are made once there's something to move: a built double, or a light
+        // The handles are made once there's something to move (a built double, or a light), on the kerbals' layer
         private void EnsureHandles()
         {
             if (_handles != null || _handlesRequested) return;
-            IPlaceable anyReady = null;
+            bool anyReady = _lights.All.Count > 0;
             foreach (PhotoSession.Entry entry in _session.Entries)
-                if (entry.IsPlaceable) { anyReady = entry; break; }
-            if (anyReady == null && _lights.All.Count > 0) anyReady = _lights.All[0];
-            if (anyReady == null) return;
+                anyReady |= entry.IsPlaceable;
+            if (!anyReady) return;
 
             _handlesRequested = true;
             int generation = _generation;
-            ManipulationHandles.Create(anyReady.Root.gameObject.layer, _logInfo, _logError, handles =>
+            ManipulationHandles.Create(_session.KerbalLayer, _logInfo, _logError, handles =>
             {
                 if (generation != _generation || _handles != null)
                 {
@@ -555,9 +560,21 @@ namespace MunShot.Posing
                     return;
                 }
                 _handles = handles;
-                _handles.SetMode(Mode);
+                _shownMode = null;
+                ShowMode();
                 _session.SetIgnoredInSurfaceSearch(_handles.Root);
             });
+        }
+
+        // The tool on the handles, or the move arrows when nothing selected can turn; only told on a change
+        private void ShowMode()
+        {
+            bool anyTurns = _moving.Count == 0;
+            foreach (IPlaceable placeable in _moving) anyTurns |= placeable.CanTurn;
+            HandleMode shown = anyTurns ? Mode : HandleMode.Move;
+            if (_handles == null || shown == _shownMode) return;
+            _handles.SetMode(shown);
+            _shownMode = shown;
         }
 
         // The middle of the moving selection: where the handles sit and what rings turn it about

@@ -63,7 +63,7 @@ namespace MunShot.UI
         private readonly Dictionary<PhotoModeTab, (Button tab, VisualElement page)> _tabs =
             new Dictionary<PhotoModeTab, (Button, VisualElement)>();
 
-        // Each tab's name: its tooltip, and the open page's title
+        // Each tab's name, as the open page's title (the UXML gives each tab the same as its tooltip)
         private static readonly Dictionary<PhotoModeTab, string> TabNames = new Dictionary<PhotoModeTab, string>
         {
             [PhotoModeTab.Kerbals] = "MunShot/UI/Kerbals",
@@ -90,7 +90,6 @@ namespace MunShot.UI
         private Slider _fieldOfView;
         private Slider _fisheye;
         private Toggle _depthOfField;
-        private VisualElement _focusControls;
         private Slider _focusDistance;
         private Slider _blur;
         private Slider _exposure;
@@ -169,7 +168,7 @@ namespace MunShot.UI
         public void Tick()
         {
             // Dragging kerbals shows what else the drag can do; letting go brings the usual hints back
-            if (_photoMode.IsOpen) ShowHints(_photoMode.Camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
+            if (_photoMode.IsOpen) ShowHints(_photoMode.Camera.Mode, _photoMode.Manipulator.IsDraggingBody);
 
             if (_selectionBox == null || _root?.panel == null) return;
             Rect? box = _photoMode.IsOpen ? _photoMode.Manipulator.SelectionBox : null;
@@ -261,7 +260,6 @@ namespace MunShot.UI
             if (tooltip != null)
                 foreach ((Button tab, VisualElement _) in _tabs.Values)
                     tab?.AddManipulator(new TooltipManipulator(tooltip));
-            NameTabs();
 
             _bringIn = Required<Button>(root, "bring-in");
             _kerbalList = Required<ScrollView>(root, "kerbal-list");
@@ -280,7 +278,6 @@ namespace MunShot.UI
             _fieldOfView = Required<Slider>(root, "field-of-view");
             _fisheye = Required<Slider>(root, "fisheye");
             _depthOfField = Required<Toggle>(root, "depth-of-field");
-            _focusControls = Required<VisualElement>(root, "focus-controls");
             _focusDistance = Required<Slider>(root, "focus-distance");
             _blur = Required<Slider>(root, "blur");
             _exposure = ColorSlider(root, "exposure", PhotoLook.MaxExposure, _photoMode.SetExposure);
@@ -377,7 +374,6 @@ namespace MunShot.UI
 
         private void OnLanguageChanged()
         {
-            NameTabs();
             _hintsFor = null;
             ListPoses();   // sorted by their names in the new language
             Refresh();
@@ -416,13 +412,6 @@ namespace MunShot.UI
                 MarkActive(entry.Value.tab, shown);
                 if (entry.Value.page != null) SetShown(entry.Value.page, shown);
             }
-        }
-
-        // The tabs' tooltips, in the game's language
-        private void NameTabs()
-        {
-            foreach (KeyValuePair<PhotoModeTab, (Button tab, VisualElement page)> entry in _tabs)
-                if (entry.Value.tab != null) entry.Value.tab.tooltip = Localization.Translate(TabNames[entry.Key]);
         }
 
         // Shows or hides through UitkForKsp2 (hiding also lets go of focus and text input inside), only on a change: some
@@ -464,7 +453,9 @@ namespace MunShot.UI
 
             MarkActive(_move, _photoMode.Manipulator.Mode == HandleMode.Move);
             MarkActive(_rotate, _photoMode.Manipulator.Mode == HandleMode.Rotate);
-            MarkActive(_lightMove, _photoMode.Manipulator.Mode == HandleMode.Move);
+            // A point light has no Rotate button (nothing to turn), so its handles always show the move arrows
+            bool pointLight = _photoMode.Lights.Selected?.Kind == PhotoLightKind.Point;
+            MarkActive(_lightMove, pointLight || _photoMode.Manipulator.Mode == HandleMode.Move);
             MarkActive(_lightRotate, _photoMode.Manipulator.Mode == HandleMode.Rotate);
             _angleSnap?.SetValueWithoutNotify(_photoMode.Manipulator.AngleSnap);
 
@@ -480,7 +471,7 @@ namespace MunShot.UI
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
             RefreshLights(_photoMode.Lights);
-            ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
+            ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingBody);
         }
 
         // Who's in the shot: click a name to select them, x to take them out
@@ -616,7 +607,6 @@ namespace MunShot.UI
         private void RefreshFocus(PhotoLook look)
         {
             _depthOfField?.SetValueWithoutNotify(look.DepthOfField);
-            _focusControls?.SetEnabled(look.DepthOfField);
             _focusDistance?.SetValueWithoutNotify(SliderAt(look.FocusDistance, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance));
             _blur?.SetValueWithoutNotify(SliderAt(look.Aperture, PhotoLook.MaxAperture, PhotoLook.MinAperture));
             _model.FocusDistanceText = FocusDistanceText(look.FocusDistance);

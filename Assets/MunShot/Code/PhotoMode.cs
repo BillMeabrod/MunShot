@@ -88,7 +88,7 @@ namespace MunShot
             _uiHider = new UiHider(Info, Warn);
             _inputLock = new PhotoModeInputLock(Info, Warn);
             Look = new PhotoLook(Info, Warn);
-            Lights = new PhotoLights(Info, Warn);
+            Lights = new PhotoLights(() => session.KerbalLayer, Info, Warn);
             Manipulator = new PlaceableManipulator(session, Lights, Look, Info, message => _logger.LogError(message));
 
             Session.EntryChanged += OnEntryChanged;
@@ -276,17 +276,19 @@ namespace MunShot
             List<PhotoSession.Entry> doubles = Manipulator.Moving.OfType<PhotoSession.Entry>().ToList();
             List<PhotoLight> lights = Manipulator.Moving.OfType<PhotoLight>().ToList();
             foreach (PhotoLight light in lights) Lights.Remove(light);
-            if (doubles.Count > 0) RemoveAll(doubles);
+            if (doubles.Count > 0) RemoveAll(doubles, announce: lights.Count == 0);
+            // Only lights taken out: the Light tab's selection, if any are left, gets the handles
+            else if (Lights.Selected != null) Manipulator.Select(Lights.Selected);
+
+            if (doubles.Count > 0 && lights.Count > 0)
+                Status?.Invoke(Localization.Format("MunShot/Status/KerbalsAndLightsRemoved", doubles.Count, lights.Count));
             else if (lights.Count > 0)
-            {
-                Status?.Invoke(lights.Count == 1
-                    ? Localization.Format("MunShot/Status/LightRemoved", LightName(lights[0]))
-                    : Localization.Format("MunShot/Status/LightsRemoved", lights.Count));
-                RaiseChanged();
-            }
+                Status?.Invoke(LightsRemovedNote(lights));
+            RaiseChanged();
         }
 
-        private void RemoveAll(IReadOnlyList<PhotoSession.Entry> entries)
+        // announce: say who's back (left out when more was taken out, which the caller says instead)
+        private void RemoveAll(IReadOnlyList<PhotoSession.Entry> entries, bool announce = true)
         {
             foreach (PhotoSession.Entry entry in entries)
             {
@@ -294,9 +296,10 @@ namespace MunShot
                 Session.Remove(entry);
             }
             RefreshOrbitTargets();
-            Status?.Invoke(entries.Count == 1
-                ? Localization.Format("MunShot/Status/BackWhereTheyWere", entries[0].Double.Source.Name)
-                : Localization.Format("MunShot/Status/AllBack", entries.Count));
+            if (announce)
+                Status?.Invoke(entries.Count == 1
+                    ? Localization.Format("MunShot/Status/BackWhereTheyWere", entries[0].Double.Source.Name)
+                    : Localization.Format("MunShot/Status/AllBack", entries.Count));
             RaiseChanged();
         }
 
@@ -451,9 +454,13 @@ namespace MunShot
             RaiseChanged();
         }
 
-        /// <summary>Sets the focus, in metres; <see cref="float.PositiveInfinity"/> focuses on everything far off.</summary>
+        /// <summary>
+        /// Sets the focus, in metres; <see cref="float.PositiveInfinity"/> focuses on everything far off. Turns depth of
+        /// field on, as moving the focus is asking for it.
+        /// </summary>
         public void SetFocusDistance(float metres)
         {
+            Look.DepthOfField = true;
             Look.FocusDistance = float.IsPositiveInfinity(metres)
                 ? metres
                 : Mathf.Clamp(metres, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
@@ -484,11 +491,21 @@ namespace MunShot
             RaiseChanged();
         }
 
+        /// <summary>Takes a light away; if it had the handles, the Light tab's next selection gets them.</summary>
         public void RemoveLight(PhotoLight light)
         {
+            if (light == null) return;
+            bool hadHandles = Manipulator.Moving.Contains(light);
             Lights.Remove(light);
+            if (hadHandles && Lights.Selected != null) Manipulator.Select(Lights.Selected);
+            Status?.Invoke(LightsRemovedNote(new[] { light }));
             RaiseChanged();
         }
+
+        private static string LightsRemovedNote(IReadOnlyList<PhotoLight> lights) =>
+            lights.Count == 1
+                ? Localization.Format("MunShot/Status/LightRemoved", LightName(lights[0]))
+                : Localization.Format("MunShot/Status/LightsRemoved", lights.Count);
 
         /// <summary>Selects a light, for the Light tab to set and the handles to move.</summary>
         public void SelectLight(PhotoLight light)
@@ -549,15 +566,17 @@ namespace MunShot
             RaiseChanged();
         }
 
+        /// <summary>Sets how much is blurred (a lower f-number blurs more). Turns depth of field on, as SetFocusDistance does.</summary>
         public void SetAperture(float fNumber)
         {
+            Look.DepthOfField = true;
             Look.Aperture = Mathf.Clamp(fNumber, PhotoLook.MinAperture, PhotoLook.MaxAperture);
             RaiseChanged();
         }
 
         /// <summary>
         /// Focuses on the selected kerbal: how far in front of the camera their middle is (depth of field measures
-        /// along the camera's look, not straight to them). Turns depth of field on, as that's what focusing is for.
+        /// along the camera's look, not straight to them). Turns depth of field on, as SetFocusDistance does.
         /// </summary>
         public void FocusOnSelected()
         {
@@ -581,7 +600,6 @@ namespace MunShot
                 Status?.Invoke(Localization.Format("MunShot/Status/FocusBehind", name));
                 return;
             }
-            Look.DepthOfField = true;
             SetFocusDistance(depth);
             Status?.Invoke(Localization.Format("MunShot/Status/FocusedOn", name));
         }

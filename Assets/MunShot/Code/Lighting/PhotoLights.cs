@@ -14,8 +14,8 @@ namespace MunShot.Lighting
     public sealed class PhotoLights
     {
         /// <summary>
-        /// How many there can be: the game lights each object with up to 8 lights besides the sun, and its own lights
-        /// (part lights, helmet lights) need some of those.
+        /// How many there can be: enough to light a shot (key, fill, rim and one more), few enough that the list and the
+        /// scene stay easy to follow.
         /// </summary>
         public const int MaxLights = 4;
 
@@ -24,6 +24,7 @@ namespace MunShot.Lighting
 
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logWarning;
+        private readonly Func<int> _kerbalLayer;
         private readonly List<PhotoLight> _lights = new List<PhotoLight>();
         private Shader _markerShader;
         private bool _markersShown = true;
@@ -32,8 +33,10 @@ namespace MunShot.Lighting
         public PhotoLight Selected { get; private set; }
         public bool CanAdd => _lights.Count < MaxLights;
 
-        public PhotoLights(Action<string> logInfo, Action<string> logWarning)
+        /// <param name="kerbalLayer">The layer photo doubles are drawn on, which lights for kerbals only reach.</param>
+        public PhotoLights(Func<int> kerbalLayer, Action<string> logInfo, Action<string> logWarning)
         {
+            _kerbalLayer = kerbalLayer ?? throw new ArgumentNullException(nameof(kerbalLayer));
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _logWarning = logWarning ?? throw new ArgumentNullException(nameof(logWarning));
         }
@@ -51,7 +54,8 @@ namespace MunShot.Lighting
             if (parent == null) _logWarning("Photo mode: no vessel to place lights beside; the light goes under the scene's root, so a floating origin shift would move it.");
 
             Transform view = camera.transform;
-            var light = new PhotoLight(FreeNumber(), parent, view.position + view.forward * DistanceInFront, view.rotation, shader);
+            var light = new PhotoLight(FreeNumber(), parent, view.position + view.forward * DistanceInFront, view.rotation, shader,
+                                       _kerbalLayer);
             light.ShowMarker(_markersShown);
             _lights.Add(light);
             Selected = light;

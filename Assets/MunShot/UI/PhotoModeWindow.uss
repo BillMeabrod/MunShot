@@ -1,7 +1,9 @@
 /* MunShot's photo mode overlay. The look comes from the KerbalUI theme's own pieces (flight-panel, bar-toggle,
-   InvertedCornerBox, OabButton, switch), as Redux's panels' does; these rules only place them, and add the few things
-   Redux styles in its own sheets: the "// TITLE" and "## HEADING" lines, the dotted divider, list rows, keycaps. Fonts
-   and colours are the theme's (its --font-* variables, #c0c7d5 text, #707580 dim text). */
+   InvertedCornerBox, OabButton, switch, the SDK's ColorPicker), as Redux's panels' does; these rules place them, and add
+   the few things Redux styles in its own sheets: the "// TITLE" and "## HEADING" lines, the dotted divider, list rows,
+   keycaps. Two pieces are restyled: the tab strip's OabButtons, coloured as the VAB part picker's categories, and the
+   colour picker, sized to the panel. Fonts and colours are otherwise the theme's (its --font-* variables, #c0c7d5
+   text, #707580 dim text). */
 .pm-root,
 .pm-chrome {
     position: absolute;
@@ -306,7 +308,7 @@
     color: rgb(112, 117, 128);
 }
 
-/* The box dragged to select several kerbals, in the theme's highlight green */
+/* The box dragged to select several kerbals and lights, in the theme's highlight green */
 .pm-selection-box {
     position: absolute;
     display: none;

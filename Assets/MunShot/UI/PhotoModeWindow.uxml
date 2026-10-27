@@ -4,7 +4,8 @@
          the Hide UI key hides them all. Inside the panel, a strip of icon tabs runs down the left side, as the VAB's
          part picker's categories do, each named by a tooltip, and the open page is named at its top. Built from the
          KerbalUI theme's own pieces, as Redux's panels are: flight-panel, bar-toggle, InvertedCornerBox, OabButton,
-         switch toggles, Tooltip; PhotoModeWindow.uss only places them. Only the
+         switch toggles, Tooltip, the SDK's ColorPicker; PhotoModeWindow.uss places them, colours the tab strip as the
+         part picker's, and fits the colour picker to the panel. Only the
          panels take clicks: the rest of the screen is the scene. Its data source is a PhotoModeViewModel, whose
          commands the buttons run (CommandBinding); PhotoModeWindow fills the lists and wires the other controls. Texts
          starting with # are localization keys (Copied/localizations/munshot_localization.csv); "uppercase" elements are
@@ -34,33 +35,33 @@
 
                             <ui:VisualElement class="pm-body">
                                 <!-- The tabs: icon keys down the left side, as the VAB's part categories; each one's name is
-                                     its tooltip -->
+                                     its tooltip ("R:" shows it to the right; the "#key" is translated as it's shown) -->
                                 <ui:VisualElement class="pm-strip">
-                                    <uitk:OabButton name="tab-kerbals" class="pm-strip-tab">
+                                    <uitk:OabButton name="tab-kerbals" tooltip="R:#MunShot/UI/Kerbals" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowKerbalsCommand" />
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-kerbals" picking-mode="Ignore" />
                                     </uitk:OabButton>
-                                    <uitk:OabButton name="tab-pose" class="pm-strip-tab">
+                                    <uitk:OabButton name="tab-pose" tooltip="R:#MunShot/UI/Pose" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowPoseCommand" />
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-pose" picking-mode="Ignore" />
                                     </uitk:OabButton>
-                                    <uitk:OabButton name="tab-camera" class="pm-strip-tab">
+                                    <uitk:OabButton name="tab-camera" tooltip="R:#MunShot/UI/Camera" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowCameraCommand" />
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-camera" picking-mode="Ignore" />
                                     </uitk:OabButton>
-                                    <uitk:OabButton name="tab-color" class="pm-strip-tab">
+                                    <uitk:OabButton name="tab-color" tooltip="R:#MunShot/UI/Color" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowColorCommand" />
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-color" picking-mode="Ignore" />
                                     </uitk:OabButton>
-                                    <uitk:OabButton name="tab-light" class="pm-strip-tab">
+                                    <uitk:OabButton name="tab-light" tooltip="R:#MunShot/UI/Light" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowLightCommand" />
                                         </Bindings>
@@ -220,33 +221,32 @@
                                             </ui:Label>
                                         </ui:VisualElement>
 
-                                        <!-- Depth of field: what's sharp, and how much the rest blurs (a lower f-number blurs more) -->
+                                        <!-- Depth of field: what's sharp, and how much the rest blurs (a lower f-number blurs more); moving either
+                                             slider, or focusing on the selected kerbal, turns it on -->
                                         <ui:Toggle name="depth-of-field" label="#MunShot/UI/DepthOfField" class="switch" />
-                                        <ui:VisualElement name="focus-controls">
-                                            <ui:VisualElement class="pm-heading-row">
-                                                <ui:Label text="## " class="pm-heading pm-dim" />
-                                                <ui:Label text="#MunShot/UI/FocusDistance" class="pm-heading uppercase" />
-                                            </ui:VisualElement>
-                                            <ui:VisualElement class="pm-row">
-                                                <ui:Slider name="focus-distance" low-value="0" high-value="1" class="pm-grow" />
-                                                <ui:Label class="pm-value">
-                                                    <Bindings>
-                                                        <ui:DataBinding property="text" data-source-path="FocusDistanceText" binding-mode="ToTarget" />
-                                                    </Bindings>
-                                                </ui:Label>
-                                            </ui:VisualElement>
-                                            <ui:VisualElement class="pm-heading-row">
-                                                <ui:Label text="## " class="pm-heading pm-dim" />
-                                                <ui:Label text="#MunShot/UI/Blur" class="pm-heading uppercase" />
-                                            </ui:VisualElement>
-                                            <ui:VisualElement class="pm-row">
-                                                <ui:Slider name="blur" low-value="0" high-value="1" class="pm-grow" />
-                                                <ui:Label class="pm-value">
-                                                    <Bindings>
-                                                        <ui:DataBinding property="text" data-source-path="ApertureText" binding-mode="ToTarget" />
-                                                    </Bindings>
-                                                </ui:Label>
-                                            </ui:VisualElement>
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/FocusDistance" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <ui:VisualElement class="pm-row">
+                                            <ui:Slider name="focus-distance" low-value="0" high-value="1" class="pm-grow" />
+                                            <ui:Label class="pm-value">
+                                                <Bindings>
+                                                    <ui:DataBinding property="text" data-source-path="FocusDistanceText" binding-mode="ToTarget" />
+                                                </Bindings>
+                                            </ui:Label>
+                                        </ui:VisualElement>
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/Blur" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <ui:VisualElement class="pm-row">
+                                            <ui:Slider name="blur" low-value="0" high-value="1" class="pm-grow" />
+                                            <ui:Label class="pm-value">
+                                                <Bindings>
+                                                    <ui:DataBinding property="text" data-source-path="ApertureText" binding-mode="ToTarget" />
+                                                </Bindings>
+                                            </ui:Label>
                                         </ui:VisualElement>
                                         <uitk:OabButton name="focus-on-selected" text="#MunShot/UI/FocusOnSelected" class="pm-wide">
                                             <Bindings>
@@ -435,7 +435,7 @@
         <!-- The tabs' names, shown when hovering them (Redux's Tooltip, as on Redux's own windows) -->
         <uitk:Tooltip name="tooltip" />
 
-        <!-- The box being dragged to select several kerbals; placed by PhotoModeWindow while there is one -->
+        <!-- The box being dragged to select several kerbals and lights; placed by PhotoModeWindow while there is one -->
         <ui:VisualElement name="selection-box" class="pm-selection-box" picking-mode="Ignore" />
 
         <!-- A short note about what just happened; PhotoModeWindow hides it again after a few seconds -->

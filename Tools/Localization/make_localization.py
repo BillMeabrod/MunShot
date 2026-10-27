@@ -139,6 +139,7 @@ rows = [
     ('MunShot/Status/LightAdded', 'Photo mode note after adding a light; {0} is its name', '{0} added in front of the camera.'),
     ('MunShot/Status/LightRemoved', 'Photo mode note after taking a light away; {0} is its name', '{0} removed.'),
     ('MunShot/Status/LightsRemoved', 'Photo mode note after taking several lights away; {0} is how many', '{0} lights removed.'),
+    ('MunShot/Status/KerbalsAndLightsRemoved', 'Photo mode note after taking out kerbals and lights together; {0} is how many kerbals, {1} how many lights', '{0} kerbals and {1} lights taken out.'),
     ('MunShot/Status/LightsFull', 'Photo mode note when no more lights can be added; {0} is how many there can be', 'Up to {0} lights.'),
     ('MunShot/Status/FocusBehind', 'Photo mode note after Focus on selected kerbal; {0} is a name', "{0} isn't in front of the camera."),
     ('MunShot/Status/FocusedOn', 'Photo mode note after Focus on selected kerbal; {0} is a name', '{0} is in focus.'),

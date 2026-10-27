@@ -1,6 +1,6 @@
+using System;
 using MunShot.Posing;
 using Redux.Rendering;
-using SpaceWarp2.API;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -47,6 +47,7 @@ namespace MunShot.Lighting
         private readonly GameObject _marker;
         private readonly GameObject _pointer;
         private readonly Material _markerMaterial;
+        private readonly Func<int> _kerbalLayer;
 
         private PhotoLightKind _kind = PhotoLightKind.Point;
         private Color _color = Color.white;
@@ -65,6 +66,8 @@ namespace MunShot.Lighting
         public bool IsPlaceable => !_gone;
 
         public Vector3 Centre => _root.transform.position;
+
+        public bool CanTurn => _kind == PhotoLightKind.Spot;
 
         public PhotoLightKind Kind
         {
@@ -106,9 +109,12 @@ namespace MunShot.Lighting
         }
 
         /// <param name="markerShader">An unlit shader for the marker.</param>
-        public PhotoLight(int number, Transform parent, Vector3 position, Quaternion rotation, Shader markerShader)
+        /// <param name="kerbalLayer">The layer photo doubles are drawn on, which the light reaches for kerbals only.</param>
+        public PhotoLight(int number, Transform parent, Vector3 position, Quaternion rotation, Shader markerShader,
+                          Func<int> kerbalLayer)
         {
             Number = number;
+            _kerbalLayer = kerbalLayer ?? throw new ArgumentNullException(nameof(kerbalLayer));
             _root = new GameObject($"MunShot light {number}");
             _root.transform.SetParent(parent, false);
             _root.transform.SetPositionAndRotation(position, rotation);
@@ -163,13 +169,14 @@ namespace MunShot.Lighting
             _light.innerSpotAngle = _spotAngle * 0.6f;
             // Redux turns this into the light's rendering layers each frame it's seen (setting those here too would make
             // it skip that, and leave URP's own copy of them unset)
-            _light.cullingMask = _kerbalsOnly ? 1 << Layers.LayerLocalCharacters : ~0;
+            _light.cullingMask = _kerbalsOnly ? 1 << _kerbalLayer() : ~0;
 
             _markerMaterial.color = _color;
             _pointer.SetActive(_marker.activeSelf && _kind == PhotoLightKind.Spot);
         }
 
-        // A piece of the marker: no collider (clicks are for kerbals), no shadow
+        // A piece of the marker: no collider (it's picked by where the mouse points, TryPick, and has nothing to bump
+        // into), no shadow
         private GameObject MarkerPart(PrimitiveType shape, Vector3 localPosition, Vector3 localScale)
         {
             GameObject part = GameObject.CreatePrimitive(shape);

@@ -1,5 +1,6 @@
 using System;
 using KSP.Game;
+using SpaceWarp2.API;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -25,13 +26,17 @@ namespace MunShot.Posing
         private Kerbal3DModel _template;
         private RuntimeAnimatorController _evaController;
 
-        // The layer EVA kerbals are drawn on. Doubles always use it: seated crew are on the cockpit-interior layer,
-        // which the flight camera doesn't draw outside, and the booth's model is on its own portrait layer
-        private int _evaLayer;
+        // The layer EVA kerbals are drawn on: the EVA kerbal's own once it's loaded, the game's characters layer until
+        // then. Doubles always use it: seated crew are on the cockpit-interior layer, which the flight camera doesn't
+        // draw outside, and the booth's model is on its own portrait layer
+        private int _evaLayer = Layers.LayerLocalCharacters;
         private bool _loading;
         private event Action<bool> Loaded;
 
         public bool IsReady => _template != null && _evaController != null;
+
+        /// <summary>The layer doubles are drawn on: what lights for kerbals only reach, and the handles are drawn on.</summary>
+        public int KerbalLayer => _evaLayer;
 
         public PhotoDoubleFactory(Action<string> logError)
         {

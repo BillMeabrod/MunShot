@@ -5,7 +5,7 @@
   "author": "Bill Meabrod",
   "description": "A photo mode for KSP2 Redux: pause the game, bring any kerbal into the shot, pose them, frame it with a free or orbiting camera, and take the picture.",
   "source": "https://github.com/BillMeabrod/MunShot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "version_check": "https://raw.githubusercontent.com/BillMeabrod/MunShot/main/Assets/MunShot/swinfo.json",
   "addressable_script_label": "MunShot_patches",
   "addressable_prefab_patch_label": "MunShot_prefab_patches",
