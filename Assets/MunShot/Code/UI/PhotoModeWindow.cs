@@ -17,7 +17,7 @@ namespace MunShot.UI
 {
     /// <summary>
     /// Photo mode's overlay, built from PhotoModeWindow.uxml with a <see cref="PhotoModeViewModel"/> as its data
-    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera tabs; opened and
+    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera, Color tabs; opened and
     /// closed by its bar toggle), a shutter button and a hint bar sit on its edges. It's built from the KerbalUI
     /// theme's own pieces as Redux's panels are, with localized text and the game's menu sounds on hover and click.
     /// It shows while photo mode is open, stays up when photo mode hides the rest of the game's UI, hides with the
@@ -77,6 +77,10 @@ namespace MunShot.UI
         private VisualElement _focusControls;
         private Slider _focusDistance;
         private Slider _blur;
+        private Slider _exposure;
+        private Slider _contrast;
+        private Slider _saturation;
+        private Slider _warmth;
 
         /// <summary>
         /// False once the game has torn down the UI the overlay lived in (it builds its UI afresh for each campaign);
@@ -223,6 +227,7 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Kerbals] = (Required<Button>(root, "tab-kerbals"), Required<VisualElement>(root, "page-kerbals"));
             _tabs[PhotoModeTab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
+            _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
 
             _bringIn = Required<Button>(root, "bring-in");
             _kerbalList = Required<ScrollView>(root, "kerbal-list");
@@ -242,6 +247,10 @@ namespace MunShot.UI
             _focusControls = Required<VisualElement>(root, "focus-controls");
             _focusDistance = Required<Slider>(root, "focus-distance");
             _blur = Required<Slider>(root, "blur");
+            _exposure = ColorSlider(root, "exposure", PhotoLook.MaxExposure, _photoMode.SetExposure);
+            _contrast = ColorSlider(root, "contrast", PhotoLook.MaxColorAdjustment, _photoMode.SetContrast);
+            _saturation = ColorSlider(root, "saturation", PhotoLook.MaxColorAdjustment, _photoMode.SetSaturation);
+            _warmth = ColorSlider(root, "warmth", PhotoLook.MaxColorAdjustment, _photoMode.SetWarmth);
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
@@ -264,6 +273,17 @@ namespace MunShot.UI
 
             ShowTab(_tab);
             Refresh();
+        }
+
+        // A colour setting's slider: from -max to max, 0 (the game's own picture) in the middle
+        private Slider ColorSlider(VisualElement root, string name, float max, Action<float> set)
+        {
+            Slider slider = Required<Slider>(root, name);
+            if (slider == null) return null;
+            slider.lowValue = -max;
+            slider.highValue = max;
+            slider.RegisterValueChangedCallback(change => set(change.newValue));
+            return slider;
         }
 
         // A named element the UXML must have; a missing one is logged (the rest of the overlay still works)
@@ -385,6 +405,7 @@ namespace MunShot.UI
             _fisheye?.SetValueWithoutNotify(_photoMode.Look.Fisheye);
             _model.FisheyeText = _photoMode.Look.Fisheye.ToString("P0", CultureInfo.CurrentCulture);
             RefreshFocus(_photoMode.Look);
+            RefreshColor(_photoMode.Look);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
         }
 
@@ -449,6 +470,26 @@ namespace MunShot.UI
         {
             element?.EnableInClassList(ActiveClass, active);
             element?.EnableInClassList(SelectedClass, active);
+        }
+
+        private void RefreshColor(PhotoLook look)
+        {
+            _exposure?.SetValueWithoutNotify(look.Exposure);
+            _contrast?.SetValueWithoutNotify(look.Contrast);
+            _saturation?.SetValueWithoutNotify(look.Saturation);
+            _warmth?.SetValueWithoutNotify(look.Warmth);
+            _model.ExposureText = Signed(look.Exposure, "0.0");
+            _model.ContrastText = Signed(look.Contrast, "0");
+            _model.SaturationText = Signed(look.Saturation, "0");
+            _model.WarmthText = Signed(look.Warmth, "0");
+            _model.RefreshCommands();
+        }
+
+        // "+1.5", "-20", or "0" in the middle
+        private static string Signed(float value, string format)
+        {
+            string shown = value.ToString(format, CultureInfo.CurrentCulture);
+            return value > 0f && shown != 0f.ToString(format, CultureInfo.CurrentCulture) ? "+" + shown : shown;
         }
 
         private void RefreshFocus(PhotoLook look)

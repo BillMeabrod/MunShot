@@ -444,6 +444,39 @@ namespace MunShot
             RaiseChanged();
         }
 
+        // ---- Color and light ----
+
+        public void SetExposure(float stops)
+        {
+            Look.Exposure = Mathf.Clamp(stops, -PhotoLook.MaxExposure, PhotoLook.MaxExposure);
+            RaiseChanged();
+        }
+
+        public void SetContrast(float amount)
+        {
+            Look.Contrast = Mathf.Clamp(amount, -PhotoLook.MaxColorAdjustment, PhotoLook.MaxColorAdjustment);
+            RaiseChanged();
+        }
+
+        public void SetSaturation(float amount)
+        {
+            Look.Saturation = Mathf.Clamp(amount, -PhotoLook.MaxColorAdjustment, PhotoLook.MaxColorAdjustment);
+            RaiseChanged();
+        }
+
+        public void SetWarmth(float amount)
+        {
+            Look.Warmth = Mathf.Clamp(amount, -PhotoLook.MaxColorAdjustment, PhotoLook.MaxColorAdjustment);
+            RaiseChanged();
+        }
+
+        /// <summary>Puts the colour settings back to the game's own picture.</summary>
+        public void ResetColor()
+        {
+            Look.ResetColor();
+            RaiseChanged();
+        }
+
         /// <summary>How much the picture bulges, as through a fisheye lens: 0 (flat) to 1.</summary>
         public void SetFisheye(float amount)
         {

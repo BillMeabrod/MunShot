@@ -13,7 +13,8 @@ namespace MunShot.UI
     {
         Kerbals,
         Pose,
-        Camera
+        Camera,
+        Color
     }
 
     /// <summary>
@@ -28,6 +29,10 @@ namespace MunShot.UI
         private string _fieldOfViewText = string.Empty;
         private string _focusDistanceText = string.Empty;
         private string _fisheyeText = string.Empty;
+        private string _exposureText = string.Empty;
+        private string _contrastText = string.Empty;
+        private string _saturationText = string.Empty;
+        private string _warmthText = string.Empty;
         private string _apertureText = string.Empty;
         private string _toast = string.Empty;
         private bool _toastVisible;
@@ -44,6 +49,7 @@ namespace MunShot.UI
             ShowKerbalsCommand = new RelayCommand(() => showTab(PhotoModeTab.Kerbals));
             ShowPoseCommand = new RelayCommand(() => showTab(PhotoModeTab.Pose));
             ShowCameraCommand = new RelayCommand(() => showTab(PhotoModeTab.Camera));
+            ShowColorCommand = new RelayCommand(() => showTab(PhotoModeTab.Color));
             BringInCommand = new RelayCommand(openKerbalMenu, CanBringIn);
             MoveToolCommand = new RelayCommand(() => photoMode.SetTool(HandleMode.Move));
             RotateToolCommand = new RelayCommand(() => photoMode.SetTool(HandleMode.Rotate));
@@ -52,12 +58,17 @@ namespace MunShot.UI
             FreeCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Free));
             OrbitCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Orbit));
             FocusOnSelectedCommand = new RelayCommand(photoMode.FocusOnSelected);
+            ResetColorCommand = new RelayCommand(photoMode.ResetColor, () => photoMode.Look.ColorChanged);
             TakePhotoCommand = new RelayCommand(photoMode.TakePhoto);
         }
 
         [CreateProperty] public RelayCommand ShowKerbalsCommand { get; }
         [CreateProperty] public RelayCommand ShowPoseCommand { get; }
         [CreateProperty] public RelayCommand ShowCameraCommand { get; }
+        [CreateProperty] public RelayCommand ShowColorCommand { get; }
+
+        /// <summary>Puts the colour settings back to the game's own picture; only when one is changed.</summary>
+        [CreateProperty] public RelayCommand ResetColorCommand { get; }
 
         /// <summary>Opens the list of kerbals to bring in; only when someone isn't in yet.</summary>
         [CreateProperty] public RelayCommand BringInCommand { get; }
@@ -76,7 +87,11 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand TakePhotoCommand { get; }
 
         /// <summary>Lets the bound buttons check again whether they can be used (who's in has changed).</summary>
-        public void RefreshCommands() => BringInCommand.RaiseCanExecuteChanged();
+        public void RefreshCommands()
+        {
+            BringInCommand.RaiseCanExecuteChanged();
+            ResetColorCommand.RaiseCanExecuteChanged();
+        }
 
         private bool CanBringIn() =>
             _photoMode.NotYetIn(_photoMode.Kerbals.InScene).Any() || _photoMode.NotYetIn(_photoMode.Kerbals.Elsewhere).Any();
@@ -122,6 +137,35 @@ namespace MunShot.UI
         {
             get => _fisheyeText;
             set => SetField(ref _fisheyeText, value);
+        }
+
+        /// <summary>The colour settings, as shown next to their sliders ("+1.5", "-20").</summary>
+        [CreateProperty]
+        public string ExposureText
+        {
+            get => _exposureText;
+            set => SetField(ref _exposureText, value);
+        }
+
+        [CreateProperty]
+        public string ContrastText
+        {
+            get => _contrastText;
+            set => SetField(ref _contrastText, value);
+        }
+
+        [CreateProperty]
+        public string SaturationText
+        {
+            get => _saturationText;
+            set => SetField(ref _saturationText, value);
+        }
+
+        [CreateProperty]
+        public string WarmthText
+        {
+            get => _warmthText;
+            set => SetField(ref _warmthText, value);
         }
 
         /// <summary>How far away things are sharp, as shown next to its slider ("12 m").</summary>

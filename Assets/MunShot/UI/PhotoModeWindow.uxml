@@ -44,6 +44,11 @@
                                         <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowCameraCommand" />
                                     </Bindings>
                                 </uitk:OabButton>
+                                <uitk:OabButton name="tab-color" text="#MunShot/UI/Color" class="pm-tab">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowColorCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
                             </ui:VisualElement>
                             <ui:Label text="................................................" class="pm-divider" />
 
@@ -219,6 +224,63 @@
                                 <uitk:OabButton name="focus-on-selected" text="#MunShot/UI/FocusOnSelected" class="pm-wide">
                                     <Bindings>
                                         <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="FocusOnSelectedCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
+                            </ui:VisualElement>
+
+                            <!-- Color: the picture's exposure, contrast, saturation and warmth; 0 is the game's own -->
+                            <ui:VisualElement name="page-color" class="pm-page">
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/Exposure" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="exposure" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="ExposureText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/Contrast" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="contrast" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="ContrastText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/Saturation" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="saturation" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="SaturationText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/Warmth" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="warmth" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="WarmthText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <uitk:OabButton name="reset-color" text="#MunShot/UI/ResetColor" class="pm-wide">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ResetColorCommand" />
                                     </Bindings>
                                 </uitk:OabButton>
                             </ui:VisualElement>

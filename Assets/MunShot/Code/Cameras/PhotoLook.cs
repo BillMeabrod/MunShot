@@ -7,11 +7,12 @@ using UnityEngine.Rendering.Universal;
 namespace MunShot.Cameras
 {
     /// <summary>
-    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field and fisheye, so far.
+    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, fisheye, and the
+    /// picture's exposure, contrast, saturation and warmth.
     ///
     /// Redux renders the game's post-processing from URP volumes (it mirrors the game's own effects into them every
     /// frame, see Redux's PostProcessingBridge): depth of field with its own effect, <see cref="ReduxDepthOfField"/>,
-    /// and the rest, lens distortion among them, with URP's. This adds one more volume: global, ranked above the
+    /// and the rest, lens distortion and colour adjustments among them, with URP's. This adds one more volume: global, ranked above the
     /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
     /// else stays the game's.
     /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
@@ -31,6 +32,13 @@ namespace MunShot.Cameras
 
         // URP's lens distortion at full fisheye: its strongest bulge
         private const float MaxFisheyeIntensity = 1f;
+
+        /// <summary>
+        /// The colour settings' ranges: exposure in stops (each doubles or halves the light), the rest as URP's own
+        /// -100 to 100. 0 is the game's own picture for each.
+        /// </summary>
+        public const float MaxExposure = 3f;
+        public const float MaxColorAdjustment = 100f;
 
         private const float DefaultFocusDistance = 5f;
         private const float DefaultAperture = 4f;
@@ -52,6 +60,8 @@ namespace MunShot.Cameras
         private VolumeProfile _profile;
         private ReduxDepthOfField _depthOfField;
         private LensDistortion _lensDistortion;
+        private ColorAdjustments _colorAdjustments;
+        private WhiteBalance _whiteBalance;
 
         // The camera's volume layers last seen, so a change is only looked at (and logged) once
         private int _volumeLayers = -1;
@@ -70,6 +80,30 @@ namespace MunShot.Cameras
         /// <summary>How much the picture bulges out from its middle, as through a fisheye lens: 0 (flat) to 1.</summary>
         public float Fisheye { get; set; }
 
+        /// <summary>Brighter or darker, in stops, ±<see cref="MaxExposure"/>.</summary>
+        public float Exposure { get; set; }
+
+        /// <summary>More or less difference between light and dark, ±<see cref="MaxColorAdjustment"/>.</summary>
+        public float Contrast { get; set; }
+
+        /// <summary>More or less colourful, ±<see cref="MaxColorAdjustment"/>: the lowest is black and white.</summary>
+        public float Saturation { get; set; }
+
+        /// <summary>Warmer (orange) or cooler (blue), ±<see cref="MaxColorAdjustment"/>.</summary>
+        public float Warmth { get; set; }
+
+        /// <summary>Whether any colour setting is off the game's own picture.</summary>
+        public bool ColorChanged => Exposure != 0f || Contrast != 0f || Saturation != 0f || Warmth != 0f;
+
+        /// <summary>Puts exposure, contrast, saturation and warmth back to the game's own picture.</summary>
+        public void ResetColor()
+        {
+            Exposure = 0f;
+            Contrast = 0f;
+            Saturation = 0f;
+            Warmth = 0f;
+        }
+
         public PhotoLook(Action<string> logInfo, Action<string> logWarning)
         {
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
@@ -84,6 +118,7 @@ namespace MunShot.Cameras
             FocusDistance = DefaultFocusDistance;
             Aperture = DefaultAperture;
             Fisheye = 0f;
+            ResetColor();
             _volumeLayers = -1;
 
             _profile = ScriptableObject.CreateInstance<VolumeProfile>();
@@ -91,6 +126,8 @@ namespace MunShot.Cameras
             _profile.hideFlags = HideFlags.DontSave;
             _depthOfField = _profile.Add<ReduxDepthOfField>(overrides: false);
             _lensDistortion = _profile.Add<LensDistortion>(overrides: false);
+            _colorAdjustments = _profile.Add<ColorAdjustments>(overrides: false);
+            _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
 
             _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave };
             var volume = _holder.AddComponent<Volume>();
@@ -120,10 +157,14 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_holder);
             UnityEngine.Object.Destroy(_depthOfField);
             UnityEngine.Object.Destroy(_lensDistortion);
+            UnityEngine.Object.Destroy(_colorAdjustments);
+            UnityEngine.Object.Destroy(_whiteBalance);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
             _depthOfField = null;
             _lensDistortion = null;
+            _colorAdjustments = null;
+            _whiteBalance = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
         }
@@ -148,6 +189,16 @@ namespace MunShot.Cameras
             Set(_lensDistortion.center, bulge, new Vector2(0.5f, 0.5f));
             Set(_lensDistortion.xMultiplier, bulge, 1f);
             Set(_lensDistortion.yMultiplier, bulge, 1f);
+
+            // Each colour setting at 0 leaves the game's own value (the game grades some scenes itself)
+            float exposure = Mathf.Clamp(Exposure, -MaxExposure, MaxExposure);
+            float contrast = Mathf.Clamp(Contrast, -MaxColorAdjustment, MaxColorAdjustment);
+            float saturation = Mathf.Clamp(Saturation, -MaxColorAdjustment, MaxColorAdjustment);
+            float warmth = Mathf.Clamp(Warmth, -MaxColorAdjustment, MaxColorAdjustment);
+            Set(_colorAdjustments.postExposure, exposure != 0f, exposure);
+            Set(_colorAdjustments.contrast, contrast != 0f, contrast);
+            Set(_colorAdjustments.saturation, saturation != 0f, saturation);
+            Set(_whiteBalance.temperature, warmth != 0f, warmth);
         }
 
         private static void Set<T>(VolumeParameter<T> parameter, bool on, T value)
