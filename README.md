@@ -27,6 +27,15 @@
 ![A kerbal sitting on a rock on Duna, sharp in the foreground, with a capsule softly blurred behind](Screenshots/DunaDepthOfField.png)
 *Depth of field: focused on the kerbal, the capsule behind blurs away.*
 
+![A kerbal's helmet seen from close above, bulging out from the middle over the red ground of Duna](Screenshots/DunaFisheye.png)
+*Fisheye: up close, the kerbal's helmet bulges out of the picture.*
+
+![A grinning kerbal and a capsule in near darkness, lit only by a deep red light](Screenshots/DunaRedLight.png)
+*One red light in the dark.*
+
+![A shocked kerbal floating past a rover lit with red lights, the hazy sky blurred behind](Screenshots/KerbinRoverLights.png)
+*Lights and depth of field together.*
+
 ![A kerbal hanging on to the side of a rocket during launch, high above the space center, with two crewmates looking out of the window](Screenshots/LaunchHangingOn.png)
 *Hanging On, during a launch.*
 
@@ -46,12 +55,12 @@
 | **Mouse wheel** | Fly up and down (free camera), or get closer and further (orbit camera) |
 | **Q / E** | Roll the camera; **R** levels it again |
 | **Shift / Ctrl** | Faster (picking up speed the longer it's held) / slower |
-| **Click** a kerbal | Select them to pose and move |
-| **Shift+click**, or **drag a box** | Select several kerbals to move together |
-| **Drag** a selected kerbal, holding **right mouse** too | Turn them left and right |
+| **Click** a kerbal or a light's marker | Select it to pose or move |
+| **Shift+click**, or **drag a box** | Select several kerbals and lights to move together |
+| **Drag** a selected kerbal, holding **right mouse** too | Turn them left and right (spot lights too) |
 | **Drag** a selected kerbal, holding **Ctrl** | Lean them to the side |
 | **Drag** a selected kerbal, holding **Ctrl+Alt** | Tip them forward and back |
-| **Delete** or **Backspace** | Take the selected kerbals out of the shot |
+| **Delete** or **Backspace** | Take the selected kerbals and lights out of the shot |
 | **H** | Hide photo mode's UI to frame the shot |
 | **F1** | Take the photo |
 
