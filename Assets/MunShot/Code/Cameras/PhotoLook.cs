@@ -7,26 +7,37 @@ using UnityEngine.Rendering.Universal;
 namespace MunShot.Cameras
 {
     /// <summary>
-    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, so far.
+    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field and fisheye, so far.
     ///
     /// Redux renders the game's post-processing from URP volumes (it mirrors the game's own effects into them every
-    /// frame, see Redux's PostProcessingBridge) and draws depth of field with its own effect,
-    /// <see cref="ReduxDepthOfField"/>. This adds one more volume: global, ranked above the game's, on a layer the
-    /// game's camera reads volumes from. Only what photo mode changes is overridden; everything else stays the game's.
+    /// frame, see Redux's PostProcessingBridge): depth of field with its own effect, <see cref="ReduxDepthOfField"/>,
+    /// and the rest, lens distortion among them, with URP's. This adds one more volume: global, ranked above the
+    /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
+    /// else stays the game's.
     /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
-    /// setting starts afresh the next time.
+    /// setting starts afresh the next time. As the <see cref="IScreenLens"/>, it tells where the fisheye moves things
+    /// on screen, so the mouse picks what's seen under it.
     /// </summary>
-    public sealed class PhotoLook
+    public sealed class PhotoLook : IScreenLens
     {
         public const float MinFocusDistance = 0.3f;
+
+        /// <summary>The furthest focus short of infinity (<see cref="float.PositiveInfinity"/>), as on a lens's ring.</summary>
         public const float MaxFocusDistance = 5000f;
 
         /// <summary>The widest and narrowest apertures, as f-numbers: the lower, the more blur.</summary>
         public const float MinAperture = 1.4f;
         public const float MaxAperture = 22f;
 
+        // URP's lens distortion at full fisheye: its strongest bulge
+        private const float MaxFisheyeIntensity = 1f;
+
         private const float DefaultFocusDistance = 5f;
         private const float DefaultAperture = 4f;
+
+        // What Redux's depth of field is given for infinity: its maths needs a number, and nothing in KSP is far enough
+        // past this for the difference to show (10,000 km)
+        private const float InfiniteFocusDistance = 1e7f;
 
         // Above the game's own volumes, which Redux mirrors at the priorities the game gave them
         private const float Priority = 1000f;
@@ -40,6 +51,7 @@ namespace MunShot.Cameras
         private GameObject _holder;
         private VolumeProfile _profile;
         private ReduxDepthOfField _depthOfField;
+        private LensDistortion _lensDistortion;
 
         // The camera's volume layers last seen, so a change is only looked at (and logged) once
         private int _volumeLayers = -1;
@@ -49,11 +61,14 @@ namespace MunShot.Cameras
         /// <summary>Whether things nearer and further than <see cref="FocusDistance"/> are blurred.</summary>
         public bool DepthOfField { get; set; }
 
-        /// <summary>How far from the camera things are sharp, in metres.</summary>
+        /// <summary>How far from the camera things are sharp, in metres; infinity for everything far off.</summary>
         public float FocusDistance { get; set; } = DefaultFocusDistance;
 
         /// <summary>The aperture, as an f-number: lower blurs what's out of focus more.</summary>
         public float Aperture { get; set; } = DefaultAperture;
+
+        /// <summary>How much the picture bulges out from its middle, as through a fisheye lens: 0 (flat) to 1.</summary>
+        public float Fisheye { get; set; }
 
         public PhotoLook(Action<string> logInfo, Action<string> logWarning)
         {
@@ -68,12 +83,14 @@ namespace MunShot.Cameras
             DepthOfField = false;
             FocusDistance = DefaultFocusDistance;
             Aperture = DefaultAperture;
+            Fisheye = 0f;
             _volumeLayers = -1;
 
             _profile = ScriptableObject.CreateInstance<VolumeProfile>();
             _profile.name = "MunShot photo look";
             _profile.hideFlags = HideFlags.DontSave;
             _depthOfField = _profile.Add<ReduxDepthOfField>(overrides: false);
+            _lensDistortion = _profile.Add<LensDistortion>(overrides: false);
 
             _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave };
             var volume = _holder.AddComponent<Volume>();
@@ -102,21 +119,95 @@ namespace MunShot.Cameras
             if (!IsEngaged) return;
             UnityEngine.Object.Destroy(_holder);
             UnityEngine.Object.Destroy(_depthOfField);
+            UnityEngine.Object.Destroy(_lensDistortion);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
             _depthOfField = null;
+            _lensDistortion = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
         }
 
+        // Each effect overrides the game's only while it's on, so whatever the game has there itself shows otherwise
         private void Apply(Camera camera)
         {
-            _depthOfField.Enabled.Override(DepthOfField);
-            _depthOfField.FocusDistance.Override(Mathf.Clamp(FocusDistance, MinFocusDistance, MaxFocusDistance));
-            _depthOfField.Aperture.Override(Mathf.Clamp(Aperture, MinAperture, MaxAperture));
+            bool blur = DepthOfField;
+            Set(_depthOfField.Enabled, blur, true);
+            Set(_depthOfField.FocusDistance, blur, float.IsPositiveInfinity(FocusDistance)
+                ? InfiniteFocusDistance
+                : Mathf.Clamp(FocusDistance, MinFocusDistance, MaxFocusDistance));
+            Set(_depthOfField.Aperture, blur, Mathf.Clamp(Aperture, MinAperture, MaxAperture));
             // A narrower field of view is a longer lens, which blurs more, as a real telephoto does
-            if (camera != null) _depthOfField.FocalLength.Override(FocalLength(camera.fieldOfView));
-            _depthOfField.KernelSize.Override(BokehKernelSize.Large);
+            if (camera != null) Set(_depthOfField.FocalLength, blur, FocalLength(camera.fieldOfView));
+            Set(_depthOfField.KernelSize, blur, BokehKernelSize.Large);
+
+            float intensity = FisheyeIntensity;
+            bool bulge = intensity > 0f;
+            Set(_lensDistortion.intensity, bulge, intensity);
+            Set(_lensDistortion.scale, bulge, FillingScale(intensity));
+            Set(_lensDistortion.center, bulge, new Vector2(0.5f, 0.5f));
+            Set(_lensDistortion.xMultiplier, bulge, 1f);
+            Set(_lensDistortion.yMultiplier, bulge, 1f);
+        }
+
+        private static void Set<T>(VolumeParameter<T> parameter, bool on, T value)
+        {
+            parameter.overrideState = on;
+            if (on) parameter.value = value;
+        }
+
+        private float FisheyeIntensity => IsEngaged ? Mathf.Clamp01(Fisheye) * MaxFisheyeIntensity : 0f;
+
+        // ---- Where the fisheye moves things ----
+        // URP's lens distortion (UberPost.shader, DistortUV) gives each screen pixel the picture from further out the
+        // further it is from the middle: in screen coordinates (0 to 1) from the middle, after zooming in by the scale,
+        // a pixel r out shows what was tan(r θ) / σ out. ToScene does the same; ToScreen undoes it (r = atan(s σ) / θ)
+
+        public bool Bends => FisheyeIntensity > 0f;
+
+        public Vector2 ToScene(Vector2 screen)
+        {
+            float intensity = FisheyeIntensity;
+            if (intensity <= 0f || Screen.width <= 0 || Screen.height <= 0) return screen;
+            LensAngles(intensity, out float theta, out float sigma);
+            Vector2 size = new Vector2(Screen.width, Screen.height);
+            Vector2 fromMiddle = (screen / size - Middle) / FillingScale(intensity);
+            float r = fromMiddle.magnitude;
+            if (r < 1e-6f) return screen;
+            return (Middle + fromMiddle * (Mathf.Tan(r * theta) / (r * sigma))) * size;
+        }
+
+        public Vector2 ToScreen(Vector2 scene)
+        {
+            float intensity = FisheyeIntensity;
+            if (intensity <= 0f || Screen.width <= 0 || Screen.height <= 0) return scene;
+            LensAngles(intensity, out float theta, out float sigma);
+            Vector2 size = new Vector2(Screen.width, Screen.height);
+            Vector2 fromMiddle = scene / size - Middle;
+            float s = fromMiddle.magnitude;
+            if (s < 1e-6f) return scene;
+            float r = Mathf.Atan(s * sigma) / theta;
+            return (Middle + fromMiddle * (r / s) * FillingScale(intensity)) * size;
+        }
+
+        private static readonly Vector2 Middle = new Vector2(0.5f, 0.5f);
+
+        // URP's angles for an intensity (UberPostProcessPass.CalcLensDistortionParams)
+        private static void LensAngles(float intensity, out float theta, out float sigma)
+        {
+            theta = Mathf.Deg2Rad * Mathf.Min(160f, 1.6f * Mathf.Max(intensity * 100f, 1f));
+            sigma = 2f * Mathf.Tan(theta * 0.5f);
+        }
+
+        // How far URP's lens distortion has to zoom in so a bulging picture still fills the frame: a corner shows what
+        // was at the corner, not past it (where the picture runs out and smears). Solved for the corner, half a
+        // diagonal (0.707) from the middle in screen coordinates
+        private static float FillingScale(float intensity)
+        {
+            if (intensity <= 0f) return 1f;
+            const float corner = 0.70710678f;
+            LensAngles(intensity, out float theta, out float sigma);
+            return Mathf.Clamp(corner * theta / Mathf.Atan(corner * sigma), 0.01f, 5f);
         }
 
         // The focal length (mm) that sees the camera's vertical field of view on Redux's film

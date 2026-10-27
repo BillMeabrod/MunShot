@@ -27,6 +27,7 @@ namespace MunShot.UI
         private string _selectedName = string.Empty;
         private string _fieldOfViewText = string.Empty;
         private string _focusDistanceText = string.Empty;
+        private string _fisheyeText = string.Empty;
         private string _apertureText = string.Empty;
         private string _toast = string.Empty;
         private bool _toastVisible;
@@ -113,6 +114,14 @@ namespace MunShot.UI
         {
             get => _fieldOfViewText;
             set => SetField(ref _fieldOfViewText, value);
+        }
+
+        /// <summary>How much the picture bulges, as shown next to the fisheye slider ("40%").</summary>
+        [CreateProperty]
+        public string FisheyeText
+        {
+            get => _fisheyeText;
+            set => SetField(ref _fisheyeText, value);
         }
 
         /// <summary>How far away things are sharp, as shown next to its slider ("12 m").</summary>

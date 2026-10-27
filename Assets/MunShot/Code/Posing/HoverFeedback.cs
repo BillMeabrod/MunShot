@@ -26,10 +26,12 @@ namespace MunShot.Posing
         private PhotoSession.Entry _hovered;
 
         /// <summary>
-        /// Outlines <paramref name="selected"/> and <paramref name="hovered"/> (either may be empty or null). Moving
-        /// onto a new double plays the sound.
+        /// Outlines <paramref name="selected"/> and <paramref name="hovered"/> (either may be empty or null), unless
+        /// <paramref name="outlined"/> is false: then none are, but the sound still plays. Moving onto a new double
+        /// plays the sound.
         /// </summary>
-        public void Show(IReadOnlyCollection<PhotoSession.Entry> selected, PhotoSession.Entry hovered, Camera camera)
+        public void Show(IReadOnlyCollection<PhotoSession.Entry> selected, PhotoSession.Entry hovered, Camera camera,
+                         bool outlined = true)
         {
             if (hovered != _hovered && hovered?.Root != null)
             {
@@ -40,10 +42,13 @@ namespace MunShot.Posing
             _hovered = hovered;
 
             _wanted.Clear();
-            if (selected != null)
-                foreach (PhotoSession.Entry entry in selected)
-                    if (entry?.Root != null) _wanted.Add(entry);
-            if (hovered?.Root != null) _wanted.Add(hovered);
+            if (outlined)
+            {
+                if (selected != null)
+                    foreach (PhotoSession.Entry entry in selected)
+                        if (entry?.Root != null) _wanted.Add(entry);
+                if (hovered?.Root != null) _wanted.Add(hovered);
+            }
             if (_wanted.SetEquals(_lit) && StillOutlined()) return;
             // The game draws no outlines while the right mouse button is held; try again once it's let go
             if (_wanted.Count > 0 && CameraMouseLook.GetMouseLook()) return;

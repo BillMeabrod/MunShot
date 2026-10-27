@@ -26,6 +26,7 @@ T = {
     "MunShot/UI/Free": ["Frei", "Libre", "Libera", "Libre", "フリー", "자유", "Swobodna", "Свободная", "自由", "Livre", "自由"],
     "MunShot/UI/Orbit": ["Umkreisen", "Orbite", "Orbita", "Órbita", "周回", "궤도", "Orbita", "Орбита", "环绕", "Órbita", "環繞"],
     "MunShot/UI/OrbitAround": ["Umkreisen von", "Orbiter autour de", "Orbita intorno a", "Orbitar alrededor de", "周回対象", "궤도 대상", "Orbituj wokół", "Облетать вокруг", "环绕目标", "Orbitar em torno de", "環繞目標"],
+    "MunShot/UI/Fisheye": ["Fischauge", "Fisheye", "Fisheye", "Ojo de pez", "魚眼", "어안", "Rybie oko", "Рыбий глаз", "鱼眼", "Olho de peixe", "魚眼"],
     "MunShot/UI/DepthOfField": ["Schärfentiefe", "Profondeur de champ", "Profondità di campo", "Profundidad de campo", "被写界深度", "피사계 심도", "Głębia ostrości", "Глубина резкости", "景深", "Profundidade de campo", "景深"],
     "MunShot/UI/FocusDistance": ["Fokusabstand", "Distance de mise au point", "Distanza di messa a fuoco", "Distancia de enfoque", "ピント距離", "초점 거리", "Odległość ostrzenia", "Дистанция фокусировки", "对焦距离", "Distância de foco", "對焦距離"],
     "MunShot/UI/Blur": ["Unschärfe", "Flou", "Sfocatura", "Desenfoque", "ぼかし", "흐림", "Rozmycie", "Размытие", "模糊", "Desfoque", "模糊"],

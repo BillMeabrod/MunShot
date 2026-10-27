@@ -86,7 +86,7 @@ namespace MunShot
             _uiHider = new UiHider(Info, Warn);
             _inputLock = new PhotoModeInputLock(Info, Warn);
             Look = new PhotoLook(Info, Warn);
-            Manipulator = new DoubleManipulator(session, Info, message => _logger.LogError(message));
+            Manipulator = new DoubleManipulator(session, Look, Info, message => _logger.LogError(message));
 
             Session.EntryChanged += OnEntryChanged;
             Manipulator.Selected += OnDoubleClicked;
@@ -435,9 +435,19 @@ namespace MunShot
             RaiseChanged();
         }
 
+        /// <summary>Sets the focus, in metres; <see cref="float.PositiveInfinity"/> focuses on everything far off.</summary>
         public void SetFocusDistance(float metres)
         {
-            Look.FocusDistance = Mathf.Clamp(metres, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
+            Look.FocusDistance = float.IsPositiveInfinity(metres)
+                ? metres
+                : Mathf.Clamp(metres, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
+            RaiseChanged();
+        }
+
+        /// <summary>How much the picture bulges, as through a fisheye lens: 0 (flat) to 1.</summary>
+        public void SetFisheye(float amount)
+        {
+            Look.Fisheye = Mathf.Clamp01(amount);
             RaiseChanged();
         }
 

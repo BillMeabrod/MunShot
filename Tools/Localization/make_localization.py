@@ -41,6 +41,7 @@ rows = [
     ("MunShot/UI/Orbit", "Camera mode button: circle a vessel or kerbal", "Orbit"),
     ("MunShot/UI/OrbitAround", "Caption above the list of things the camera can orbit", "Orbit around"),
     ("MunShot/UI/FieldOfView", "Caption above the camera's field of view slider", "Field of view"),
+    ("MunShot/UI/Fisheye", "Caption above the slider that bulges the picture out from its middle, like a fisheye lens", "Fisheye"),
     ("MunShot/UI/DepthOfField", "Switch: blur what's nearer and further than the focus distance, like a real camera lens", "Depth of field"),
     ("MunShot/UI/FocusDistance", "Caption above the slider for how far from the camera things are sharp", "Focus distance"),
     ("MunShot/UI/Blur", "Caption above the slider for how strongly what's out of focus is blurred (the lens aperture)", "Blur"),

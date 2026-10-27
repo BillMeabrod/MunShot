@@ -120,7 +120,8 @@ namespace MunShot.Cameras
         }
 
         public const float MinFieldOfView = 10f;
-        public const float MaxFieldOfView = 100f;
+        // Wide enough for a fisheye shot: past 100° a flat picture stretches at the edges, which Fisheye pulls back in
+        public const float MaxFieldOfView = 140f;
         public double OrthographicSize => 5.0;
         public float NearClipPlane => NearClip;
 

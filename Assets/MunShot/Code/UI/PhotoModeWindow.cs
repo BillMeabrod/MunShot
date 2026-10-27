@@ -72,6 +72,7 @@ namespace MunShot.UI
         private Button _free;
         private Button _orbit;
         private Slider _fieldOfView;
+        private Slider _fisheye;
         private Toggle _depthOfField;
         private VisualElement _focusControls;
         private Slider _focusDistance;
@@ -236,6 +237,7 @@ namespace MunShot.UI
             _free = Required<Button>(root, "camera-free");
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
+            _fisheye = Required<Slider>(root, "fisheye");
             _depthOfField = Required<Toggle>(root, "depth-of-field");
             _focusControls = Required<VisualElement>(root, "focus-controls");
             _focusDistance = Required<Slider>(root, "focus-distance");
@@ -255,6 +257,7 @@ namespace MunShot.UI
                     ShowFieldOfView();
                 });
             }
+            _fisheye?.RegisterValueChangedCallback(change => _photoMode.SetFisheye(change.newValue));
             _depthOfField?.RegisterValueChangedCallback(change => _photoMode.SetDepthOfField(change.newValue));
             _focusDistance?.RegisterValueChangedCallback(change => _photoMode.SetFocusDistance(FocusDistanceAt(change.newValue)));
             _blur?.RegisterValueChangedCallback(change => _photoMode.SetAperture(ApertureAt(change.newValue)));
@@ -379,6 +382,8 @@ namespace MunShot.UI
             RefreshOrbitTargets(camera);
             _fieldOfView?.SetValueWithoutNotify(camera.FieldOfView);
             ShowFieldOfView();
+            _fisheye?.SetValueWithoutNotify(_photoMode.Look.Fisheye);
+            _model.FisheyeText = _photoMode.Look.Fisheye.ToString("P0", CultureInfo.CurrentCulture);
             RefreshFocus(_photoMode.Look);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
         }
@@ -452,19 +457,27 @@ namespace MunShot.UI
             _focusControls?.SetEnabled(look.DepthOfField);
             _focusDistance?.SetValueWithoutNotify(SliderAt(look.FocusDistance, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance));
             _blur?.SetValueWithoutNotify(SliderAt(look.Aperture, PhotoLook.MaxAperture, PhotoLook.MinAperture));
-            _model.FocusDistanceText = look.FocusDistance.ToString(look.FocusDistance < 10f ? "0.0" : "0", CultureInfo.CurrentCulture)
-                                       + " " + KSP.Units.SymbolMeters;
+            _model.FocusDistanceText = FocusDistanceText(look.FocusDistance);
             _model.ApertureText = "f/" + look.Aperture.ToString("0.#", CultureInfo.CurrentCulture);
         }
 
+        // Infinity as a lens's ring marks it
+        private static string FocusDistanceText(float metres) =>
+            float.IsPositiveInfinity(metres)
+                ? "∞"
+                : metres.ToString(metres < 10f ? "0.0" : "0", CultureInfo.CurrentCulture) + " " + KSP.Units.SymbolMeters;
+
         // The focus and blur sliders run from 0 to 1 along a curve, as a lens's rings do: each step is the same share
         // nearer or further (a few centimetres up close, hundreds of metres far off), and each step of blur the same
-        // fraction of an f-stop. Blur runs from the narrowest aperture (least blur) to the widest
-        private static float FocusDistanceAt(float slider) => ValueAt(slider, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
+        // fraction of an f-stop. Blur runs from the narrowest aperture (least blur) to the widest. The focus slider's far
+        // end is infinity, as on a lens
+        private static float FocusDistanceAt(float slider) =>
+            slider >= 1f ? float.PositiveInfinity : ValueAt(slider, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
         private static float ApertureAt(float slider) => ValueAt(slider, PhotoLook.MaxAperture, PhotoLook.MinAperture);
 
         private static float ValueAt(float slider, float from, float to) => from * Mathf.Pow(to / from, Mathf.Clamp01(slider));
-        private static float SliderAt(float value, float from, float to) => Mathf.Clamp01(Mathf.Log(value / from) / Mathf.Log(to / from));
+        private static float SliderAt(float value, float from, float to) =>
+            float.IsPositiveInfinity(value) ? 1f : Mathf.Clamp01(Mathf.Log(value / from) / Mathf.Log(to / from));
 
         private void ShowFieldOfView() =>
             _model.FieldOfViewText = _photoMode.Camera.FieldOfView.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;

@@ -135,7 +135,7 @@
                                 </ui:VisualElement>
                             </ui:VisualElement>
 
-                            <!-- Camera: fly free or circle something, how wide it sees, and what's in focus -->
+                            <!-- Camera: fly free or circle something, how wide it sees, fisheye, and what's in focus -->
                             <ui:VisualElement name="page-camera" class="pm-page">
                                 <ui:VisualElement class="pm-row">
                                     <uitk:OabButton name="camera-free" text="#MunShot/UI/Free" class="pm-grow">
@@ -171,6 +171,19 @@
                                     <ui:Label class="pm-value">
                                         <Bindings>
                                             <ui:DataBinding property="text" data-source-path="FieldOfViewText" binding-mode="ToTarget" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </ui:VisualElement>
+                                <!-- Fisheye: the picture bulges out from its middle, as through a fisheye lens -->
+                                <ui:VisualElement class="pm-heading-row">
+                                    <ui:Label text="## " class="pm-heading pm-dim" />
+                                    <ui:Label text="#MunShot/UI/Fisheye" class="pm-heading uppercase" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="pm-row">
+                                    <ui:Slider name="fisheye" low-value="0" high-value="1" class="pm-grow" />
+                                    <ui:Label class="pm-value">
+                                        <Bindings>
+                                            <ui:DataBinding property="text" data-source-path="FisheyeText" binding-mode="ToTarget" />
                                         </Bindings>
                                     </ui:Label>
                                 </ui:VisualElement>

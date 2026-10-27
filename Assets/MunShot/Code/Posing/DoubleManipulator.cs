@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MunShot.Cameras;
 using UnityEngine;
 
 namespace MunShot.Posing
@@ -51,6 +52,7 @@ namespace MunShot.Posing
 
         private readonly PhotoSession _session;
         private readonly HoverFeedback _hover = new HoverFeedback();
+        private readonly IScreenLens _lens;
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logError;
         private ManipulationHandles _handles;
@@ -130,9 +132,15 @@ namespace MunShot.Posing
         /// <summary>Raised when a click selects a different double for posing, for the UI to follow.</summary>
         public event Action<PhotoSession.Entry> Selected;
 
-        public DoubleManipulator(PhotoSession session, Action<string> logInfo, Action<string> logError)
+        /// <param name="lens">
+        /// What the picture goes through on its way to the screen (the fisheye): the mouse is aimed through it, and
+        /// the doubles a selection box takes are judged where they show; while it bends, outlines are left off, as the
+        /// game draws them after it, unbent, beside the kerbal.
+        /// </param>
+        public DoubleManipulator(PhotoSession session, IScreenLens lens, Action<string> logInfo, Action<string> logError)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
+            _lens = lens ?? throw new ArgumentNullException(nameof(lens));
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _logError = logError ?? throw new ArgumentNullException(nameof(logError));
         }
@@ -178,7 +186,8 @@ namespace MunShot.Posing
             if (showHandles) _handles?.Follow(Centre(), _primary.Root.rotation, camera);
             if (camera == null) return;
 
-            Ray ray = camera.ScreenPointToRay(mouse);
+            // Aimed at what's under the mouse as it's seen: through the fisheye, when there is one
+            Ray ray = camera.ScreenPointToRay(_lens.ToScene(mouse));
             if (pressed && !overUi) BeginDrag(ray, mouse, camera, adding);
             else if (held && _drag != Drag.None)
                 ContinueDrag(ray, mouse, camera,
@@ -189,7 +198,7 @@ namespace MunShot.Posing
             // select is lit instead, so it shows before letting go; during other drags nothing new lights up
             PhotoSession.Entry hovered = _drag == Drag.None && !overUi ? _session.PickDouble(ray, out _) : null;
             Rect? box = SelectionBox;
-            _hover.Show(box.HasValue ? InBox(box.Value, camera, _boxAdds) : _moving, hovered, camera);
+            _hover.Show(box.HasValue ? InBox(box.Value, camera, _boxAdds) : _moving, hovered, camera, outlined: !_lens.Bends);
         }
 
         /// <summary>
@@ -464,7 +473,7 @@ namespace MunShot.Posing
             {
                 if (!entry.IsReady || entry.Root == null || _inBox.Contains(entry)) continue;
                 Vector3 screen = camera.WorldToScreenPoint(CentreOf(entry));
-                if (screen.z > 0f && box.Contains(new Vector2(screen.x, screen.y))) _inBox.Add(entry);
+                if (screen.z > 0f && box.Contains(_lens.ToScreen(new Vector2(screen.x, screen.y)))) _inBox.Add(entry);
             }
             return _inBox;
         }
