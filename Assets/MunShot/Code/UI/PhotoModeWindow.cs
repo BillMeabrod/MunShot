@@ -19,7 +19,8 @@ namespace MunShot.UI
 {
     /// <summary>
     /// Photo mode's overlay, built from PhotoModeWindow.uxml with a <see cref="PhotoModeViewModel"/> as its data
-    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera, Color, Light tabs; opened and
+    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera, Color, Light tabs,
+    /// icons down its side named by tooltips, as the VAB's part categories are; opened and
     /// closed by its bar toggle), a shutter button and a hint bar sit on its edges. It's built from the KerbalUI
     /// theme's own pieces as Redux's panels are, with localized text and the game's menu sounds on hover and click.
     /// It shows while photo mode is open, stays up when photo mode hides the rest of the game's UI, hides with the
@@ -61,6 +62,16 @@ namespace MunShot.UI
         private VisualElement _selectionBox;
         private readonly Dictionary<PhotoModeTab, (Button tab, VisualElement page)> _tabs =
             new Dictionary<PhotoModeTab, (Button, VisualElement)>();
+
+        // Each tab's name: its tooltip, and the open page's title
+        private static readonly Dictionary<PhotoModeTab, string> TabNames = new Dictionary<PhotoModeTab, string>
+        {
+            [PhotoModeTab.Kerbals] = "MunShot/UI/Kerbals",
+            [PhotoModeTab.Pose] = "MunShot/UI/Pose",
+            [PhotoModeTab.Camera] = "MunShot/UI/Camera",
+            [PhotoModeTab.Color] = "MunShot/UI/Color",
+            [PhotoModeTab.Light] = "MunShot/UI/Light"
+        };
         private Button _bringIn;
         private ScrollView _kerbalList;
         private ScrollView _poseList;
@@ -245,6 +256,12 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
             _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
             _tabs[PhotoModeTab.Light] = (Required<Button>(root, "tab-light"), Required<VisualElement>(root, "page-light"));
+            // The tabs are icons; each shows its name on hover, through Redux's Tooltip as Redux's own windows do
+            Tooltip tooltip = Required<Tooltip>(root, "tooltip");
+            if (tooltip != null)
+                foreach ((Button tab, VisualElement _) in _tabs.Values)
+                    tab?.AddManipulator(new TooltipManipulator(tooltip));
+            NameTabs();
 
             _bringIn = Required<Button>(root, "bring-in");
             _kerbalList = Required<ScrollView>(root, "kerbal-list");
@@ -360,6 +377,7 @@ namespace MunShot.UI
 
         private void OnLanguageChanged()
         {
+            NameTabs();
             _hintsFor = null;
             ListPoses();   // sorted by their names in the new language
             Refresh();
@@ -391,12 +409,20 @@ namespace MunShot.UI
         private void ShowTab(PhotoModeTab tab)
         {
             _tab = tab;
+            _model.PageTitle = "#" + TabNames[tab];
             foreach (KeyValuePair<PhotoModeTab, (Button tab, VisualElement page)> entry in _tabs)
             {
                 bool shown = entry.Key == tab;
                 MarkActive(entry.Value.tab, shown);
                 if (entry.Value.page != null) SetShown(entry.Value.page, shown);
             }
+        }
+
+        // The tabs' tooltips, in the game's language
+        private void NameTabs()
+        {
+            foreach (KeyValuePair<PhotoModeTab, (Button tab, VisualElement page)> entry in _tabs)
+                if (entry.Value.tab != null) entry.Value.tab.tooltip = Localization.Translate(TabNames[entry.Key]);
         }
 
         // Shows or hides through UitkForKsp2 (hiding also lets go of focus and text input inside), only on a change: some

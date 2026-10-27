@@ -28,6 +28,7 @@ namespace MunShot.UI
         private readonly PhotoMode _photoMode;
         private bool _hasKerbals;
         private string _selectedName = string.Empty;
+        private string _pageTitle = string.Empty;
         private string _fieldOfViewText = string.Empty;
         private string _focusDistanceText = string.Empty;
         private string _fisheyeText = string.Empty;
@@ -123,6 +124,16 @@ namespace MunShot.UI
         {
             get => _hasKerbals;
             set => SetField(ref _hasKerbals, value);
+        }
+
+        /// <summary>
+        /// The open page's name, at its top (a "#key", which the binding translates and shows in capitals).
+        /// </summary>
+        [CreateProperty]
+        public string PageTitle
+        {
+            get => _pageTitle;
+            set => SetField(ref _pageTitle, value);
         }
 
         /// <summary>

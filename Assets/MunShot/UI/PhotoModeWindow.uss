@@ -26,7 +26,7 @@
 }
 
 .pm-panel {
-    width: 300px;
+    width: 390px;
 }
 
 .pm-panel-inner {
@@ -66,15 +66,81 @@
     margin: 2px 0 6px 0;
 }
 
-.pm-tabs {
+/* The tab strip down the left side and the pages beside it, as the VAB's part picker lays out its categories. The
+   tabs are the theme's OabButtons (for its sounds and fades), coloured as the part picker's categories are: white icons
+   on dark keys, the chosen one purple */
+.pm-body {
     flex-direction: row;
-    margin-top: 8px;
+    align-items: flex-start;
 }
 
-.pm-tab {
+.pm-strip {
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.pm-strip-tab {
+    width: 60px;
+    height: 60px;
+    margin: 0 0 4px 0;
+}
+
+.pm-strip-tab.oab-button.unity-text-element,
+.pm-strip-tab.oab-button.unity-text-element:hover,
+.pm-strip-tab.oab-button.unity-text-element:active {
+    border-color: rgb(44, 49, 58);
+}
+
+.pm-strip-tab.oab-button.unity-text-element > .oab-button__inner {
+    align-items: center;
+    justify-content: center;
+    background-color: rgb(31, 35, 42);
+}
+
+.pm-strip-tab.oab-button.unity-text-element:hover > .oab-button__inner {
+    background-color: rgb(46, 51, 61);
+}
+
+.pm-strip-tab.oab-button.unity-text-element.active,
+.pm-strip-tab.oab-button.unity-text-element.active:hover {
+    border-color: rgb(140, 125, 240);
+}
+
+.pm-strip-tab.oab-button.unity-text-element.active > .oab-button__inner,
+.pm-strip-tab.oab-button.unity-text-element.active:hover > .oab-button__inner {
+    background-color: rgb(91, 79, 209);
+}
+
+.pm-strip-icon {
+    width: 46px;
+    height: 46px;
+    -unity-background-scale-mode: scale-to-fit;
+    -unity-background-image-tint-color: rgb(255, 255, 255);
+}
+
+.pm-icon-kerbals { background-image: url("Icons/tab-kerbals.png"); }
+.pm-icon-pose { background-image: url("Icons/tab-pose.png"); }
+.pm-icon-camera { background-image: url("Icons/tab-camera.png"); }
+.pm-icon-color { background-image: url("Icons/tab-color.png"); }
+.pm-icon-light { background-image: url("Icons/tab-light.png"); }
+
+.pm-pages {
     flex-grow: 1;
-    height: 26px;
-    margin: 0 2px;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.pm-page-title-row {
+    margin-bottom: 2px;
+}
+
+.pm-page-title {
+    -unity-font-definition: var(--font-title-small);
+    color: rgb(255, 255, 255);
+    font-size: 13px;
+    letter-spacing: 3px;
+    padding: 0;
+    margin: 0;
 }
 
 .pm-box {
@@ -165,7 +231,7 @@
 
 .pm-color-picker #SBSquareBackground,
 .pm-color-picker #SBSquare {
-    width: 270px;
+    width: 280px;
     height: 120px;
 }
 

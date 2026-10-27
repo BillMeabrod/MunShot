@@ -1,9 +1,9 @@
 Key,Type,Desc,English,German,French,Italian,Spanish,Japanese,Korean,Polish,Russian,Chinese (Simplified),Portuguese (Brazil),Chinese (Traditional)
 MunShot/UI/Title,Text,Overlay title and app tray tooltip,Photo Mode,Fotomodus,Mode photo,Modalità foto,Modo foto,フォトモード,사진 모드,Tryb fotograficzny,Фоторежим,拍照模式,Modo foto,拍照模式
 Menu/Escape/MunShotPhotoMode,Text,Pause menu button that opens photo mode (the game looks pause menu text up under Menu/Escape/),Photo Mode,Fotomodus,Mode photo,Modalità foto,Modo foto,フォトモード,사진 모드,Tryb fotograficzny,Фоторежим,拍照模式,Modo foto,拍照模式
-MunShot/UI/Kerbals,Text,Tab: the kerbals in the shot,Kerbals,Kerbals,Kerbals,Kerbal,Kerbals,カーバル,커벌,Kerbale,Кербалы,坎巴拉人,Kerbals,坎巴拉人
-MunShot/UI/Pose,Text,Tab: posing and moving the selected kerbal,Pose,Pose,Pose,Posa,Pose,ポーズ,포즈,Poza,Поза,姿势,Pose,姿勢
-MunShot/UI/Camera,Text,Tab: the photo camera,Camera,Kamera,Caméra,Telecamera,Cámara,カメラ,카메라,Kamera,Камера,相机,Câmera,相機
+MunShot/UI/Kerbals,Text,Photo mode tab (its tooltip and page title): the kerbals in the shot,Kerbals,Kerbals,Kerbals,Kerbal,Kerbals,カーバル,커벌,Kerbale,Кербалы,坎巴拉人,Kerbals,坎巴拉人
+MunShot/UI/Pose,Text,Photo mode tab (its tooltip and page title): posing and moving the selected kerbal,Pose,Pose,Pose,Posa,Pose,ポーズ,포즈,Poza,Поза,姿势,Pose,姿勢
+MunShot/UI/Camera,Text,Photo mode tab (its tooltip and page title): the photo camera,Camera,Kamera,Caméra,Telecamera,Cámara,カメラ,카메라,Kamera,Камера,相机,Câmera,相機
 MunShot/UI/BringInKerbal,Text,Button: opens the list of kerbals to put in front of the camera,Bring in a kerbal,Kerbal hinzuholen,Faire venir un kerbal,Aggiungi un kerbal,Traer a un kerbal,カーバルを呼ぶ,커벌 불러오기,Przywołaj kerbala,Позвать кербала,添加坎巴拉人,Trazer um kerbal,加入坎巴拉人
 MunShot/UI/InThisScene,Text,Kerbal list section: kerbals in the scene when photo mode opened,In this scene,In dieser Szene,Dans cette scène,In questa scena,En esta escena,このシーン,이 장면,W tej scenie,В этой сцене,当前场景,Nesta cena,目前場景
 MunShot/UI/Elsewhere,Text,Kerbal list section: every other kerbal in the roster,Elsewhere,Anderswo,Ailleurs,Altrove,En otro lugar,その他の場所,다른 곳,Gdzie indziej,В другом месте,其他地方,Em outro lugar,其他地方
@@ -24,8 +24,8 @@ MunShot/UI/Free,Text,Camera mode button: fly the camera freely,Free,Frei,Libre,L
 MunShot/UI/Orbit,Text,Camera mode button: circle a vessel or kerbal,Orbit,Umkreisen,Orbite,Orbita,Órbita,周回,궤도,Orbita,Орбита,环绕,Órbita,環繞
 MunShot/UI/OrbitAround,Text,Caption above the list of things the camera can orbit,Orbit around,Umkreisen von,Orbiter autour de,Orbita intorno a,Orbitar alrededor de,周回対象,궤도 대상,Orbituj wokół,Облетать вокруг,环绕目标,Orbitar em torno de,環繞目標
 MunShot/UI/FieldOfView,Text,Caption above the camera's field of view slider,Field of view,Sichtfeld,Champ de vision,Campo visivo,Campo de visión,視野角,시야각,Pole widzenia,Поле зрения,视野,Campo de visão,視野
-MunShot/UI/Color,Text,"Photo mode tab: the picture's exposure, contrast, saturation and warmth (keep it short: one of four tabs)",Color,Farbe,Couleur,Colore,Color,色,색상,Kolor,Цвет,色彩,Cor,色彩
-MunShot/UI/Light,Text,Photo mode tab: photo mode's own lights (keep it short: one of five tabs),Light,Licht,Lumière,Luce,Luz,ライト,조명,Światło,Свет,灯光,Luz,燈光
+MunShot/UI/Color,Text,"Photo mode tab (its tooltip and page title): the picture's exposure, contrast, saturation and warmth",Color,Farbe,Couleur,Colore,Color,色,색상,Kolor,Цвет,色彩,Cor,色彩
+MunShot/UI/Light,Text,Photo mode tab (its tooltip and page title): photo mode's own lights,Light,Licht,Lumière,Luce,Luz,ライト,조명,Światło,Свет,灯光,Luz,燈光
 MunShot/UI/NoLights,Text,Light tab: shown in the empty list of lights,No lights yet.,Noch keine Lichter.,Aucune lumière pour l'instant.,Ancora nessuna luce.,Aún no hay luces.,ライトはまだありません。,아직 조명이 없습니다.,Brak świateł.,Пока нет источников света.,还没有灯光。,Nenhuma luz ainda.,還沒有燈光。
 MunShot/UI/AddLight,Text,"Button: add a light in front of the camera, shining where it looks",Add light,Licht hinzufügen,Ajouter une lumière,Aggiungi luce,Añadir luz,ライトを追加,조명 추가,Dodaj światło,Добавить свет,添加灯光,Adicionar luz,新增燈光
 MunShot/UI/LightName,Text,"A light's name in the list; {0} is its number","Light {0}","Licht {0}","Lumière {0}","Luce {0}","Luz {0}","ライト{0}","조명 {0}","Światło {0}","Свет {0}","灯光 {0}","Luz {0}","燈光 {0}"
