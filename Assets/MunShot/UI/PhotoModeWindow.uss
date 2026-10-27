@@ -157,6 +157,22 @@
     margin-top: 6px;
 }
 
+/* The Redux SDK's colour picker (hue bar, saturation and brightness square), sized for the panel. Its transparency
+   bar is hidden: a light has no transparency */
+.pm-color-picker {
+    margin-top: 8px;
+}
+
+.pm-color-picker #SBSquareBackground,
+.pm-color-picker #SBSquare {
+    width: 270px;
+    height: 120px;
+}
+
+.pm-color-picker #AlphaSliderBackground {
+    display: none;
+}
+
 .pm-value {
     min-width: 52px;
     -unity-text-align: middle-right;

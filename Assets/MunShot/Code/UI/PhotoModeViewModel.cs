@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using MunShot.Cameras;
+using MunShot.Lighting;
 using MunShot.Posing;
 using Unity.Properties;
 using UitkForKsp2.MVVM.Commands;
@@ -14,7 +15,8 @@ namespace MunShot.UI
         Kerbals,
         Pose,
         Camera,
-        Color
+        Color,
+        Light
     }
 
     /// <summary>
@@ -33,6 +35,13 @@ namespace MunShot.UI
         private string _contrastText = string.Empty;
         private string _saturationText = string.Empty;
         private string _warmthText = string.Empty;
+        private bool _hasLights;
+        private bool _hasSelectedLight;
+        private bool _isSpotLight;
+        private string _selectedLightName = string.Empty;
+        private string _lightBrightnessText = string.Empty;
+        private string _lightRangeText = string.Empty;
+        private string _spotAngleText = string.Empty;
         private string _apertureText = string.Empty;
         private string _toast = string.Empty;
         private bool _toastVisible;
@@ -50,6 +59,10 @@ namespace MunShot.UI
             ShowPoseCommand = new RelayCommand(() => showTab(PhotoModeTab.Pose));
             ShowCameraCommand = new RelayCommand(() => showTab(PhotoModeTab.Camera));
             ShowColorCommand = new RelayCommand(() => showTab(PhotoModeTab.Color));
+            ShowLightCommand = new RelayCommand(() => showTab(PhotoModeTab.Light));
+            AddLightCommand = new RelayCommand(photoMode.AddLight, () => photoMode.Lights.CanAdd);
+            PointLightCommand = new RelayCommand(() => photoMode.ChangeLight(light => light.Kind = PhotoLightKind.Point));
+            SpotLightCommand = new RelayCommand(() => photoMode.ChangeLight(light => light.Kind = PhotoLightKind.Spot));
             BringInCommand = new RelayCommand(openKerbalMenu, CanBringIn);
             MoveToolCommand = new RelayCommand(() => photoMode.SetTool(HandleMode.Move));
             RotateToolCommand = new RelayCommand(() => photoMode.SetTool(HandleMode.Rotate));
@@ -66,6 +79,13 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand ShowPoseCommand { get; }
         [CreateProperty] public RelayCommand ShowCameraCommand { get; }
         [CreateProperty] public RelayCommand ShowColorCommand { get; }
+        [CreateProperty] public RelayCommand ShowLightCommand { get; }
+
+        /// <summary>Adds a light at the camera; only while there's room for another.</summary>
+        [CreateProperty] public RelayCommand AddLightCommand { get; }
+
+        [CreateProperty] public RelayCommand PointLightCommand { get; }
+        [CreateProperty] public RelayCommand SpotLightCommand { get; }
 
         /// <summary>Puts the colour settings back to the game's own picture; only when one is changed.</summary>
         [CreateProperty] public RelayCommand ResetColorCommand { get; }
@@ -91,6 +111,7 @@ namespace MunShot.UI
         {
             BringInCommand.RaiseCanExecuteChanged();
             ResetColorCommand.RaiseCanExecuteChanged();
+            AddLightCommand.RaiseCanExecuteChanged();
         }
 
         private bool CanBringIn() =>
@@ -137,6 +158,59 @@ namespace MunShot.UI
         {
             get => _fisheyeText;
             set => SetField(ref _fisheyeText, value);
+        }
+
+        /// <summary>Whether photo mode has any lights, so "no lights yet" shows when not.</summary>
+        [CreateProperty]
+        public bool HasLights
+        {
+            get => _hasLights;
+            set => SetField(ref _hasLights, value);
+        }
+
+        /// <summary>Whether a light is selected, so its settings show.</summary>
+        [CreateProperty]
+        public bool HasSelectedLight
+        {
+            get => _hasSelectedLight;
+            set => SetField(ref _hasSelectedLight, value);
+        }
+
+        /// <summary>Whether the selected light is a spot light, so its cone's width shows.</summary>
+        [CreateProperty]
+        public bool IsSpotLight
+        {
+            get => _isSpotLight;
+            set => SetField(ref _isSpotLight, value);
+        }
+
+        /// <summary>The selected light's name, in capitals, as its settings' heading.</summary>
+        [CreateProperty]
+        public string SelectedLightName
+        {
+            get => _selectedLightName;
+            set => SetField(ref _selectedLightName, value);
+        }
+
+        [CreateProperty]
+        public string LightBrightnessText
+        {
+            get => _lightBrightnessText;
+            set => SetField(ref _lightBrightnessText, value);
+        }
+
+        [CreateProperty]
+        public string LightRangeText
+        {
+            get => _lightRangeText;
+            set => SetField(ref _lightRangeText, value);
+        }
+
+        [CreateProperty]
+        public string SpotAngleText
+        {
+            get => _spotAngleText;
+            set => SetField(ref _spotAngleText, value);
         }
 
         /// <summary>The colour settings, as shown next to their sliders ("+1.5", "-20").</summary>

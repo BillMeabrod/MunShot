@@ -6,6 +6,7 @@ using KSP.Input;
 using KSP.Sim.impl;
 using MunShot.Cameras;
 using MunShot.Capture;
+using MunShot.Lighting;
 using MunShot.Posing;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -16,9 +17,9 @@ namespace MunShot
     /// <summary>
     /// Photo mode itself, apart from any window showing it. Opening it pauses the game, hides the game's UI, locks the
     /// game's controls, hands the camera to the <see cref="PhotoCamera"/> and lays photo mode's own look over the game's
-    /// (<see cref="PhotoLook"/>); closing it puts all of that back and takes every photo double out, so the scene is
-    /// exactly as it was. In between it holds the photo session (the doubles, their poses, helmets and handles), the
-    /// camera, the look and photo capture, and everything the UI offers on them.
+    /// (<see cref="PhotoLook"/>); closing it puts all of that back and takes every photo double and light out, so the
+    /// scene is exactly as it was. In between it holds the photo session (the doubles, their poses, helmets and
+    /// handles), the camera, the look, photo mode's own lights and photo capture, and everything the UI offers on them.
     /// The player's window and the developer's pose lab both work through it; neither owns any of this.
     /// </summary>
     public sealed class PhotoMode
@@ -38,9 +39,10 @@ namespace MunShot
         private OrbitTarget _vesselTarget;
 
         public PhotoSession Session { get; }
-        public DoubleManipulator Manipulator { get; }
+        public PlaceableManipulator Manipulator { get; }
         public PhotoCamera Camera { get; }
         public PhotoLook Look { get; }
+        public PhotoLights Lights { get; }
         public PhotoCapture Capture { get; }
         /// <summary>The pose presets, read from the mod's pose files again each time photo mode opens.</summary>
         public IReadOnlyList<PosePreset> Presets { get; private set; } = Array.Empty<PosePreset>();
@@ -86,10 +88,11 @@ namespace MunShot
             _uiHider = new UiHider(Info, Warn);
             _inputLock = new PhotoModeInputLock(Info, Warn);
             Look = new PhotoLook(Info, Warn);
-            Manipulator = new DoubleManipulator(session, Look, Info, message => _logger.LogError(message));
+            Lights = new PhotoLights(Info, Warn);
+            Manipulator = new PlaceableManipulator(session, Lights, Look, Info, message => _logger.LogError(message));
 
             Session.EntryChanged += OnEntryChanged;
-            Manipulator.Selected += OnDoubleClicked;
+            Manipulator.Selected += OnClicked;
             Camera.Changed += RaiseChanged;
             Capture.Finished += message =>
             {
@@ -162,6 +165,7 @@ namespace MunShot
             Capture.Cancel();
             Camera.Release();
             Look.Release();
+            Lights.Clear();
             _uiHider.Release();
             _inputLock.Release();
             _pause.Release();
@@ -185,6 +189,8 @@ namespace MunShot
             Session.Tick();
             if (!IsOpen) return;
             Look.Tick(CurrentCamera());
+            // The lights' markers are for placing them: not in the photo, nor while the UI is hidden to frame it
+            Lights.ShowMarkers(!UiHidden && !Capture.IsCapturing);
 
             // While a photo is taken the handles are hidden and the camera holds still; while the UI is hidden to
             // frame the shot, the handles are too but the camera moves
@@ -261,13 +267,23 @@ namespace MunShot
         }
 
         /// <summary>
-        /// Takes out every double selected for moving (the outlined ones); their originals come back where they're in
-        /// the scene.
+        /// Takes out everything selected for moving (the outlined ones): doubles, whose originals come back where
+        /// they're in the scene, and lights.
         /// </summary>
         public void RemoveMoving()
         {
             if (!IsOpen || Manipulator.Moving.Count == 0) return;
-            RemoveAll(new List<PhotoSession.Entry>(Manipulator.Moving));
+            List<PhotoSession.Entry> doubles = Manipulator.Moving.OfType<PhotoSession.Entry>().ToList();
+            List<PhotoLight> lights = Manipulator.Moving.OfType<PhotoLight>().ToList();
+            foreach (PhotoLight light in lights) Lights.Remove(light);
+            if (doubles.Count > 0) RemoveAll(doubles);
+            else if (lights.Count > 0)
+            {
+                Status?.Invoke(lights.Count == 1
+                    ? Localization.Format("MunShot/Status/LightRemoved", LightName(lights[0]))
+                    : Localization.Format("MunShot/Status/LightsRemoved", lights.Count));
+                RaiseChanged();
+            }
         }
 
         private void RemoveAll(IReadOnlyList<PhotoSession.Entry> entries)
@@ -398,7 +414,7 @@ namespace MunShot
 
         private void ForEachToPlace(PlaceAction place, string allKey)
         {
-            var targets = new List<PhotoSession.Entry>(Manipulator.Moving);
+            var targets = Manipulator.Moving.OfType<PhotoSession.Entry>().ToList();
             if (targets.Count == 0) targets.Add(Session.Selected);
             string first = null, failure = null;
             int placed = 0;
@@ -444,7 +460,56 @@ namespace MunShot
             RaiseChanged();
         }
 
-        // ---- Color and light ----
+        // ---- Lights ----
+
+        /// <summary>Adds a light a little in front of the camera, shining where it looks, and selects it.</summary>
+        public void AddLight()
+        {
+            if (!IsOpen) return;
+            if (!Lights.CanAdd)
+            {
+                Status?.Invoke(Localization.Format("MunShot/Status/LightsFull", PhotoLights.MaxLights));
+                return;
+            }
+            UnityEngine.Camera camera = CurrentCamera();
+            if (camera == null)
+            {
+                Status?.Invoke(Localization.Translate("MunShot/Status/NoCamera"));
+                return;
+            }
+            PhotoLight light = Lights.Add(camera, PhotoSession.ActivePhysicsSpace());
+            if (light == null) return;
+            Manipulator.Select(light);
+            Status?.Invoke(Localization.Format("MunShot/Status/LightAdded", LightName(light)));
+            RaiseChanged();
+        }
+
+        public void RemoveLight(PhotoLight light)
+        {
+            Lights.Remove(light);
+            RaiseChanged();
+        }
+
+        /// <summary>Selects a light, for the Light tab to set and the handles to move.</summary>
+        public void SelectLight(PhotoLight light)
+        {
+            Lights.Select(light);
+            Manipulator.Select(light);
+            RaiseChanged();
+        }
+
+        /// <summary>Changes the selected light, if there is one, and tells the UI.</summary>
+        public void ChangeLight(Action<PhotoLight> change)
+        {
+            if (Lights.Selected == null) return;
+            change(Lights.Selected);
+            RaiseChanged();
+        }
+
+        /// <summary>A light's name, as lists and notes show it ("Light 1").</summary>
+        public static string LightName(PhotoLight light) => Localization.Format("MunShot/UI/LightName", light.Number);
+
+        // ---- Color ----
 
         public void SetExposure(float stops)
         {
@@ -543,11 +608,18 @@ namespace MunShot
             RaiseChanged();
         }
 
-        // A double clicked: posing and the orbit target follow it
-        private void OnDoubleClicked(PhotoSession.Entry entry)
+        // A double clicked: posing and the orbit target follow it. A light clicked: the Light tab sets it
+        private void OnClicked(IPlaceable placeable)
         {
-            Camera.SetTarget(OrbitTargetFor(entry));
-            Status?.Invoke(Localization.Format("MunShot/Status/Selected", entry.Double.Source.Name));
+            if (placeable is PhotoSession.Entry entry)
+            {
+                Camera.SetTarget(OrbitTargetFor(entry));
+                Status?.Invoke(Localization.Format("MunShot/Status/Selected", entry.Double.Source.Name));
+            }
+            else if (placeable is PhotoLight light)
+            {
+                Status?.Invoke(Localization.Format("MunShot/Status/Selected", LightName(light)));
+            }
             RaiseChanged();
         }
 

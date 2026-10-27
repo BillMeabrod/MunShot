@@ -49,6 +49,11 @@
                                         <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowColorCommand" />
                                     </Bindings>
                                 </uitk:OabButton>
+                                <uitk:OabButton name="tab-light" text="#MunShot/UI/Light" class="pm-tab">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowLightCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
                             </ui:VisualElement>
                             <ui:Label text="................................................" class="pm-divider" />
 
@@ -283,6 +288,108 @@
                                         <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ResetColorCommand" />
                                     </Bindings>
                                 </uitk:OabButton>
+                            </ui:VisualElement>
+
+                            <!-- Light: photo mode's own lights (click to select, x to take away), added in front of the
+                                 camera and moved with the handles; the selected one's shape, colour, brightness and reach -->
+                            <ui:VisualElement name="page-light" class="pm-page">
+                                <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                    <ui:ScrollView name="light-list" class="pm-list" />
+                                    <ui:Label text="#MunShot/UI/NoLights" class="pm-empty">
+                                        <Bindings>
+                                            <ui:DataBinding property="style.display" data-source-path="HasLights" binding-mode="ToTarget" source-to-ui-converters="MunShotInvertedBoolToDisplay" />
+                                        </Bindings>
+                                    </ui:Label>
+                                </uitk:InvertedCornerBox>
+                                <uitk:OabButton name="add-light" text="#MunShot/UI/AddLight" class="pm-wide">
+                                    <Bindings>
+                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="AddLightCommand" />
+                                    </Bindings>
+                                </uitk:OabButton>
+
+                                <ui:VisualElement name="light-settings">
+                                    <Bindings>
+                                        <ui:DataBinding property="style.display" data-source-path="HasSelectedLight" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                    </Bindings>
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label class="pm-heading">
+                                            <Bindings>
+                                                <ui:DataBinding property="text" data-source-path="SelectedLightName" binding-mode="ToTarget" />
+                                            </Bindings>
+                                        </ui:Label>
+                                    </ui:VisualElement>
+                                    <!-- The same handle tool as the Pose tab's: the light is moved and turned like a kerbal -->
+                                    <ui:VisualElement class="pm-row">
+                                        <uitk:OabButton name="light-tool-move" text="#MunShot/UI/Move" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="MoveToolCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                        <!-- Only a spot light has a way it faces to turn -->
+                                        <uitk:OabButton name="light-tool-rotate" text="#MunShot/UI/Rotate" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="RotateToolCommand" />
+                                                <ui:DataBinding property="style.display" data-source-path="IsSpotLight" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="pm-row">
+                                        <uitk:OabButton name="light-point" text="#MunShot/UI/PointLight" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="PointLightCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                        <uitk:OabButton name="light-spot" text="#MunShot/UI/SpotLight" class="pm-grow">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="SpotLightCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                    </ui:VisualElement>
+                                    <uitk:ColorPicker name="light-color" class="pm-color-picker" />
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label text="#MunShot/UI/LightBrightness" class="pm-heading uppercase" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="pm-row">
+                                        <ui:Slider name="light-brightness" low-value="0" high-value="1" class="pm-grow" />
+                                        <ui:Label class="pm-value">
+                                            <Bindings>
+                                                <ui:DataBinding property="text" data-source-path="LightBrightnessText" binding-mode="ToTarget" />
+                                            </Bindings>
+                                        </ui:Label>
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="pm-heading-row">
+                                        <ui:Label text="## " class="pm-heading pm-dim" />
+                                        <ui:Label text="#MunShot/UI/LightRange" class="pm-heading uppercase" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="pm-row">
+                                        <ui:Slider name="light-range" low-value="0" high-value="1" class="pm-grow" />
+                                        <ui:Label class="pm-value">
+                                            <Bindings>
+                                                <ui:DataBinding property="text" data-source-path="LightRangeText" binding-mode="ToTarget" />
+                                            </Bindings>
+                                        </ui:Label>
+                                    </ui:VisualElement>
+                                    <ui:VisualElement name="spot-angle-section">
+                                        <Bindings>
+                                            <ui:DataBinding property="style.display" data-source-path="IsSpotLight" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                        </Bindings>
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/SpotAngle" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <ui:VisualElement class="pm-row">
+                                            <ui:Slider name="spot-angle" class="pm-grow" />
+                                            <ui:Label class="pm-value">
+                                                <Bindings>
+                                                    <ui:DataBinding property="text" data-source-path="SpotAngleText" binding-mode="ToTarget" />
+                                                </Bindings>
+                                            </ui:Label>
+                                        </ui:VisualElement>
+                                    </ui:VisualElement>
+                                    <ui:Toggle name="light-kerbals-only" label="#MunShot/UI/KerbalsOnly" class="switch" />
+                                </ui:VisualElement>
                             </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>

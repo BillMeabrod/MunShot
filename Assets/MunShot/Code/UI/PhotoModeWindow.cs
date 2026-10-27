@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using MunShot.Cameras;
+using MunShot.Lighting;
 using MunShot.Posing;
 using I2.Loc;
 using SpaceWarp2.API.Input;
 using UitkForKsp2.API;
 using UitkForKsp2.API.Manipulator;
+using UitkForKsp2.Controls;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
@@ -17,7 +19,7 @@ namespace MunShot.UI
 {
     /// <summary>
     /// Photo mode's overlay, built from PhotoModeWindow.uxml with a <see cref="PhotoModeViewModel"/> as its data
-    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera, Color tabs; opened and
+    /// source: the scene fills the screen, and a flight panel on the left edge (Kerbals, Pose, Camera, Color, Light tabs; opened and
     /// closed by its bar toggle), a shutter button and a hint bar sit on its edges. It's built from the KerbalUI
     /// theme's own pieces as Redux's panels are, with localized text and the game's menu sounds on hover and click.
     /// It shows while photo mode is open, stays up when photo mode hides the rest of the game's UI, hides with the
@@ -67,8 +69,11 @@ namespace MunShot.UI
         private Toggle _visor;
         private Toggle _angleSnap;
         private Toggle _jetpack;
+        // The handle tool's buttons, on the Pose tab and again on the Light tab
         private Button _move;
         private Button _rotate;
+        private Button _lightMove;
+        private Button _lightRotate;
         private Button _free;
         private Button _orbit;
         private Slider _fieldOfView;
@@ -81,6 +86,17 @@ namespace MunShot.UI
         private Slider _contrast;
         private Slider _saturation;
         private Slider _warmth;
+        private ScrollView _lightList;
+        private Button _pointLight;
+        private Button _spotLight;
+        private ColorPicker _lightColor;
+        private Slider _lightBrightness;
+        private Slider _lightRange;
+        private Slider _spotAngle;
+        private Toggle _kerbalsOnly;
+        // The light whose colour the picker shows, so the picker is only set when that changes (setting it while it's
+        // dragged would move its handles)
+        private PhotoLight _colorShownFor;
 
         /// <summary>
         /// False once the game has torn down the UI the overlay lived in (it builds its UI afresh for each campaign);
@@ -228,6 +244,7 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
             _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
+            _tabs[PhotoModeTab.Light] = (Required<Button>(root, "tab-light"), Required<VisualElement>(root, "page-light"));
 
             _bringIn = Required<Button>(root, "bring-in");
             _kerbalList = Required<ScrollView>(root, "kerbal-list");
@@ -237,6 +254,8 @@ namespace MunShot.UI
             _visor = Required<Toggle>(root, "visor");
             _move = Required<Button>(root, "tool-move");
             _rotate = Required<Button>(root, "tool-rotate");
+            _lightMove = Required<Button>(root, "light-tool-move");
+            _lightRotate = Required<Button>(root, "light-tool-rotate");
             _angleSnap = Required<Toggle>(root, "angle-snap");
             _jetpack = Required<Toggle>(root, "jetpack");
             _free = Required<Button>(root, "camera-free");
@@ -251,6 +270,7 @@ namespace MunShot.UI
             _contrast = ColorSlider(root, "contrast", PhotoLook.MaxColorAdjustment, _photoMode.SetContrast);
             _saturation = ColorSlider(root, "saturation", PhotoLook.MaxColorAdjustment, _photoMode.SetSaturation);
             _warmth = ColorSlider(root, "warmth", PhotoLook.MaxColorAdjustment, _photoMode.SetWarmth);
+            BindLights(root);
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
@@ -273,6 +293,31 @@ namespace MunShot.UI
 
             ShowTab(_tab);
             Refresh();
+        }
+
+        private void BindLights(VisualElement root)
+        {
+            _lightList = Required<ScrollView>(root, "light-list");
+            _pointLight = Required<Button>(root, "light-point");
+            _spotLight = Required<Button>(root, "light-spot");
+            _lightColor = Required<ColorPicker>(root, "light-color");
+            _lightBrightness = Required<Slider>(root, "light-brightness");
+            _lightRange = Required<Slider>(root, "light-range");
+            _spotAngle = Required<Slider>(root, "spot-angle");
+            _kerbalsOnly = Required<Toggle>(root, "light-kerbals-only");
+
+            _lightColor?.RegisterValueChangedCallback(change => _photoMode.ChangeLight(light => light.Color = change.newValue));
+            _lightBrightness?.RegisterValueChangedCallback(change =>
+                _photoMode.ChangeLight(light => light.Brightness = ValueAt(change.newValue, PhotoLight.MinBrightness, PhotoLight.MaxBrightness)));
+            _lightRange?.RegisterValueChangedCallback(change =>
+                _photoMode.ChangeLight(light => light.Range = ValueAt(change.newValue, PhotoLight.MinRange, PhotoLight.MaxRange)));
+            if (_spotAngle != null)
+            {
+                _spotAngle.lowValue = PhotoLight.MinSpotAngle;
+                _spotAngle.highValue = PhotoLight.MaxSpotAngle;
+                _spotAngle.RegisterValueChangedCallback(change => _photoMode.ChangeLight(light => light.SpotAngle = change.newValue));
+            }
+            _kerbalsOnly?.RegisterValueChangedCallback(change => _photoMode.ChangeLight(light => light.KerbalsOnly = change.newValue));
         }
 
         // A colour setting's slider: from -max to max, 0 (the game's own picture) in the middle
@@ -393,6 +438,8 @@ namespace MunShot.UI
 
             MarkActive(_move, _photoMode.Manipulator.Mode == HandleMode.Move);
             MarkActive(_rotate, _photoMode.Manipulator.Mode == HandleMode.Rotate);
+            MarkActive(_lightMove, _photoMode.Manipulator.Mode == HandleMode.Move);
+            MarkActive(_lightRotate, _photoMode.Manipulator.Mode == HandleMode.Rotate);
             _angleSnap?.SetValueWithoutNotify(_photoMode.Manipulator.AngleSnap);
 
             PhotoCamera camera = _photoMode.Camera;
@@ -406,6 +453,7 @@ namespace MunShot.UI
             _model.FisheyeText = _photoMode.Look.Fisheye.ToString("P0", CultureInfo.CurrentCulture);
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
+            RefreshLights(_photoMode.Lights);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingDoubles);
         }
 
@@ -472,6 +520,53 @@ namespace MunShot.UI
             element?.EnableInClassList(SelectedClass, active);
         }
 
+        // The lights: click a name to select it, x to take it away; the selected one's settings below
+        private void RefreshLights(PhotoLights lights)
+        {
+            _model.HasLights = lights.All.Count > 0;
+            if (_lightList != null)
+            {
+                _lightList.Clear();
+                foreach (PhotoLight light in lights.All)
+                {
+                    PhotoLight chosen = light;
+                    var row = new VisualElement();
+                    row.AddToClassList("pm-item-row");
+                    var remove = new Button(() => _photoMode.RemoveLight(chosen)) { text = "×" };
+                    remove.AddToClassList("pm-remove");
+                    row.Add(Item(PhotoMode.LightName(light), light == lights.Selected, () => _photoMode.SelectLight(chosen)));
+                    row.Add(remove);
+                    _lightList.Add(row);
+                }
+            }
+
+            PhotoLight selected = lights.Selected;
+            _model.HasSelectedLight = selected != null;
+            _model.IsSpotLight = selected?.Kind == PhotoLightKind.Spot;
+            if (selected == null)
+            {
+                _colorShownFor = null;
+                return;
+            }
+            _model.SelectedLightName = PhotoMode.LightName(selected).ToUpper(CultureInfo.CurrentCulture);
+            MarkActive(_pointLight, selected.Kind == PhotoLightKind.Point);
+            MarkActive(_spotLight, selected.Kind == PhotoLightKind.Spot);
+            if (_lightColor != null && _colorShownFor != selected)
+            {
+                // Set as a change: the SDK's picker only moves its handles on a change event. The change comes back
+                // as the light's own colour, so setting it changes nothing
+                _colorShownFor = selected;
+                _lightColor.value = selected.Color;
+            }
+            _lightBrightness?.SetValueWithoutNotify(SliderAt(selected.Brightness, PhotoLight.MinBrightness, PhotoLight.MaxBrightness));
+            _lightRange?.SetValueWithoutNotify(SliderAt(selected.Range, PhotoLight.MinRange, PhotoLight.MaxRange));
+            _spotAngle?.SetValueWithoutNotify(selected.SpotAngle);
+            _kerbalsOnly?.SetValueWithoutNotify(selected.KerbalsOnly);
+            _model.LightBrightnessText = selected.Brightness.ToString(selected.Brightness < 10f ? "0.0" : "0", CultureInfo.CurrentCulture);
+            _model.LightRangeText = selected.Range.ToString("0", CultureInfo.CurrentCulture) + " " + KSP.Units.SymbolMeters;
+            _model.SpotAngleText = selected.SpotAngle.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;
+        }
+
         private void RefreshColor(PhotoLook look)
         {
             _exposure?.SetValueWithoutNotify(look.Exposure);
@@ -511,7 +606,7 @@ namespace MunShot.UI
         // The focus and blur sliders run from 0 to 1 along a curve, as a lens's rings do: each step is the same share
         // nearer or further (a few centimetres up close, hundreds of metres far off), and each step of blur the same
         // fraction of an f-stop. Blur runs from the narrowest aperture (least blur) to the widest. The focus slider's far
-        // end is infinity, as on a lens
+        // end is infinity, as on a lens. A light's brightness and reach run along the same kind of curve
         private static float FocusDistanceAt(float slider) =>
             slider >= 1f ? float.PositiveInfinity : ValueAt(slider, PhotoLook.MinFocusDistance, PhotoLook.MaxFocusDistance);
         private static float ApertureAt(float slider) => ValueAt(slider, PhotoLook.MaxAperture, PhotoLook.MinAperture);

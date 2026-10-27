@@ -10,14 +10,14 @@ namespace MunShot.Posing
     /// The kerbals brought into photo mode. Bringing a kerbal in builds a <see cref="PhotoDouble"/> in front of the
     /// camera and, once it's built, hides the original if they're in the scene (<see cref="KerbalHider"/>); kerbals
     /// elsewhere in the roster are built from their roster record alone. Each double has its own
-    /// <see cref="PosePlayer"/>. Doubles are moved and rotated with a <see cref="DoubleManipulator"/>, and dropped onto
+    /// <see cref="PosePlayer"/>. Doubles are moved and rotated with a <see cref="PlaceableManipulator"/>, and dropped onto
     /// the surface below with <see cref="DropToSurface"/>. The real kerbals are never moved, so <see cref="Close"/> only
     /// has to destroy the doubles and un-hide the originals for everything to be exactly as it was.
     /// </summary>
     public sealed class PhotoSession
     {
         /// <summary>A kerbal in the session: their double, the hider for their original, and the double's pose player.</summary>
-        public sealed class Entry
+        public sealed class Entry : IPlaceable
         {
             public PhotoDouble Double { get; }
             /// <summary>Hides the original while the double stands in; null for a kerbal who isn't in the scene.</summary>
@@ -48,7 +48,12 @@ namespace MunShot.Posing
                 Up = up;
             }
 
-            internal Transform Root => Double.Model != null ? Double.Model.transform : null;
+            public Transform Root => Double.Model != null ? Double.Model.transform : null;
+
+            public bool IsPlaceable => IsReady && Root != null;
+
+            /// <summary>The middle of the double's body.</summary>
+            public Vector3 Centre => BoundsOf(this, out Bounds bounds) ? bounds.center : Root.position;
         }
 
         // Where a double appears: where the camera looks, this far ahead, or just short of whatever it's looking at
@@ -380,12 +385,18 @@ namespace MunShot.Posing
             VesselBehavior vessel = candidate.InScene && candidate.Model != null
                 ? candidate.Model.GetComponentInParent<VesselBehavior>()
                 : null;
-            if (vessel == null)
-            {
-                GameInstance game = GameManager.Instance?.Game;
-                VesselComponent active = game?.ViewController?.GetActiveSimVessel();
-                vessel = active != null ? game.ViewController.GetBehaviorIfLoaded(active) : null;
-            }
+            return vessel != null ? vessel.transform.parent : ActivePhysicsSpace();
+        }
+
+        /// <summary>
+        /// The object the active vessel lives under, which the game moves when the floating origin shifts: what
+        /// anything photo mode puts in the scene lives under, so it stays where it was put. Null without one.
+        /// </summary>
+        public static Transform ActivePhysicsSpace()
+        {
+            GameInstance game = GameManager.Instance?.Game;
+            VesselComponent active = game?.ViewController?.GetActiveSimVessel();
+            VesselBehavior vessel = active != null ? game.ViewController.GetBehaviorIfLoaded(active) : null;
             return vessel != null ? vessel.transform.parent : null;
         }
     }
