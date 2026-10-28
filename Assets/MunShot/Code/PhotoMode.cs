@@ -566,6 +566,20 @@ namespace MunShot
             RaiseChanged();
         }
 
+        /// <summary>The shape photos are cropped to (the guides shade what's cut off).</summary>
+        public void SetFrameShape(FrameShape shape)
+        {
+            Capture.Crop = shape;
+            RaiseChanged();
+        }
+
+        /// <summary>How much the picture darkens towards its edges: 0 (none) to 1.</summary>
+        public void SetVignette(float amount)
+        {
+            Look.Vignette = Mathf.Clamp01(amount);
+            RaiseChanged();
+        }
+
         /// <summary>Sets how much is blurred (a lower f-number blurs more). Turns depth of field on, as SetFocusDistance does.</summary>
         public void SetAperture(float fNumber)
         {

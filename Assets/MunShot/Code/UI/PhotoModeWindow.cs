@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using MunShot.Cameras;
+using MunShot.Capture;
 using MunShot.Lighting;
 using MunShot.Posing;
 using I2.Loc;
@@ -60,6 +61,9 @@ namespace MunShot.UI
         private Button _shutter;
         private VisualElement _hints;
         private VisualElement _selectionBox;
+        private FrameGuides _frameGuides;
+        private Selector _frameGrid;
+        private Selector _frameShape;
         private readonly Dictionary<PhotoModeTab, (Button tab, VisualElement page)> _tabs =
             new Dictionary<PhotoModeTab, (Button, VisualElement)>();
 
@@ -89,6 +93,7 @@ namespace MunShot.UI
         private Button _orbit;
         private Slider _fieldOfView;
         private Slider _fisheye;
+        private Slider _vignette;
         private Toggle _depthOfField;
         private Slider _focusDistance;
         private Slider _blur;
@@ -243,6 +248,8 @@ namespace MunShot.UI
             _shutter = Required<Button>(root, "shutter");
             _hints = Required<VisualElement>(root, "hints");
             _selectionBox = Required<VisualElement>(root, "selection-box");
+            VisualElement guides = Required<VisualElement>(root, "frame-guides");
+            if (guides != null) _frameGuides = new FrameGuides(guides);
             if (_chrome == null || _sidePanel == null) return;
 
             // The bar toggle opens and closes the panel, as on Redux's orbital info panel
@@ -277,6 +284,7 @@ namespace MunShot.UI
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
             _fisheye = Required<Slider>(root, "fisheye");
+            _vignette = Required<Slider>(root, "vignette");
             _depthOfField = Required<Toggle>(root, "depth-of-field");
             _focusDistance = Required<Slider>(root, "focus-distance");
             _blur = Required<Slider>(root, "blur");
@@ -301,6 +309,16 @@ namespace MunShot.UI
                 });
             }
             _fisheye?.RegisterValueChangedCallback(change => _photoMode.SetFisheye(change.newValue));
+            _vignette?.RegisterValueChangedCallback(change => _photoMode.SetVignette(change.newValue));
+            _frameGrid = Required<Selector>(root, "frame-grid");
+            _frameShape = Required<Selector>(root, "frame-shape");
+            PlainSelector(_frameGrid);
+            PlainSelector(_frameShape);
+            _frameGrid?.RegisterValueChangedCallback(change =>
+            {
+                if (_frameGuides != null) _frameGuides.Grid = (FrameGrid)change.newValue;
+            });
+            _frameShape?.RegisterValueChangedCallback(change => _photoMode.SetFrameShape((FrameShape)change.newValue));
             _depthOfField?.RegisterValueChangedCallback(change => _photoMode.SetDepthOfField(change.newValue));
             _focusDistance?.RegisterValueChangedCallback(change => _photoMode.SetFocusDistance(FocusDistanceAt(change.newValue)));
             _blur?.RegisterValueChangedCallback(change => _photoMode.SetAperture(ApertureAt(change.newValue)));
@@ -414,6 +432,40 @@ namespace MunShot.UI
             }
         }
 
+        // The frame guides' choices, in the order of their enums, in the current language
+        private static string[] GridNames() => new[]
+        {
+            Localization.Translate("MunShot/UI/GridNone"),
+            Localization.Translate("MunShot/UI/GridThirds"),
+            Localization.Translate("MunShot/UI/GridCentre"),
+            Localization.Translate("MunShot/UI/GridGoldenRatio")
+        };
+
+        private static string[] ShapeNames() => new[]
+        {
+            Localization.Translate("MunShot/UI/FrameFull"), "16:9", "3:2", "4:3", "1:1", "21:9", "9:16"
+        };
+
+        // Just the arrows and the choice: the heading above names it, and with a few choices the jump-to-first and
+        // jump-to-last buttons only crowd the choice. Set here as the SDK's Selector keeps its default "Label" for an
+        // empty UXML label, and doesn't apply its own default of hiding those buttons
+        private static void PlainSelector(Selector selector)
+        {
+            if (selector == null) return;
+            selector.Label = string.Empty;
+            selector.ShowLimiterButtons = false;
+        }
+
+        // Puts a Selector on a choice without telling its listeners. The SDK's Selector only updates its label when its
+        // index is set (which tells them), so the label is set here too
+        private static void ShowChoice(Selector selector, string[] names, int index)
+        {
+            if (selector == null) return;
+            selector.SetChoices(names);
+            selector.SetValueWithoutNotify(index);
+            selector.ValueLabel.text = names[index];
+        }
+
         // Shows or hides through UitkForKsp2 (hiding also lets go of focus and text input inside), only on a change: some
         // of this runs every frame, and hiding tells UitkForKsp2's listeners each time. Whether it shows now is its own
         // display if set, or else the stylesheet's (the selection box starts hidden there)
@@ -468,6 +520,14 @@ namespace MunShot.UI
             ShowFieldOfView();
             _fisheye?.SetValueWithoutNotify(_photoMode.Look.Fisheye);
             _model.FisheyeText = _photoMode.Look.Fisheye.ToString("P0", CultureInfo.CurrentCulture);
+            _vignette?.SetValueWithoutNotify(_photoMode.Look.Vignette);
+            _model.VignetteText = _photoMode.Look.Vignette.ToString("P0", CultureInfo.CurrentCulture);
+            if (_frameGuides != null)
+            {
+                _frameGuides.Shape = _photoMode.Capture.Crop;
+                ShowChoice(_frameGrid, GridNames(), (int)_frameGuides.Grid);
+                ShowChoice(_frameShape, ShapeNames(), (int)_photoMode.Capture.Crop);
+            }
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
             RefreshLights(_photoMode.Lights);

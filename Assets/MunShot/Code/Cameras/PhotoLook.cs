@@ -8,12 +8,12 @@ using UnityEngine.Rendering.Universal;
 namespace MunShot.Cameras
 {
     /// <summary>
-    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, fisheye, and the
-    /// picture's exposure, contrast, saturation and warmth.
+    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, fisheye, vignette, and
+    /// the picture's exposure, contrast, saturation and warmth.
     ///
     /// Redux renders the game's post-processing from URP volumes (it mirrors the game's own effects into them every
     /// frame, see Redux's PostProcessingBridge): depth of field with its own effect, <see cref="ReduxDepthOfField"/>,
-    /// and the rest, lens distortion and colour adjustments among them, with URP's. This adds one more volume: global, ranked above the
+    /// and the rest, lens distortion, vignette and colour adjustments among them, with URP's. This adds one more volume: global, ranked above the
     /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
     /// else stays the game's.
     /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
@@ -33,6 +33,12 @@ namespace MunShot.Cameras
 
         // URP's lens distortion at full fisheye: its strongest bulge
         private const float MaxFisheyeIntensity = 1f;
+
+        // URP's vignette at full: darker than this, the corners go black and the frame looks like a keyhole
+        private const float MaxVignetteIntensity = 0.7f;
+
+        // How gradually the vignette fades in from the middle (URP's 0.01 hard to 1 soft): a soft, photo-like fade
+        private const float VignetteSmoothness = 0.4f;
 
         /// <summary>
         /// The colour settings' ranges: exposure in stops (each doubles or halves the light), the rest as URP's own
@@ -61,6 +67,7 @@ namespace MunShot.Cameras
         private VolumeProfile _profile;
         private ReduxDepthOfField _depthOfField;
         private LensDistortion _lensDistortion;
+        private UnityEngine.Rendering.Universal.Vignette _vignette;
         private ColorAdjustments _colorAdjustments;
         private WhiteBalance _whiteBalance;
 
@@ -80,6 +87,9 @@ namespace MunShot.Cameras
 
         /// <summary>How much the picture bulges out from its middle, as through a fisheye lens: 0 (flat) to 1.</summary>
         public float Fisheye { get; set; }
+
+        /// <summary>How much the picture darkens towards its edges and corners: 0 (none) to 1.</summary>
+        public float Vignette { get; set; }
 
         /// <summary>Brighter or darker, in stops, ±<see cref="MaxExposure"/>.</summary>
         public float Exposure { get; set; }
@@ -119,6 +129,7 @@ namespace MunShot.Cameras
             FocusDistance = DefaultFocusDistance;
             Aperture = DefaultAperture;
             Fisheye = 0f;
+            Vignette = 0f;
             ResetColor();
             _volumeLayers = -1;
 
@@ -127,6 +138,7 @@ namespace MunShot.Cameras
             _profile.hideFlags = HideFlags.DontSave;
             _depthOfField = _profile.Add<ReduxDepthOfField>(overrides: false);
             _lensDistortion = _profile.Add<LensDistortion>(overrides: false);
+            _vignette = _profile.Add<UnityEngine.Rendering.Universal.Vignette>(overrides: false);
             _colorAdjustments = _profile.Add<ColorAdjustments>(overrides: false);
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
 
@@ -159,12 +171,14 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_holder);
             UnityEngine.Object.Destroy(_depthOfField);
             UnityEngine.Object.Destroy(_lensDistortion);
+            UnityEngine.Object.Destroy(_vignette);
             UnityEngine.Object.Destroy(_colorAdjustments);
             UnityEngine.Object.Destroy(_whiteBalance);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
             _depthOfField = null;
             _lensDistortion = null;
+            _vignette = null;
             _colorAdjustments = null;
             _whiteBalance = null;
             _profile = null;
@@ -191,6 +205,15 @@ namespace MunShot.Cameras
             Set(_lensDistortion.center, bulge, new Vector2(0.5f, 0.5f));
             Set(_lensDistortion.xMultiplier, bulge, 1f);
             Set(_lensDistortion.yMultiplier, bulge, 1f);
+
+            // Black, from the middle of the picture, following its shape (a wide picture darkens in a wide oval)
+            float vignette = Mathf.Clamp01(Vignette);
+            bool darken = vignette > 0f;
+            Set(_vignette.intensity, darken, vignette * MaxVignetteIntensity);
+            Set(_vignette.smoothness, darken, VignetteSmoothness);
+            Set(_vignette.color, darken, Color.black);
+            Set(_vignette.center, darken, new Vector2(0.5f, 0.5f));
+            Set(_vignette.rounded, darken, false);
 
             // Each colour setting at 0 leaves the game's own value (the game grades some scenes itself)
             float exposure = Mathf.Clamp(Exposure, -MaxExposure, MaxExposure);

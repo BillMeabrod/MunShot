@@ -32,6 +32,7 @@ namespace MunShot.UI
         private string _fieldOfViewText = string.Empty;
         private string _focusDistanceText = string.Empty;
         private string _fisheyeText = string.Empty;
+        private string _vignetteText = string.Empty;
         private string _exposureText = string.Empty;
         private string _contrastText = string.Empty;
         private string _saturationText = string.Empty;
@@ -169,6 +170,14 @@ namespace MunShot.UI
         {
             get => _fisheyeText;
             set => SetField(ref _fisheyeText, value);
+        }
+
+        /// <summary>How much the edges darken, as shown next to the vignette slider ("40%").</summary>
+        [CreateProperty]
+        public string VignetteText
+        {
+            get => _vignetteText;
+            set => SetField(ref _vignetteText, value);
         }
 
         /// <summary>Whether photo mode has any lights, so "no lights yet" shows when not.</summary>

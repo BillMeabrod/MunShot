@@ -12,6 +12,9 @@ namespace MunShot.Capture
     /// Redux doesn't say when a capture is done (it can wait up to 30 seconds for plumes), so this listens for the log
     /// line Redux writes when it has saved the file, or failed to, which also gives the file's path. If neither comes,
     /// the UI comes back after <see cref="TimeoutSeconds"/> anyway, and that's logged.
+    ///
+    /// With a <see cref="Crop"/> shape, the saved photo is then cropped to it (<see cref="PhotoCrop"/>), and the UI
+    /// stays hidden until that's written too.
     /// </summary>
     public sealed class PhotoCapture
     {
@@ -25,8 +28,12 @@ namespace MunShot.Capture
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logError;
         private float _startedAt;
+        private PhotoCrop _crop;
 
         public bool IsCapturing { get; private set; }
+
+        /// <summary>The shape photos are cropped to once saved; <see cref="FrameShape.Full"/> keeps the whole screen.</summary>
+        public FrameShape Crop { get; set; } = FrameShape.Full;
 
         /// <summary>Raised as a capture starts, before the frame is grabbed: hide photo mode's UI now.</summary>
         public event Action Started;
@@ -64,9 +71,14 @@ namespace MunShot.Capture
             _logInfo("Photo mode: taking a photo with Redux's screenshot capture; photo mode's UI is hidden until it's saved.");
         }
 
-        /// <summary>Called every frame: gives up waiting for Redux after the timeout.</summary>
+        /// <summary>Called every frame: finishes once a crop is written, or gives up waiting for Redux after the timeout.</summary>
         public void Tick()
         {
+            if (_crop != null)
+            {
+                if (_crop.IsDone) FinishCrop();
+                return;
+            }
             if (IsCapturing && Time.unscaledTime - _startedAt > TimeoutSeconds)
             {
                 _logError($"Photo mode: Redux's screenshot didn't report saving within {TimeoutSeconds:0} seconds; "
@@ -78,6 +90,8 @@ namespace MunShot.Capture
         /// <summary>Stops waiting for a photo in progress (photo mode is closing); it's used again next time.</summary>
         public void Cancel()
         {
+            // A crop being written carries on by itself; it just isn't waited for
+            _crop = null;
             if (IsCapturing) End(null);
         }
 
@@ -88,12 +102,45 @@ namespace MunShot.Capture
             {
                 string path = message.Substring(SavedPrefix.Length);
                 _logInfo($"Photo mode: photo saved to {path}");
-                End(Localization.Format("MunShot/Status/Saved", path));
+                if (Crop == FrameShape.Full) End(Localization.Format("MunShot/Status/Saved", path));
+                else StartCrop(path);
             }
             else if (message.StartsWith(FailedPrefix, StringComparison.Ordinal))
             {
                 _logError($"Photo mode: the photo wasn't saved; Redux reported: {message}");
                 End(Localization.Translate("MunShot/Status/NotSaved"));
+            }
+        }
+
+        // Redux has saved the whole screen; cut it to the frame shape. Nothing more is heard from Redux for this photo
+        private void StartCrop(string path)
+        {
+            Application.logMessageReceived -= OnLogMessage;
+            try
+            {
+                _crop = PhotoCrop.Start(path, Crop);
+            }
+            catch (Exception exception)
+            {
+                _logError($"Photo mode: couldn't read the photo at {path} back to crop it to {Crop}; it's kept uncropped. {exception}");
+                End(Localization.Format("MunShot/Status/SavedUncropped", path));
+            }
+        }
+
+        private void FinishCrop()
+        {
+            PhotoCrop crop = _crop;
+            _crop = null;
+            if (crop.Error == null)
+            {
+                _logInfo($"Photo mode: photo cropped to {Crop}, {crop.Size.x}x{crop.Size.y}: {crop.Path}");
+                End(Localization.Format("MunShot/Status/Saved", crop.Path));
+            }
+            else
+            {
+                _logError($"Photo mode: couldn't write the photo at {crop.Path} cropped to {Crop}: {crop.Error}. "
+                          + "The file may be the uncropped photo, or missing if the write failed partway.");
+                End(Localization.Format("MunShot/Status/SavedUncropped", crop.Path));
             }
         }
 

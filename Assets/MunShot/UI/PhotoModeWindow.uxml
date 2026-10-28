@@ -12,6 +12,9 @@
          shown in capitals (bound text through the UppercaseLocalization converter). -->
     <Style src="PhotoModeWindow.uss" />
     <ui:VisualElement name="photo-mode" class="pm-root" picking-mode="Ignore">
+        <!-- The frame guides (a grid, and shading over what the frame shape crops off), drawn by FrameGuides over the whole screen,
+             behind the panels; outside the chrome, so they stay up while the UI is hidden to frame the shot -->
+        <ui:VisualElement name="frame-guides" class="pm-frame-guides" picking-mode="Ignore" />
         <ui:VisualElement name="chrome" class="pm-chrome" picking-mode="Ignore">
 
             <ui:VisualElement name="sidebar" class="pm-sidebar">
@@ -168,7 +171,7 @@
                                         </ui:VisualElement>
                                     </ui:VisualElement>
 
-                                    <!-- Camera: fly free or circle something, how wide it sees, fisheye, and what's in focus -->
+                                    <!-- Camera: fly free or circle something, how wide it sees, fisheye, vignette, frame guides, and what's in focus -->
                                     <ui:VisualElement name="page-camera" class="pm-page">
                                         <ui:VisualElement class="pm-row">
                                             <uitk:OabButton name="camera-free" text="#MunShot/UI/Free" class="pm-grow">
@@ -220,6 +223,31 @@
                                                 </Bindings>
                                             </ui:Label>
                                         </ui:VisualElement>
+                                        <!-- Vignette: the picture darkens towards its edges and corners, drawing the eye to the middle -->
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/Vignette" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <ui:VisualElement class="pm-row">
+                                            <ui:Slider name="vignette" low-value="0" high-value="1" class="pm-grow" />
+                                            <ui:Label class="pm-value">
+                                                <Bindings>
+                                                    <ui:DataBinding property="text" data-source-path="VignetteText" binding-mode="ToTarget" />
+                                                </Bindings>
+                                            </ui:Label>
+                                        </ui:VisualElement>
+
+                                        <!-- Framing: lines to compose by (never in the photo), and the shape the photo is cropped to -->
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/Grid" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <uitk:Selector name="frame-grid" class="pm-selector" />
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/FrameShape" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <uitk:Selector name="frame-shape" class="pm-selector" />
 
                                         <!-- Depth of field: what's sharp, and how much the rest blurs (a lower f-number blurs more); moving either
                                              slider, or focusing on the selected kerbal, turns it on -->

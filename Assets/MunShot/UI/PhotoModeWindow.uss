@@ -309,6 +309,21 @@
 }
 
 /* The box dragged to select several kerbals and lights, in the theme's highlight green */
+/* The frame guides' layer, over the whole screen; FrameGuides draws on it */
+.pm-frame-guides {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* The SDK's Selector, as a row of the panel: the theme's 40px row is taller than the panel's sliders */
+.pm-selector {
+    height: 32px;
+    padding: 2px 0;
+}
+
 .pm-selection-box {
     position: absolute;
     display: none;
