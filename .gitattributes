@@ -1,2 +1,14 @@
+# Text files are stored with LF in the repository whatever the checkout uses, so a Windows editor saving CRLF
+# doesn't turn a small change into a whole-file rewrite. Git detects binary files itself; the common ones are named
+# below so detection can never guess wrong.
+* text=auto
+
 # Shell scripts must keep LF endings or bash fails on Windows checkouts ($'\r').
 *.sh text eol=lf
+
+# Binary assets: never converted or merged as text
+*.png binary
+*.jpg binary
+*.dll binary
+*.exe binary
+*.zip binary
