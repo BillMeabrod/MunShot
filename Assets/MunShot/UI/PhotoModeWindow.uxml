@@ -70,6 +70,12 @@
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-light" picking-mode="Ignore" />
                                     </uitk:OabButton>
+                                    <uitk:OabButton name="tab-fx" tooltip="R:#MunShot/UI/Fx" class="pm-strip-tab">
+                                        <Bindings>
+                                            <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowFxCommand" />
+                                        </Bindings>
+                                        <ui:VisualElement class="pm-strip-icon pm-icon-fx" picking-mode="Ignore" />
+                                    </uitk:OabButton>
                                 </ui:VisualElement>
 
                                 <ui:VisualElement class="pm-pages">
@@ -439,6 +445,62 @@
                                                 </ui:VisualElement>
                                             </ui:VisualElement>
                                             <ui:Toggle name="light-kerbals-only" label="#MunShot/UI/KerbalsOnly" class="switch" />
+                                        </ui:VisualElement>
+                                    </ui:VisualElement>
+
+                                    <!-- FX: the game's own particle effects, placed and moved like lights, held still at a chosen moment -->
+                                    <ui:VisualElement name="page-fx" class="pm-page">
+                                        <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
+                                            <ui:ScrollView name="effect-list" class="pm-list" />
+                                            <ui:Label text="#MunShot/UI/NoEffects" class="pm-empty">
+                                                <Bindings>
+                                                    <ui:DataBinding property="style.display" data-source-path="HasEffects" binding-mode="ToTarget" source-to-ui-converters="MunShotInvertedBoolToDisplay" />
+                                                </Bindings>
+                                            </ui:Label>
+                                        </uitk:InvertedCornerBox>
+                                        <!-- Opens the list of effects to add, as Bring in kerbal opens the list of kerbals -->
+                                        <uitk:OabButton name="add-effect" text="#MunShot/UI/AddEffect" class="pm-wide">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="AddEffectCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+
+                                        <ui:VisualElement name="effect-settings">
+                                            <Bindings>
+                                                <ui:DataBinding property="style.display" data-source-path="HasSelectedEffect" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                            </Bindings>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label class="pm-heading">
+                                                    <Bindings>
+                                                        <ui:DataBinding property="text" data-source-path="SelectedEffectName" binding-mode="ToTarget" />
+                                                    </Bindings>
+                                                </ui:Label>
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/EffectMoment" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <ui:Slider name="effect-moment" low-value="0" high-value="1" class="pm-grow" />
+                                                <ui:Label class="pm-value">
+                                                    <Bindings>
+                                                        <ui:DataBinding property="text" data-source-path="EffectMomentText" binding-mode="ToTarget" />
+                                                    </Bindings>
+                                                </ui:Label>
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/EffectSize" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <ui:Slider name="effect-size" low-value="0" high-value="1" class="pm-grow" />
+                                                <ui:Label class="pm-value">
+                                                    <Bindings>
+                                                        <ui:DataBinding property="text" data-source-path="EffectSizeText" binding-mode="ToTarget" />
+                                                    </Bindings>
+                                                </ui:Label>
+                                            </ui:VisualElement>
                                         </ui:VisualElement>
                                     </ui:VisualElement>
                                 </ui:VisualElement>

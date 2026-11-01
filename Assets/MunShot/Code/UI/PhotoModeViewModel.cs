@@ -16,7 +16,8 @@ namespace MunShot.UI
         Pose,
         Camera,
         Color,
-        Light
+        Light,
+        Fx
     }
 
     /// <summary>
@@ -38,6 +39,11 @@ namespace MunShot.UI
         private string _saturationText = string.Empty;
         private string _warmthText = string.Empty;
         private bool _hasLights;
+        private bool _hasEffects;
+        private bool _hasSelectedEffect;
+        private string _selectedEffectName = string.Empty;
+        private string _effectMomentText = string.Empty;
+        private string _effectSizeText = string.Empty;
         private bool _hasSelectedLight;
         private bool _isSpotLight;
         private string _selectedLightName = string.Empty;
@@ -51,17 +57,21 @@ namespace MunShot.UI
 
         /// <param name="showTab">Shows a tab of the side panel (the window's own layout).</param>
         /// <param name="openKerbalMenu">Opens the list of kerbals to bring in.</param>
-        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu)
+        /// <param name="openEffectMenu">Opens the list of effects to add.</param>
+        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu, Action openEffectMenu)
         {
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             if (showTab == null) throw new ArgumentNullException(nameof(showTab));
             if (openKerbalMenu == null) throw new ArgumentNullException(nameof(openKerbalMenu));
+            if (openEffectMenu == null) throw new ArgumentNullException(nameof(openEffectMenu));
 
             ShowKerbalsCommand = new RelayCommand(() => showTab(PhotoModeTab.Kerbals));
             ShowPoseCommand = new RelayCommand(() => showTab(PhotoModeTab.Pose));
             ShowCameraCommand = new RelayCommand(() => showTab(PhotoModeTab.Camera));
             ShowColorCommand = new RelayCommand(() => showTab(PhotoModeTab.Color));
             ShowLightCommand = new RelayCommand(() => showTab(PhotoModeTab.Light));
+            ShowFxCommand = new RelayCommand(() => showTab(PhotoModeTab.Fx));
+            AddEffectCommand = new RelayCommand(openEffectMenu, () => photoMode.Effects.CanAdd);
             AddLightCommand = new RelayCommand(photoMode.AddLight, () => photoMode.Lights.CanAdd);
             PointLightCommand = new RelayCommand(() => photoMode.ChangeLight(light => light.Kind = PhotoLightKind.Point));
             SpotLightCommand = new RelayCommand(() => photoMode.ChangeLight(light => light.Kind = PhotoLightKind.Spot));
@@ -82,6 +92,10 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand ShowCameraCommand { get; }
         [CreateProperty] public RelayCommand ShowColorCommand { get; }
         [CreateProperty] public RelayCommand ShowLightCommand { get; }
+        [CreateProperty] public RelayCommand ShowFxCommand { get; }
+
+        /// <summary>Opens the list of effects to add; only while there's room for another.</summary>
+        [CreateProperty] public RelayCommand AddEffectCommand { get; }
 
         /// <summary>Adds a light at the camera; only while there's room for another.</summary>
         [CreateProperty] public RelayCommand AddLightCommand { get; }
@@ -114,6 +128,7 @@ namespace MunShot.UI
             BringInCommand.RaiseCanExecuteChanged();
             ResetColorCommand.RaiseCanExecuteChanged();
             AddLightCommand.RaiseCanExecuteChanged();
+            AddEffectCommand.RaiseCanExecuteChanged();
         }
 
         private bool CanBringIn() =>
@@ -224,6 +239,46 @@ namespace MunShot.UI
         {
             get => _lightRangeText;
             set => SetField(ref _lightRangeText, value);
+        }
+
+        /// <summary>Whether photo mode has any effects, so "no effects yet" shows when not.</summary>
+        [CreateProperty]
+        public bool HasEffects
+        {
+            get => _hasEffects;
+            set => SetField(ref _hasEffects, value);
+        }
+
+        /// <summary>Whether an effect is selected, so its settings show.</summary>
+        [CreateProperty]
+        public bool HasSelectedEffect
+        {
+            get => _hasSelectedEffect;
+            set => SetField(ref _hasSelectedEffect, value);
+        }
+
+        /// <summary>The selected effect's name, in capitals, as its settings' heading.</summary>
+        [CreateProperty]
+        public string SelectedEffectName
+        {
+            get => _selectedEffectName;
+            set => SetField(ref _selectedEffectName, value);
+        }
+
+        /// <summary>How far into the selected effect it's held, as shown by its slider ("0.50 s").</summary>
+        [CreateProperty]
+        public string EffectMomentText
+        {
+            get => _effectMomentText;
+            set => SetField(ref _effectMomentText, value);
+        }
+
+        /// <summary>The selected effect's size against the game's own, as shown by its slider ("×1.5").</summary>
+        [CreateProperty]
+        public string EffectSizeText
+        {
+            get => _effectSizeText;
+            set => SetField(ref _effectSizeText, value);
         }
 
         [CreateProperty]

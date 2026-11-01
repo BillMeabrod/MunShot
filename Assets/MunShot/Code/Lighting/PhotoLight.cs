@@ -36,17 +36,10 @@ namespace MunShot.Lighting
         public const float MinSpotAngle = 5f;
         public const float MaxSpotAngle = 150f;
 
-        private const float MarkerSize = 0.12f;
-
-        // How near the mouse has to point to the marker to pick it: its size up close, and a share of the distance
-        // further off, so a far marker stays as easy to click as a near one
-        private const float PickShareOfDistance = 0.02f;
-
         private readonly GameObject _root;
         private readonly Light _light;
-        private readonly GameObject _marker;
+        private readonly PlaceableMarker _marker;
         private readonly GameObject _pointer;
-        private readonly Material _markerMaterial;
         private readonly Func<int> _kerbalLayer;
 
         private PhotoLightKind _kind = PhotoLightKind.Point;
@@ -122,17 +115,17 @@ namespace MunShot.Lighting
             _light = _root.AddComponent<Light>();
             _light.shadows = LightShadows.None;
 
-            _markerMaterial = new Material(markerShader) { name = $"MunShot light {number} marker" };
-            _marker = MarkerPart(PrimitiveType.Sphere, Vector3.zero, Vector3.one * MarkerSize);
+            _marker = new PlaceableMarker(_root.transform, $"MunShot light {number}", markerShader, _color);
             // A spot light's marker has a short stick pointing the way it shines
-            _pointer = MarkerPart(PrimitiveType.Cylinder, new Vector3(0f, 0f, MarkerSize), new Vector3(0.03f, MarkerSize * 0.5f, 0.03f));
+            const float size = PlaceableMarker.Size;
+            _pointer = _marker.AddPart(PrimitiveType.Cylinder, new Vector3(0f, 0f, size), new Vector3(0.03f, size * 0.5f, 0.03f));
             _pointer.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             Apply();
         }
 
         public void ShowMarker(bool shown)
         {
-            _marker.SetActive(shown);
+            _marker.Shown = shown;
             _pointer.SetActive(shown && _kind == PhotoLightKind.Spot);
         }
 
@@ -143,20 +136,14 @@ namespace MunShot.Lighting
         public bool TryPick(Ray ray, out Vector3 point)
         {
             point = default;
-            if (_gone || !_marker.activeInHierarchy) return false;
-            Vector3 centre = _root.transform.position;
-            float along = Vector3.Dot(centre - ray.origin, ray.direction);
-            if (along <= 0f) return false;
-            point = ray.origin + ray.direction * along;
-            float reach = Mathf.Max(MarkerSize * 0.5f, along * PickShareOfDistance);
-            return (point - centre).sqrMagnitude <= reach * reach;
+            return !_gone && _marker.TryPick(ray, out point);
         }
 
         public void Destroy()
         {
             _gone = true;
             Object.Destroy(_root);
-            Object.Destroy(_markerMaterial);
+            _marker.Destroy();
         }
 
         private void Apply()
@@ -171,25 +158,8 @@ namespace MunShot.Lighting
             // it skip that, and leave URP's own copy of them unset)
             _light.cullingMask = _kerbalsOnly ? 1 << _kerbalLayer() : ~0;
 
-            _markerMaterial.color = _color;
-            _pointer.SetActive(_marker.activeSelf && _kind == PhotoLightKind.Spot);
-        }
-
-        // A piece of the marker: no collider (it's picked by where the mouse points, TryPick, and has nothing to bump
-        // into), no shadow
-        private GameObject MarkerPart(PrimitiveType shape, Vector3 localPosition, Vector3 localScale)
-        {
-            GameObject part = GameObject.CreatePrimitive(shape);
-            part.name = $"MunShot light {Number} marker";
-            Object.Destroy(part.GetComponent<Collider>());
-            part.transform.SetParent(_root.transform, false);
-            part.transform.localPosition = localPosition;
-            part.transform.localScale = localScale;
-            var renderer = part.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = _markerMaterial;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            return part;
+            _marker.Color = _color;
+            _pointer.SetActive(_marker.Shown && _kind == PhotoLightKind.Spot);
         }
     }
 }

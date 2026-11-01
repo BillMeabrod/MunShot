@@ -14,8 +14,10 @@
 - **Placing.** The VAB's own move and rotate handles, with angle snap. Select several kerbals with a drag box or Shift+click and move or turn them together. **Snap to surface** stands them on the ground, **Stand upright** turns them upright on screen, and **Delete** takes them out of the shot.
 - **Camera.** Fly freely with WASD and the mouse, holding Shift to pick up speed for long distances, or orbit around your ship or a kerbal. Roll and field of view (up to 140°) are yours to set. Every movement is the camera's own, as in space: left is always left on screen, even rolled or upside down, and **R** brings back a level horizon.
 - **Lens.** **Depth of field** blurs what's nearer and further than the focus, with **Focus on selected kerbal** to put them sharp, and a **Fisheye** that bulges the picture like an action camera.
+- **Framing.** A **Vignette** that darkens the picture towards its corners, **Grid** guides (rule of thirds, golden ratio or a centre cross) to line the shot up, and a **Frame** shape (16:9, 3:2, 4:3, square, 21:9 or 9:16 portrait) that the saved photo is cropped to, with what's cut off shaded on screen.
 - **Color.** Exposure, contrast, saturation (down to black and white) and warmth, with **Reset** to go back to the game's own picture.
 - **Light.** Up to four lights of your own: point or spot, any color, brightness and range, lighting kerbals only or everything. Click a light's marker and move or aim it with the same handles as kerbals; the markers never show in the photo.
+- **Effects.** Up to eight of the game's own effects: explosions in air and in space, a solid booster blowing up, a crash into the ground, launch smoke, fire, steam, sparks and a puff of gas. Each is held still at the moment you choose with **Moment**, sized with **Size**, and moved with the same handles as kerbals and lights; their markers never show in the photo.
 - **Taking the photo.** Press **F1** (the game's screenshot key) or the shutter button. Photo mode's UI hides for the shot, and Redux saves it to the game's `Screenshots` folder with your screenshot settings.
 
 ![Six kerbals posing at KSC, waving and gesturing, with a rocket launching behind them](Screenshots/KSCGroup.png)
@@ -52,12 +54,12 @@
 | **Mouse wheel** | Fly up and down (free camera), or get closer and further (orbit camera) |
 | **Q / E** | Roll the camera; **R** levels it again |
 | **Shift / Ctrl** | Faster (picking up speed the longer it's held) / slower |
-| **Click** a kerbal or a light's marker | Select it to pose or move |
-| **Shift+click**, or **drag a box** | Select several kerbals and lights to move together |
+| **Click** a kerbal, or a light's or effect's marker | Select it to pose or move |
+| **Shift+click**, or **drag a box** | Select several kerbals, lights and effects to move together |
 | **Drag** a selected kerbal, holding **right mouse** too | Turn them left and right (spot lights too) |
 | **Drag** a selected kerbal, holding **Ctrl** | Lean them to the side |
 | **Drag** a selected kerbal, holding **Ctrl+Alt** | Tip them forward and back |
-| **Delete** or **Backspace** | Take the selected kerbals and lights out of the shot |
+| **Delete** or **Backspace** | Take the selected kerbals, lights and effects out of the shot |
 | **H** | Hide photo mode's UI to frame the shot |
 | **F1** | Take the photo |
 

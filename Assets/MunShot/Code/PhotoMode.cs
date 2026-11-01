@@ -6,6 +6,7 @@ using KSP.Input;
 using KSP.Sim.impl;
 using MunShot.Cameras;
 using MunShot.Capture;
+using MunShot.Effects;
 using MunShot.Lighting;
 using MunShot.Posing;
 using UnityEngine;
@@ -43,6 +44,7 @@ namespace MunShot
         public PhotoCamera Camera { get; }
         public PhotoLook Look { get; }
         public PhotoLights Lights { get; }
+        public PhotoEffects Effects { get; }
         public PhotoCapture Capture { get; }
         /// <summary>The pose presets, read from the mod's pose files again each time photo mode opens.</summary>
         public IReadOnlyList<PosePreset> Presets { get; private set; } = Array.Empty<PosePreset>();
@@ -89,7 +91,9 @@ namespace MunShot
             _inputLock = new PhotoModeInputLock(Info, Warn);
             Look = new PhotoLook(Info, Warn);
             Lights = new PhotoLights(() => session.KerbalLayer, Info, Warn);
-            Manipulator = new PlaceableManipulator(session, Lights, Look, Info, message => _logger.LogError(message));
+            Effects = new PhotoEffects(Info, Warn);
+            Manipulator = new PlaceableManipulator(session, new IPlaceableSet[] { Lights, Effects }, Look, Info,
+                                                   message => _logger.LogError(message));
 
             Session.EntryChanged += OnEntryChanged;
             Manipulator.Selected += OnClicked;
@@ -166,6 +170,7 @@ namespace MunShot
             Camera.Release();
             Look.Release();
             Lights.Clear();
+            Effects.Clear();
             _uiHider.Release();
             _inputLock.Release();
             _pause.Release();
@@ -189,8 +194,11 @@ namespace MunShot
             Session.Tick();
             if (!IsOpen) return;
             Look.Tick(CurrentCamera());
-            // The lights' markers are for placing them: not in the photo, nor while the UI is hidden to frame it
-            Lights.ShowMarkers(!UiHidden && !Capture.IsCapturing);
+            // The lights' and effects' markers are for placing them: not in the photo, nor while the UI is hidden to frame it
+            bool markers = !UiHidden && !Capture.IsCapturing;
+            Lights.ShowMarkers(markers);
+            Effects.ShowMarkers(markers);
+            Effects.Tick();
 
             // While a photo is taken the handles are hidden and the camera holds still; while the UI is hidden to
             // frame the shot, the handles are too but the camera moves
@@ -268,22 +276,28 @@ namespace MunShot
 
         /// <summary>
         /// Takes out everything selected for moving (the outlined ones): doubles, whose originals come back where
-        /// they're in the scene, and lights.
+        /// they're in the scene, lights and effects.
         /// </summary>
         public void RemoveMoving()
         {
             if (!IsOpen || Manipulator.Moving.Count == 0) return;
             List<PhotoSession.Entry> doubles = Manipulator.Moving.OfType<PhotoSession.Entry>().ToList();
             List<PhotoLight> lights = Manipulator.Moving.OfType<PhotoLight>().ToList();
+            List<PhotoEffect> effects = Manipulator.Moving.OfType<PhotoEffect>().ToList();
             foreach (PhotoLight light in lights) Lights.Remove(light);
-            if (doubles.Count > 0) RemoveAll(doubles, announce: lights.Count == 0);
-            // Only lights taken out: the Light tab's selection, if any are left, gets the handles
-            else if (Lights.Selected != null) Manipulator.Select(Lights.Selected);
+            foreach (PhotoEffect effect in effects) Effects.Remove(effect);
+            int kinds = (doubles.Count > 0 ? 1 : 0) + (lights.Count > 0 ? 1 : 0) + (effects.Count > 0 ? 1 : 0);
+            if (doubles.Count > 0) RemoveAll(doubles, announce: kinds == 1);
+            // Only lights or effects taken out: that tab's selection, if any are left, gets the handles
+            else if (lights.Count > 0 && Lights.Selected != null) Manipulator.Select(Lights.Selected);
+            else if (effects.Count > 0 && Effects.Selected != null) Manipulator.Select(Effects.Selected);
 
-            if (doubles.Count > 0 && lights.Count > 0)
-                Status?.Invoke(Localization.Format("MunShot/Status/KerbalsAndLightsRemoved", doubles.Count, lights.Count));
+            if (kinds > 1)
+                Status?.Invoke(Localization.Format("MunShot/Status/ItemsRemoved", doubles.Count + lights.Count + effects.Count));
             else if (lights.Count > 0)
                 Status?.Invoke(LightsRemovedNote(lights));
+            else if (effects.Count > 0)
+                Status?.Invoke(EffectsRemovedNote(effects));
             RaiseChanged();
         }
 
@@ -526,6 +540,79 @@ namespace MunShot
         /// <summary>A light's name, as lists and notes show it ("Light 1").</summary>
         public static string LightName(PhotoLight light) => Localization.Format("MunShot/UI/LightName", light.Number);
 
+        // ---- Effects ----
+
+        /// <summary>
+        /// Adds an effect in front of the camera and selects it. The game's effect loads the first time each kind is
+        /// added, so it may show a moment later.
+        /// </summary>
+        public void AddEffect(PhotoEffectKind kind)
+        {
+            if (!IsOpen) return;
+            if (!Effects.CanAdd)
+            {
+                Status?.Invoke(Localization.Format("MunShot/Status/EffectsFull", PhotoEffects.MaxEffects));
+                return;
+            }
+            UnityEngine.Camera camera = CurrentCamera();
+            if (camera == null)
+            {
+                Status?.Invoke(Localization.Translate("MunShot/Status/NoCamera"));
+                return;
+            }
+            Effects.Add(kind, camera, PhotoSession.ActivePhysicsSpace(), effect =>
+            {
+                if (!IsOpen) return;
+                if (effect == null)
+                    Status?.Invoke(Localization.Format("MunShot/Status/EffectNotAdded", EffectKindName(kind)));
+                else
+                {
+                    Manipulator.Select(effect);
+                    Status?.Invoke(Localization.Format("MunShot/Status/EffectAdded", EffectName(effect)));
+                }
+                RaiseChanged();
+            });
+        }
+
+        /// <summary>Takes an effect away; if it had the handles, the FX tab's next selection gets them.</summary>
+        public void RemoveEffect(PhotoEffect effect)
+        {
+            if (effect == null) return;
+            bool hadHandles = Manipulator.Moving.Contains(effect);
+            Effects.Remove(effect);
+            if (hadHandles && Effects.Selected != null) Manipulator.Select(Effects.Selected);
+            Status?.Invoke(EffectsRemovedNote(new[] { effect }));
+            RaiseChanged();
+        }
+
+        private static string EffectsRemovedNote(IReadOnlyList<PhotoEffect> effects) =>
+            effects.Count == 1
+                ? Localization.Format("MunShot/Status/EffectRemoved", EffectName(effects[0]))
+                : Localization.Format("MunShot/Status/EffectsRemoved", effects.Count);
+
+        /// <summary>Selects an effect, for the FX tab to set and the handles to move.</summary>
+        public void SelectEffect(PhotoEffect effect)
+        {
+            Effects.Select(effect);
+            Manipulator.Select(effect);
+            RaiseChanged();
+        }
+
+        /// <summary>Changes the selected effect, if there is one, and tells the UI.</summary>
+        public void ChangeEffect(Action<PhotoEffect> change)
+        {
+            if (Effects.Selected == null) return;
+            change(Effects.Selected);
+            RaiseChanged();
+        }
+
+        /// <summary>A kind of effect's name ("Explosion").</summary>
+        public static string EffectKindName(PhotoEffectKind kind) => Localization.Translate(PhotoEffectSpec.Of(kind).NameKey);
+
+        /// <summary>An effect's name, as lists and notes show it ("Explosion 1").</summary>
+        public static string EffectName(PhotoEffect effect) =>
+            Localization.Format("MunShot/UI/EffectName", EffectKindName(effect.Kind), effect.Number);
+
         // ---- Color ----
 
         public void SetExposure(float stops)
@@ -640,7 +727,7 @@ namespace MunShot
             RaiseChanged();
         }
 
-        // A double clicked: posing and the orbit target follow it. A light clicked: the Light tab sets it
+        // A double clicked: posing and the orbit target follow it. A light or effect clicked: its tab sets it
         private void OnClicked(IPlaceable placeable)
         {
             if (placeable is PhotoSession.Entry entry)
@@ -651,6 +738,10 @@ namespace MunShot
             else if (placeable is PhotoLight light)
             {
                 Status?.Invoke(Localization.Format("MunShot/Status/Selected", LightName(light)));
+            }
+            else if (placeable is PhotoEffect effect)
+            {
+                Status?.Invoke(Localization.Format("MunShot/Status/Selected", EffectName(effect)));
             }
             RaiseChanged();
         }

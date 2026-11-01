@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using MunShot.Cameras;
 using MunShot.Capture;
+using MunShot.Effects;
 using MunShot.Lighting;
 using MunShot.Posing;
 using I2.Loc;
@@ -74,7 +75,8 @@ namespace MunShot.UI
             [PhotoModeTab.Pose] = "MunShot/UI/Pose",
             [PhotoModeTab.Camera] = "MunShot/UI/Camera",
             [PhotoModeTab.Color] = "MunShot/UI/Color",
-            [PhotoModeTab.Light] = "MunShot/UI/Light"
+            [PhotoModeTab.Light] = "MunShot/UI/Light",
+            [PhotoModeTab.Fx] = "MunShot/UI/Fx"
         };
         private Button _bringIn;
         private ScrollView _kerbalList;
@@ -89,6 +91,10 @@ namespace MunShot.UI
         private Button _rotate;
         private Button _lightMove;
         private Button _lightRotate;
+        private Button _addEffect;
+        private ScrollView _effectList;
+        private Slider _effectMoment;
+        private Slider _effectSize;
         private Button _free;
         private Button _orbit;
         private Slider _fieldOfView;
@@ -124,7 +130,7 @@ namespace MunShot.UI
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
-            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu);
+            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu);
 
             var options = new WindowOptions
             {
@@ -262,6 +268,7 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
             _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
             _tabs[PhotoModeTab.Light] = (Required<Button>(root, "tab-light"), Required<VisualElement>(root, "page-light"));
+            _tabs[PhotoModeTab.Fx] = (Required<Button>(root, "tab-fx"), Required<VisualElement>(root, "page-fx"));
             // The tabs are icons; each shows its name on hover, through Redux's Tooltip as Redux's own windows do
             Tooltip tooltip = Required<Tooltip>(root, "tooltip");
             if (tooltip != null)
@@ -293,6 +300,7 @@ namespace MunShot.UI
             _saturation = ColorSlider(root, "saturation", PhotoLook.MaxColorAdjustment, _photoMode.SetSaturation);
             _warmth = ColorSlider(root, "warmth", PhotoLook.MaxColorAdjustment, _photoMode.SetWarmth);
             BindLights(root);
+            BindEffects(root);
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
@@ -325,6 +333,18 @@ namespace MunShot.UI
 
             ShowTab(_tab);
             Refresh();
+        }
+
+        // The FX tab: the list of effects, and the selected one's moment and size (Add effect runs its command)
+        private void BindEffects(VisualElement root)
+        {
+            _addEffect = Required<Button>(root, "add-effect");
+            _effectList = Required<ScrollView>(root, "effect-list");
+            _effectMoment = Required<Slider>(root, "effect-moment");
+            _effectSize = Required<Slider>(root, "effect-size");
+            _effectMoment?.RegisterValueChangedCallback(change => _photoMode.ChangeEffect(effect => effect.Moment = change.newValue));
+            _effectSize?.RegisterValueChangedCallback(change =>
+                _photoMode.ChangeEffect(effect => effect.Size = ValueAt(change.newValue, PhotoEffect.MinSize, PhotoEffect.MaxSize)));
         }
 
         private void BindLights(VisualElement root)
@@ -531,6 +551,7 @@ namespace MunShot.UI
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
             RefreshLights(_photoMode.Lights);
+            RefreshEffects(_photoMode.Effects);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingBody);
         }
 
@@ -644,6 +665,41 @@ namespace MunShot.UI
             _model.SpotAngleText = selected.SpotAngle.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;
         }
 
+        // The effects: click a name to select it, x to take it away; the selected one's settings below
+        private void RefreshEffects(PhotoEffects effects)
+        {
+            _model.HasEffects = effects.All.Count > 0;
+            if (_effectList != null)
+            {
+                _effectList.Clear();
+                foreach (PhotoEffect effect in effects.All)
+                {
+                    PhotoEffect chosen = effect;
+                    var row = new VisualElement();
+                    row.AddToClassList("pm-item-row");
+                    var remove = new Button(() => _photoMode.RemoveEffect(chosen)) { text = "×" };
+                    remove.AddToClassList("pm-remove");
+                    row.Add(Item(PhotoMode.EffectName(effect), effect == effects.Selected, () => _photoMode.SelectEffect(chosen)));
+                    row.Add(remove);
+                    _effectList.Add(row);
+                }
+            }
+
+            PhotoEffect selected = effects.Selected;
+            _model.HasSelectedEffect = selected != null;
+            if (selected == null) return;
+            _model.SelectedEffectName = PhotoMode.EffectName(selected).ToUpper(CultureInfo.CurrentCulture);
+            if (_effectMoment != null)
+            {
+                _effectMoment.lowValue = 0f;
+                _effectMoment.highValue = selected.MaxMoment;
+                _effectMoment.SetValueWithoutNotify(selected.Moment);
+            }
+            _effectSize?.SetValueWithoutNotify(SliderAt(selected.Size, PhotoEffect.MinSize, PhotoEffect.MaxSize));
+            _model.EffectMomentText = selected.Moment.ToString("0.00", CultureInfo.CurrentCulture) + " s";
+            _model.EffectSizeText = "×" + selected.Size.ToString(selected.Size < 1f ? "0.00" : "0.0", CultureInfo.CurrentCulture);
+        }
+
         private void RefreshColor(PhotoLook look)
         {
             _exposure?.SetValueWithoutNotify(look.Exposure);
@@ -705,6 +761,29 @@ namespace MunShot.UI
             if (!any)
                 menu.AddDisabledItem(Localization.Translate(_photoMode.Kerbals.Count == 0 ? Localization.NoKerbals : Localization.EveryoneIsIn), false);
             menu.DropDown(_bringIn.worldBound, _bringIn, DropdownMenuSizeMode.Auto);
+        }
+
+        // Every kind of effect by name, under a greyed-out heading for each group, as the kerbal list has; picking one
+        // adds it in front of the camera
+        private void OpenEffectMenu()
+        {
+            if (_addEffect == null) return;
+            var menu = new GenericDropdownMenu();
+            var kinds = (PhotoEffectKind[])Enum.GetValues(typeof(PhotoEffectKind));
+            bool first = true;
+            foreach (PhotoEffectGroup group in (PhotoEffectGroup[])Enum.GetValues(typeof(PhotoEffectGroup)))
+            {
+                if (!first) menu.AddSeparator(string.Empty);
+                first = false;
+                menu.AddDisabledItem(Localization.Translate(PhotoEffectSpec.GroupNameKey(group)), false);
+                foreach (PhotoEffectKind kind in kinds)
+                {
+                    if (PhotoEffectSpec.Of(kind).Group != group) continue;
+                    PhotoEffectKind chosen = kind;
+                    menu.AddItem(PhotoMode.EffectKindName(kind), false, () => _photoMode.AddEffect(chosen));
+                }
+            }
+            menu.DropDown(_addEffect.worldBound, _addEffect, DropdownMenuSizeMode.Auto);
         }
 
         private bool AddSection(GenericDropdownMenu menu, string headingKey, List<KerbalCandidate> candidates, bool separate)

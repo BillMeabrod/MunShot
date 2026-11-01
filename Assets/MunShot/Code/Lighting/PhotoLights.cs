@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MunShot.Posing;
 using UnityEngine;
 
 namespace MunShot.Lighting
@@ -11,7 +12,7 @@ namespace MunShot.Lighting
     /// They live under the object vessels live under, which the game moves when the floating origin shifts, so they
     /// stay where they were put.
     /// </summary>
-    public sealed class PhotoLights
+    public sealed class PhotoLights : IPlaceableSet
     {
         /// <summary>
         /// How many there can be: enough to light a shot (key, fill, rim and one more), few enough that the list and the
@@ -26,7 +27,6 @@ namespace MunShot.Lighting
         private readonly Action<string> _logWarning;
         private readonly Func<int> _kerbalLayer;
         private readonly List<PhotoLight> _lights = new List<PhotoLight>();
-        private Shader _markerShader;
         private bool _markersShown = true;
 
         public IReadOnlyList<PhotoLight> All => _lights;
@@ -49,7 +49,7 @@ namespace MunShot.Lighting
         public PhotoLight Add(Camera camera, Transform parent)
         {
             if (!CanAdd || camera == null) return null;
-            Shader shader = MarkerShader();
+            Shader shader = PlaceableMarker.FindShader(_logWarning);
             if (shader == null) return null;
             if (parent == null) _logWarning("Photo mode: no vessel to place lights beside; the light goes under the scene's root, so a floating origin shift would move it.");
 
@@ -120,14 +120,19 @@ namespace MunShot.Lighting
             return number;
         }
 
-        // An unlit shader for the markers, as the fallback handles use; the first found is kept
-        private Shader MarkerShader()
+        // ---- For the handles (IPlaceableSet) ----
+
+        IEnumerable<IPlaceable> IPlaceableSet.Placeables => _lights;
+
+        bool IPlaceableSet.Holds(IPlaceable placeable) => placeable is PhotoLight light && _lights.Contains(light);
+
+        IPlaceable IPlaceableSet.PickPlaceable(Ray ray, out Vector3 point) => Pick(ray, out point);
+
+        bool IPlaceableSet.SelectPlaceable(IPlaceable placeable)
         {
-            if (_markerShader != null) return _markerShader;
-            foreach (string name in new[] { "Hidden/Internal-Colored", "Sprites/Default", "Unlit/Color" })
-                if ((_markerShader = Shader.Find(name)) != null) return _markerShader;
-            _logWarning("Photo mode: can't add a light; none of the unlit shaders for its marker is in the game.");
-            return null;
+            if (!(placeable is PhotoLight light) || light == Selected || !_lights.Contains(light)) return false;
+            Selected = light;
+            return true;
         }
     }
 }
