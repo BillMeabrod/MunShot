@@ -89,7 +89,7 @@
                                         </ui:Label>
                                     </ui:VisualElement>
 
-                                    <!-- Kerbals: who's in the shot (click to select, x to take out), bring someone in, helmet and visor -->
+                                    <!-- Kerbals: who's in the shot (click to select, x to take out), bring someone in, helmet, visor and helmet lights -->
                                     <ui:VisualElement name="page-kerbals" class="pm-page">
                                         <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
                                             <ui:ScrollView name="kerbal-list" class="pm-list" />
@@ -120,6 +120,7 @@
                                             <uitk:InvertedCornerBox background-color="#161B21FF" class="pm-box">
                                                 <ui:Toggle name="helmet" label="#MunShot/UI/Helmet" class="switch" />
                                                 <ui:Toggle name="visor" label="#MunShot/UI/Visor" class="switch" />
+                                                <ui:Toggle name="helmet-lights" label="#MunShot/UI/HelmetLights" class="switch" />
                                             </uitk:InvertedCornerBox>
                                         </ui:VisualElement>
                                     </ui:VisualElement>

@@ -22,11 +22,11 @@ namespace MunShot.Lighting
     /// it, outlined and moved with the handles as a photo double is (<see cref="IPlaceable"/>); photo mode hides it for
     /// the photo and when the UI is hidden.
     ///
-    /// It lights only kerbals, or everything. Redux's lighting picks which objects a light reaches by URP rendering
+    /// It lights only kerbals, or everything but the handles (<see cref="HandlesCamera.Layer"/>). Redux's lighting picks which objects a light reaches by URP rendering
     /// layers, which it works out from a light's Unity culling mask (<see cref="LegacyLightCullingMask"/>), as for the
     /// game's own lights, so this sets only the culling mask.
     /// </summary>
-    public sealed class PhotoLight : IPlaceable
+    public sealed class PhotoLight : IMarkedPlaceable
     {
         public const float MinBrightness = 0.1f;
         // Brighter than this, the game's bloom spreads a light's glow over the whole picture like fog
@@ -156,7 +156,8 @@ namespace MunShot.Lighting
             _light.innerSpotAngle = _spotAngle * 0.6f;
             // Redux turns this into the light's rendering layers each frame it's seen (setting those here too would make
             // it skip that, and leave URP's own copy of them unset)
-            _light.cullingMask = _kerbalsOnly ? 1 << _kerbalLayer() : ~0;
+            // Never the handles, which are for placing, not part of the scene
+            _light.cullingMask = _kerbalsOnly ? 1 << _kerbalLayer() : ~(1 << HandlesCamera.Layer);
 
             _marker.Color = _color;
             _pointer.SetActive(_marker.Shown && _kind == PhotoLightKind.Spot);

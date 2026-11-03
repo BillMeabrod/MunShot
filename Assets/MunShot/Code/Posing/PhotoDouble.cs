@@ -31,6 +31,14 @@ namespace MunShot.Posing
         // The helmet's glass is "mesh_helmet_01_visor" on the kerbal rig
         private const string VisorName = "visor";
 
+        // Where Redux puts an EVA kerbal's helmet lights, and the helmet mesh whose lamps glow with them
+        // (Module_Kerbal.TryInitEvaLightVfx), and how bright the glow is when they're on (its evaEmissiveColor)
+        private const string HelmetName = "helm_spacesuit_01(Clone)";
+        private const string HelmetMeshName = "mesh_helmet_01";
+        private static readonly int EmissionMapId = Shader.PropertyToID("_EmissionMap");
+        private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+        private static readonly Color LampGlow = new Color(2.6082377f, 2.6082377f, 2.6082377f, 1f);
+
         // The game's animation names for a kerbal's own eye height and eye symmetry, and the attributes they come from
         private const string EyeOffsetParameter = "eyeOffsetPercentage";
         private const string EyeSymmetryParameter = "EyeSymmetry_Phase";
@@ -39,6 +47,11 @@ namespace MunShot.Posing
 
         private readonly float _startedAt;
         private int _framesSinceBuilt;
+
+        // The helmet lights, once fitted, and the helmet's own material copy whose lamps glow
+        private Light[] _lights;
+        private Material _helmetMaterial;
+        private bool _lightsRequested;
 
         public KerbalCandidate Source { get; }
         public Kerbal3DModel Model { get; }
@@ -92,6 +105,70 @@ namespace MunShot.Posing
         {
             HelmetOn = on;
             if (Model != null) Model.SetHelmetVisible(on);
+            ApplyLights();
+        }
+
+        /// <summary>Whether the helmet lights are switched on (off when a double is built). They only shine with the helmet on.</summary>
+        public bool LightsOn { get; private set; }
+
+        /// <summary>
+        /// Switches the helmet lights on or off, Redux's way for an EVA kerbal: its light rig on the helmet, and the
+        /// helmet's lamps glowing, shown only while the helmet is on. The lights are fitted the first time they go on
+        /// (<paramref name="assets"/> may have to load them first); <paramref name="logWarning"/> hears if they can't be.
+        /// </summary>
+        public void SetLights(bool on, HelmetLightAssets assets, Action<string> logWarning)
+        {
+            LightsOn = on;
+            if (on && !_lightsRequested)
+            {
+                _lightsRequested = true;
+                assets.Get((rig, glow) => FitLights(rig, glow, logWarning));
+            }
+            ApplyLights();
+        }
+
+        // As Redux does: the rig under the helmet, and the glow texture on the helmet's material
+        private void FitLights(GameObject rig, Texture2D glow, Action<string> logWarning)
+        {
+            if (Model == null || rig == null) return;
+            Transform helmet = FindChild(Model.transform, HelmetName);
+            if (helmet == null)
+            {
+                logWarning($"Photo double of {Source.Name}: no helmet '{HelmetName}' to fit helmet lights to.");
+                return;
+            }
+            Transform mesh = helmet.Find(HelmetMeshName);
+            var renderer = mesh != null ? mesh.GetComponent<MeshRenderer>() : null;
+            if (renderer != null && glow != null)
+            {
+                _helmetMaterial = renderer.material;
+                _helmetMaterial.SetTexture(EmissionMapId, glow);
+            }
+            GameObject lights = Object.Instantiate(rig, helmet, false);
+            _lights = lights.GetComponentsInChildren<Light>(true);
+            // Never the handles, which are for placing, not part of the scene
+            foreach (Light light in _lights) light.cullingMask &= ~(1 << HandlesCamera.Layer);
+            ApplyLights();
+        }
+
+        private void ApplyLights()
+        {
+            bool shining = LightsOn && HelmetOn;
+            if (_helmetMaterial != null) _helmetMaterial.SetColor(EmissionColorId, shining ? LampGlow : Color.black);
+            if (_lights == null) return;
+            foreach (Light light in _lights)
+                if (light != null) light.enabled = shining;
+        }
+
+        private static Transform FindChild(Transform parent, string name)
+        {
+            foreach (Transform child in parent)
+            {
+                if (child.name == name) return child;
+                Transform found = FindChild(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         /// <summary>
@@ -123,6 +200,10 @@ namespace MunShot.Posing
                 GameManager.Instance?.Game?.UnregisterUpdate(Model);
                 Object.Destroy(Model.gameObject);
             }
+            // The helmet's material copy made for the glow isn't the model's to destroy
+            if (_helmetMaterial != null) Object.Destroy(_helmetMaterial);
+            _helmetMaterial = null;
+            _lights = null;
         }
 
         /// <summary>Set when the face couldn't be set up fully: the double still works, it may just look a little off.</summary>

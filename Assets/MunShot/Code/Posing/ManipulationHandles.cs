@@ -34,9 +34,9 @@ namespace MunShot.Posing
     }
 
     /// <summary>
-    /// The move and rotate handles shown on the selected photo double. They're placed every frame on the double, with
-    /// the double's rotation (so axis 0/1/2 are its right/up/forward), and kept a constant size on screen as the VAB
-    /// keeps its handles.
+    /// The move and rotate handles shown on what's selected for moving. They're placed every frame on its middle, turned
+    /// as <see cref="PlaceableManipulator"/> says (axis 0/1/2 are that rotation's right/up/forward), and kept a
+    /// constant size on screen as the VAB keeps its handles.
     /// </summary>
     public abstract class ManipulationHandles : IDisposable
     {

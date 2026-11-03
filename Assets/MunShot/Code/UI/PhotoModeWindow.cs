@@ -84,6 +84,7 @@ namespace MunShot.UI
         private ScrollView _orbitList;
         private Toggle _helmet;
         private Toggle _visor;
+        private Toggle _helmetLights;
         private Toggle _angleSnap;
         private Toggle _jetpack;
         // The handle tool's buttons, on the Pose tab and again on the Light tab
@@ -281,6 +282,7 @@ namespace MunShot.UI
             _orbitList = Required<ScrollView>(root, "orbit-list");
             _helmet = Required<Toggle>(root, "helmet");
             _visor = Required<Toggle>(root, "visor");
+            _helmetLights = Required<Toggle>(root, "helmet-lights");
             _move = Required<Button>(root, "tool-move");
             _rotate = Required<Button>(root, "tool-rotate");
             _lightMove = Required<Button>(root, "light-tool-move");
@@ -304,6 +306,7 @@ namespace MunShot.UI
 
             _helmet?.RegisterValueChangedCallback(change => _photoMode.SetHelmet(change.newValue));
             _visor?.RegisterValueChangedCallback(change => _photoMode.SetVisor(change.newValue));
+            _helmetLights?.RegisterValueChangedCallback(change => _photoMode.SetHelmetLights(change.newValue));
             _angleSnap?.RegisterValueChangedCallback(change => _photoMode.SetAngleSnap(change.newValue));
             _jetpack?.RegisterValueChangedCallback(change => _photoMode.SetJetpack(change.newValue));
             if (_fieldOfView != null)
@@ -522,6 +525,9 @@ namespace MunShot.UI
             _helmet?.SetValueWithoutNotify(!ready || selected.Double.HelmetOn);
             _visor?.SetEnabled(ready && selected.Double.HelmetOn);
             _visor?.SetValueWithoutNotify(!ready || selected.Double.VisorOn);
+            // Like the visor, only with the helmet on: Redux's helmet lights shine only then
+            _helmetLights?.SetEnabled(ready && selected.Double.HelmetOn);
+            _helmetLights?.SetValueWithoutNotify(ready && selected.Double.LightsOn);
 
             MarkActive(_move, _photoMode.Manipulator.Mode == HandleMode.Move);
             MarkActive(_rotate, _photoMode.Manipulator.Mode == HandleMode.Rotate);
@@ -618,25 +624,31 @@ namespace MunShot.UI
             element?.EnableInClassList(SelectedClass, active);
         }
 
-        // The lights: click a name to select it, x to take it away; the selected one's settings below
+        // A list of the lights or effects: click a name to select it, x to take it away
+        private static void RefreshPlaceables<T>(VisualElement list, PlaceableSet<T> set, Func<T, string> name, Action<T> select,
+                                                 Action<T> remove)
+            where T : class, IMarkedPlaceable
+        {
+            if (list == null) return;
+            list.Clear();
+            foreach (T item in set.All)
+            {
+                T chosen = item;
+                var row = new VisualElement();
+                row.AddToClassList("pm-item-row");
+                var removeButton = new Button(() => remove(chosen)) { text = "×" };
+                removeButton.AddToClassList("pm-remove");
+                row.Add(Item(name(item), item == set.Selected, () => select(chosen)));
+                row.Add(removeButton);
+                list.Add(row);
+            }
+        }
+
+        // The lights, and the selected one's settings below
         private void RefreshLights(PhotoLights lights)
         {
             _model.HasLights = lights.All.Count > 0;
-            if (_lightList != null)
-            {
-                _lightList.Clear();
-                foreach (PhotoLight light in lights.All)
-                {
-                    PhotoLight chosen = light;
-                    var row = new VisualElement();
-                    row.AddToClassList("pm-item-row");
-                    var remove = new Button(() => _photoMode.RemoveLight(chosen)) { text = "×" };
-                    remove.AddToClassList("pm-remove");
-                    row.Add(Item(PhotoMode.LightName(light), light == lights.Selected, () => _photoMode.SelectLight(chosen)));
-                    row.Add(remove);
-                    _lightList.Add(row);
-                }
-            }
+            RefreshPlaceables(_lightList, lights, PhotoMode.LightName, _photoMode.SelectLight, _photoMode.RemoveLight);
 
             PhotoLight selected = lights.Selected;
             _model.HasSelectedLight = selected != null;
@@ -665,25 +677,11 @@ namespace MunShot.UI
             _model.SpotAngleText = selected.SpotAngle.ToString("0", CultureInfo.CurrentCulture) + KSP.Units.SymbolDegree;
         }
 
-        // The effects: click a name to select it, x to take it away; the selected one's settings below
+        // The effects, and the selected one's settings below
         private void RefreshEffects(PhotoEffects effects)
         {
             _model.HasEffects = effects.All.Count > 0;
-            if (_effectList != null)
-            {
-                _effectList.Clear();
-                foreach (PhotoEffect effect in effects.All)
-                {
-                    PhotoEffect chosen = effect;
-                    var row = new VisualElement();
-                    row.AddToClassList("pm-item-row");
-                    var remove = new Button(() => _photoMode.RemoveEffect(chosen)) { text = "×" };
-                    remove.AddToClassList("pm-remove");
-                    row.Add(Item(PhotoMode.EffectName(effect), effect == effects.Selected, () => _photoMode.SelectEffect(chosen)));
-                    row.Add(remove);
-                    _effectList.Add(row);
-                }
-            }
+            RefreshPlaceables(_effectList, effects, PhotoMode.EffectName, _photoMode.SelectEffect, _photoMode.RemoveEffect);
 
             PhotoEffect selected = effects.Selected;
             _model.HasSelectedEffect = selected != null;
@@ -696,7 +694,7 @@ namespace MunShot.UI
                 _effectMoment.SetValueWithoutNotify(selected.Moment);
             }
             _effectSize?.SetValueWithoutNotify(SliderAt(selected.Size, PhotoEffect.MinSize, PhotoEffect.MaxSize));
-            _model.EffectMomentText = selected.Moment.ToString("0.00", CultureInfo.CurrentCulture) + " s";
+            _model.EffectMomentText = selected.Moment.ToString("0.00", CultureInfo.CurrentCulture) + " " + KSP.Units.SymbolSeconds;
             _model.EffectSizeText = "×" + selected.Size.ToString(selected.Size < 1f ? "0.00" : "0.0", CultureInfo.CurrentCulture);
         }
 

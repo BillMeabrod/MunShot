@@ -20,7 +20,9 @@ namespace MunShot.Posing
     /// sideways as seen, keeping its distance from the camera), and dragging an arrow moves it along that axis; with
     /// the rotate tool, dragging a ring turns the selection about that axis, around its middle. With angle snap on (as
     /// the VAB starts), a ring turns in 15° steps from where the drag began, or 5° with the fine modifier held, as the
-    /// VAB's widget does. A selection with nothing to turn (point lights, effects) shows the move arrows only.</item>
+    /// VAB's widget does. A selection with nothing to turn (point lights, effects) shows the move arrows only, and when
+    /// it's turned along with something that can (with the rings, or while dragging), it swings round with the rest
+    /// but keeps facing the way it did.</item>
     /// <item>While dragging a selected one, holding the right button too turns the selection about the
     /// screen's up as the mouse moves left and right; holding the tilt key (Ctrl) leans it sideways as the mouse moves
     /// left and right; and the tilt key with the tip key (Alt) tips it away from the camera or towards it as the mouse moves up and
@@ -29,7 +31,12 @@ namespace MunShot.Posing
     /// <item>Hovering a double or a marker outlines it and plays a sound, as hovering a part does in the VAB; the moving
     /// selection stays outlined (<see cref="HoverFeedback"/>).</item>
     /// </list>
-    /// The handles point the way the last one selected for moving faces (for a spot light, the way it shines). The UI
+    /// The move arrows follow the camera, not the selection (right, up and away as seen, turned a little so the away
+    /// arrow shows rather than pointing straight at the camera), so they go the way the screen does however the camera
+    /// is tilted or rolled. The rings point the way the last one selected for moving faces (for a spot light, the way
+    /// it shines), as they turn it about its own axes. The handles are drawn by their own camera, after the picture's
+    /// effects (<see cref="HandlesCamera"/>), so colour and blur don't reach them; with the fisheye on they don't bend,
+    /// so they're placed where the selection shows in the bent picture and picked with the mouse as it is. The UI
     /// feeds this the mouse each frame, so it has no input or UI code; the UI draws the selection box from
     /// <see cref="SelectionBox"/>.
     /// </summary>
@@ -54,6 +61,11 @@ namespace MunShot.Posing
         // Turning or tilting a dragged selection: degrees per pixel the mouse moves
         private const float SpinDegreesPerPixel = 0.5f;
 
+        // How the move arrows are turned from the camera's own axes: a little down and to the side, so the arrow
+        // pointing away shows as a diagonal (straight on, it would be a dot behind the others) while right and up stay
+        // close to the screen's
+        private static readonly Quaternion ArrowTilt = Quaternion.Euler(15f, -20f, 0f);
+
         private readonly PhotoSession _session;
         // Photo mode's other placeable things (lights, effects), besides the doubles
         private readonly IReadOnlyList<IPlaceableSet> _sets;
@@ -63,6 +75,7 @@ namespace MunShot.Posing
         private readonly Action<string> _logError;
         private ManipulationHandles _handles;
         private bool _handlesRequested;
+        private readonly HandlesCamera _handlesCamera;
 
         // Counts resets, so handles still loading when photo mode closes are thrown away when they arrive
         private int _generation;
@@ -79,14 +92,24 @@ namespace MunShot.Posing
         private IPlaceable _waitingFor;
 
         private Drag _drag = Drag.None;
-        private int _dragAxis;
         private Plane _dragPlane;
+
+        // How the handles are turned this frame (the arrows' camera frame or the rings' selection frame), and an
+        // arrow drag's direction, fixed when it starts
+        private Quaternion _handleRotation = Quaternion.identity;
+        private Vector3 _arrowAxis;
+
+        // Where the handles are drawn this frame: the selection's middle, or with the fisheye on, where it shows in the
+        // bent picture (the handles' own camera doesn't bend)
+        private Vector3 _handlesAt;
         private Vector3 _dragStartPoint;
         private readonly List<(IPlaceable placeable, Vector3 position, Quaternion rotation)> _dragStart =
             new List<(IPlaceable, Vector3, Quaternion)>();
 
-        // A ring drag: what it turns about, and how far the mouse has turned it
+        // A ring drag: what it turns about, where the ring is drawn (the mouse's turn is measured around that), and how
+        // far the mouse has turned it
         private Vector3 _ringCentre;
+        private Vector3 _ringPivot;
         private Vector3 _ringLast;
         private float _ringAngle;
         private bool _fine;
@@ -157,6 +180,7 @@ namespace MunShot.Posing
             _lens = lens ?? throw new ArgumentNullException(nameof(lens));
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _logError = logError ?? throw new ArgumentNullException(nameof(logError));
+            _handlesCamera = new HandlesCamera(logInfo);
         }
 
         /// <summary>Makes the posed double the whole moving selection, e.g. when it's picked again in the UI.</summary>
@@ -203,14 +227,22 @@ namespace MunShot.Posing
             ShowMode();
             bool showHandles = camera != null && _primary != null;
             _handles?.SetVisible(showHandles);
-            if (showHandles) _handles?.Follow(Centre(), _primary.Root.rotation, camera);
+            if (showHandles)
+            {
+                _handleRotation = ShownMode() == HandleMode.Move ? camera.transform.rotation * ArrowTilt : _primary.Root.rotation;
+                _handlesAt = ShownAt(Centre(), camera);
+                _handles?.Follow(_handlesAt, _handleRotation, camera);
+            }
+            _handlesCamera.Follow(camera);
             if (camera == null) return;
 
-            // Aimed at what's under the mouse as it's seen: through the fisheye, when there is one
+            // Aimed at what's under the mouse as it's seen: through the fisheye, when there is one. The handles aren't
+            // bent, so they're aimed at with the mouse as it is
             Ray ray = camera.ScreenPointToRay(_lens.ToScene(mouse));
-            if (pressed && !overUi) BeginDrag(ray, mouse, camera, adding);
+            Ray plain = camera.ScreenPointToRay(mouse);
+            if (pressed && !overUi) BeginDrag(ray, plain, mouse, camera, adding);
             else if (held && _drag != Drag.None)
-                ContinueDrag(ray, mouse, camera,
+                ContinueDrag(ray, plain, mouse, camera,
                              turn ? BodyAction.Turn : tilt ? (tip ? BodyAction.Tip : BodyAction.Lean) : BodyAction.Move);
             if (released || !held) EndDrag(camera);
 
@@ -241,6 +273,7 @@ namespace MunShot.Posing
             _handles?.Dispose();
             _handles = null;
             _handlesRequested = false;
+            _handlesCamera.Dispose();
             _drag = Drag.None;
             _bodyAction = BodyAction.Move;
             _moving.Clear();
@@ -314,27 +347,28 @@ namespace MunShot.Posing
 
         // ---- Dragging ----
 
-        private void BeginDrag(Ray ray, Vector2 mouse, Camera camera, bool adding)
+        private void BeginDrag(Ray ray, Ray plain, Vector2 mouse, Camera camera, bool adding)
         {
-            // A shown handle takes the click before any double or marker does
-            if (_primary != null && _handles != null && _handles.TryPick(ray, out HandleHit hit))
+            // A shown handle takes the click before any double or marker does. It's worked out where the handle is
+            // drawn, with the unbent mouse; the selection moves and turns by as much
+            if (_primary != null && _handles != null && _handles.TryPick(plain, out HandleHit hit))
             {
-                _dragAxis = hit.Axis;
-                Vector3 axis = AxisOf(_primary, hit.Axis);
-                Vector3 centre = Centre();
+                Vector3 axis = _handleRotation * (hit.Axis == 0 ? Vector3.right : hit.Axis == 1 ? Vector3.up : Vector3.forward);
                 RememberStart();
                 if (hit.Kind == HandleMode.Rotate)
                 {
                     _drag = Drag.Ring;
-                    _dragPlane = new Plane(axis, centre);
-                    _ringCentre = centre;
+                    _dragPlane = new Plane(axis, _handlesAt);
+                    _ringCentre = Centre();
+                    _ringPivot = _handlesAt;
                     _ringAngle = 0f;
-                    _ringLast = _dragPlane.Raycast(ray, out float enter) ? ray.GetPoint(enter) - centre : Vector3.zero;
+                    _ringLast = _dragPlane.Raycast(plain, out float enter) ? plain.GetPoint(enter) - _ringPivot : Vector3.zero;
                 }
                 else
                 {
                     _drag = Drag.Arrow;
-                    _dragStartPoint = ClosestOnAxis(ray, centre, axis);
+                    _arrowAxis = axis;
+                    _dragStartPoint = ClosestOnAxis(plain, _handlesAt, axis);
                 }
                 return;
             }
@@ -389,7 +423,7 @@ namespace MunShot.Posing
             }
         }
 
-        private void ContinueDrag(Ray ray, Vector2 mouse, Camera camera, BodyAction bodyAction)
+        private void ContinueDrag(Ray ray, Ray plain, Vector2 mouse, Camera camera, BodyAction bodyAction)
         {
             switch (_drag)
             {
@@ -403,10 +437,8 @@ namespace MunShot.Posing
 
                 case Drag.Arrow:
                 {
-                    if (_primary == null) break;
-                    Vector3 axis = AxisOf(_primary, _dragAxis);
-                    Vector3 along = ClosestOnAxis(ray, _dragStartPoint, axis);
-                    MoveAll(Vector3.Project(along - _dragStartPoint, axis));
+                    Vector3 along = ClosestOnAxis(plain, _dragStartPoint, _arrowAxis);
+                    MoveAll(Vector3.Project(along - _dragStartPoint, _arrowAxis));
                     break;
                 }
 
@@ -415,18 +447,15 @@ namespace MunShot.Posing
                     // The mouse's turn is added up (so it can go past half a turn), then applied from the starting
                     // rotations, snapped to whole steps
                     Vector3 axis = _dragPlane.normal;
-                    if (!_dragPlane.Raycast(ray, out float hitAt)) break;
-                    Vector3 now = ray.GetPoint(hitAt) - _ringCentre;
+                    if (!_dragPlane.Raycast(plain, out float hitAt)) break;
+                    Vector3 now = plain.GetPoint(hitAt) - _ringPivot;
                     if (_ringLast.sqrMagnitude > 1e-8f && now.sqrMagnitude > 1e-8f)
                         _ringAngle += Vector3.SignedAngle(_ringLast, now, axis);
                     _ringLast = now;
 
                     float step = _fine ? FineSnapStep : SnapStep;
                     float angle = AngleSnap ? Mathf.Round(_ringAngle / step) * step : _ringAngle;
-                    Quaternion turn = Quaternion.AngleAxis(angle, axis);
-                    foreach ((IPlaceable placeable, Vector3 position, Quaternion rotation) in _dragStart)
-                        if (placeable.Root != null)
-                            placeable.Root.SetPositionAndRotation(_ringCentre + turn * (position - _ringCentre), turn * rotation);
+                    TurnAll(_ringCentre, Quaternion.AngleAxis(angle, axis));
                     break;
                 }
             }
@@ -488,11 +517,16 @@ namespace MunShot.Posing
         }
 
         // Turns the dragged ones from where the turn or tilt started, around their middle
-        private void SpinAll(Quaternion spin)
+        private void SpinAll(Quaternion spin) => TurnAll(_spinCentre, spin);
+
+        // Turns the selection from where it started about centre: each swings round it, and those that can turn turn
+        // with it; one that can't (a point light, an effect) keeps facing the way it did
+        private void TurnAll(Vector3 centre, Quaternion turn)
         {
             foreach ((IPlaceable placeable, Vector3 position, Quaternion rotation) in _dragStart)
                 if (placeable.Root != null)
-                    placeable.Root.SetPositionAndRotation(_spinCentre + spin * (position - _spinCentre), spin * rotation);
+                    placeable.Root.SetPositionAndRotation(centre + turn * (position - centre),
+                                                          placeable.CanTurn ? turn * rotation : rotation);
         }
 
         private void EndDrag(Camera camera)
@@ -554,7 +588,7 @@ namespace MunShot.Posing
                     placeable.Root.position = position + offset;
         }
 
-        // The handles are made once there's something to move (a built double, a light, an effect), on the kerbals' layer
+        // The handles are made once there's something to move (a built double, a light, an effect), on their own camera's layer
         private void EnsureHandles()
         {
             if (_handles != null || _handlesRequested) return;
@@ -567,7 +601,7 @@ namespace MunShot.Posing
 
             _handlesRequested = true;
             int generation = _generation;
-            ManipulationHandles.Create(_session.KerbalLayer, _logInfo, _logError, handles =>
+            ManipulationHandles.Create(HandlesCamera.Layer, _logInfo, _logError, handles =>
             {
                 if (generation != _generation || _handles != null)
                 {
@@ -584,12 +618,28 @@ namespace MunShot.Posing
         // The tool on the handles, or the move arrows when nothing selected can turn; only told on a change
         private void ShowMode()
         {
-            bool anyTurns = _moving.Count == 0;
-            foreach (IPlaceable placeable in _moving) anyTurns |= placeable.CanTurn;
-            HandleMode shown = anyTurns ? Mode : HandleMode.Move;
+            HandleMode shown = ShownMode();
             if (_handles == null || shown == _shownMode) return;
             _handles.SetMode(shown);
             _shownMode = shown;
+        }
+
+        private HandleMode ShownMode()
+        {
+            bool anyTurns = _moving.Count == 0;
+            foreach (IPlaceable placeable in _moving) anyTurns |= placeable.CanTurn;
+            return anyTurns ? Mode : HandleMode.Move;
+        }
+
+        // Where a point shows to the camera: itself, or with the fisheye on, the same distance away along where it shows
+        // in the bent picture
+        private Vector3 ShownAt(Vector3 point, Camera camera)
+        {
+            if (!_lens.Bends) return point;
+            Vector3 screen = camera.WorldToScreenPoint(point);
+            if (screen.z <= 0f) return point;
+            Vector2 bent = _lens.ToScreen(new Vector2(screen.x, screen.y));
+            return camera.ScreenPointToRay(bent).GetPoint((point - camera.transform.position).magnitude);
         }
 
         // The middle of the moving selection: where the handles sit and what rings turn it about
@@ -600,9 +650,6 @@ namespace MunShot.Posing
             foreach (IPlaceable placeable in _moving) sum += placeable.Centre;
             return _moving.Count > 0 ? sum / _moving.Count : Vector3.zero;
         }
-
-        private static Vector3 AxisOf(IPlaceable placeable, int axis) =>
-            axis == 0 ? placeable.Root.right : axis == 1 ? placeable.Root.up : placeable.Root.forward;
 
         private static bool Contains<T>(IReadOnlyList<T> items, T item) where T : class
         {

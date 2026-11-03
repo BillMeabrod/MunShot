@@ -309,7 +309,6 @@
     color: rgb(112, 117, 128);
 }
 
-/* The box dragged to select several kerbals and lights, in the theme's highlight green */
 /* The frame guides' layer, over the whole screen; FrameGuides draws on it */
 .pm-frame-guides {
     position: absolute;
@@ -325,6 +324,7 @@
     padding: 2px 0;
 }
 
+/* The box dragged to select several kerbals, lights and effects, in the theme's highlight green */
 .pm-selection-box {
     position: absolute;
     display: none;

@@ -3,8 +3,8 @@ using UnityEngine;
 namespace MunShot.Posing
 {
     /// <summary>
-    /// Something in the shot the handles move and turn (<see cref="PlaceableManipulator"/>): a photo double or one of
-    /// photo mode's lights. Hovered and selected ones are outlined, as parts are in the VAB.
+    /// Something in the shot the handles move and turn (<see cref="PlaceableManipulator"/>): a photo double, or one of
+    /// photo mode's lights or effects. Hovered and selected ones are outlined, as parts are in the VAB.
     /// </summary>
     public interface IPlaceable
     {
@@ -17,7 +17,10 @@ namespace MunShot.Posing
         /// <summary>Its middle: where the handles sit, and what it turns about.</summary>
         Vector3 Centre { get; }
 
-        /// <summary>Whether it has a way it faces to turn (a point light shines all round, so it doesn't).</summary>
+        /// <summary>
+        /// Whether it has a way it faces to turn (a point light shines all round, and turning an effect changes little,
+        /// so they don't): one that can't keeps facing the same way when turned along with others.
+        /// </summary>
         bool CanTurn { get; }
     }
 }

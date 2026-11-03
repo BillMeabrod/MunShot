@@ -13,7 +13,7 @@ namespace MunShot.Effects
     ///
     /// Photo mode pauses the game, so the particles don't play by themselves: the effect is worked out from its start up
     /// to <see cref="Moment"/> (ParticleSystem.Simulate, in small steps, from the same random seed each time, so the
-    /// same moment always looks the same), again whenever it's moved, turned, resized or the moment changes. How long
+    /// same moment always looks the same), again whenever it's moved, resized or the moment changes. How long
     /// it's worth holding is measured once when it's made, by playing it through: the Moment slider runs to when it's
     /// mostly gone, and starts at the moment picked for its kind (<see cref="PhotoEffectSpec.StartMoment"/>). The copy
     /// is only the particles and lights: the game's scripts for it (driven by the part that exploded), its sounds,
@@ -22,7 +22,7 @@ namespace MunShot.Effects
     /// The marker is the effect's root, which the handles move and outline; the particles are beside it and follow it,
     /// so they're never outlined, and their size doesn't change the marker's.
     /// </summary>
-    public sealed class PhotoEffect : IPlaceable
+    public sealed class PhotoEffect : IMarkedPlaceable
     {
         public const float MinSize = 0.1f;
         public const float MaxSize = 5f;
@@ -61,8 +61,6 @@ namespace MunShot.Effects
         /// <summary>Which of its kind this is, shown as "Explosion 1": kept while it's there, so names don't shift.</summary>
         public int Number { get; }
 
-        public PhotoEffectSpec Spec { get; }
-
         /// <summary>How far in the Moment slider reaches, in seconds: when the effect is mostly gone, as measured.</summary>
         public float MaxMoment { get; }
 
@@ -73,7 +71,8 @@ namespace MunShot.Effects
 
         public Vector3 Centre => _root.transform.position;
 
-        // Turning an effect hardly changes how it looks (most spread out all round), so it's only moved
+        // Turning an effect hardly changes how it looks (most spread out all round), so it's only moved: turned with
+        // others, it swings round with them but keeps facing the way it did
         public bool CanTurn => false;
 
         /// <summary>How far into the effect it's held, in seconds, up to <see cref="MaxMoment"/>.</summary>
@@ -105,7 +104,7 @@ namespace MunShot.Effects
         {
             Kind = kind;
             Number = number;
-            Spec = PhotoEffectSpec.Of(kind);
+            PhotoEffectSpec spec = PhotoEffectSpec.Of(kind);
 
             _root = new GameObject($"MunShot effect {kind} {number}");
             _root.transform.SetParent(parent, false);
@@ -130,7 +129,7 @@ namespace MunShot.Effects
 
             Measure(out float end, out float most);
             MaxMoment = Mathf.Max(MomentRounding, Mathf.Ceil(end / MomentRounding) * MomentRounding);
-            _moment = Mathf.Min(Spec.StartMoment, MaxMoment);
+            _moment = Mathf.Min(spec.StartMoment, MaxMoment);
             Follow();
             logInfo($"Photo mode: effect '{prefab.name}' copied with {_systems.Length} particle systems; {removed} game components taken out of it"
                     + (moved > 0 ? $", {moved} objects moved from the VAB's layer to the flight camera's" : "")

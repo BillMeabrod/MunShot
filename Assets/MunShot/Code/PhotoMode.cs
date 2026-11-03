@@ -29,6 +29,7 @@ namespace MunShot
         private readonly Func<IReadOnlyList<PosePreset>> _loadPresets;
         private readonly GamePause _pause;
         private readonly UiHider _uiHider;
+        private readonly HelmetLightAssets _helmetLights;
         private readonly PhotoModeInputLock _inputLock;
         private InputAction _screenshotKey;
 
@@ -92,6 +93,7 @@ namespace MunShot
             Look = new PhotoLook(Info, Warn);
             Lights = new PhotoLights(() => session.KerbalLayer, Info, Warn);
             Effects = new PhotoEffects(Info, Warn);
+            _helmetLights = new HelmetLightAssets(Warn);
             Manipulator = new PlaceableManipulator(session, new IPlaceableSet[] { Lights, Effects }, Look, Info,
                                                    message => _logger.LogError(message));
 
@@ -171,6 +173,8 @@ namespace MunShot
             Look.Release();
             Lights.Clear();
             Effects.Clear();
+            // After the doubles are gone (Session.Close), which used them
+            _helmetLights.Release();
             _uiHider.Release();
             _inputLock.Release();
             _pause.Release();
@@ -198,8 +202,13 @@ namespace MunShot
             bool markers = !UiHidden && !Capture.IsCapturing;
             Lights.ShowMarkers(markers);
             Effects.ShowMarkers(markers);
+            TickHandlesAndCamera(pointerOverUi, typing);
+            // After the handles, so effects follow their markers in the same frame they're moved
             Effects.Tick();
+        }
 
+        private void TickHandlesAndCamera(bool pointerOverUi, bool typing)
+        {
             // While a photo is taken the handles are hidden and the camera holds still; while the UI is hidden to
             // frame the shot, the handles are too but the camera moves
             if (Capture.IsCapturing)
@@ -379,6 +388,16 @@ namespace MunShot
             PhotoSession.Entry selected = ReadySelected();
             if (selected == null) return;
             selected.Double.SetHelmet(on);
+            RaiseChanged();
+        }
+
+        /// <summary>Switches the selected double's helmet lights on or off (they shine only with the helmet on).</summary>
+        public void SetHelmetLights(bool on)
+        {
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null) return;
+            PhotoDouble photoDouble = selected.Double;
+            photoDouble.SetLights(on, _helmetLights, Warn);
             RaiseChanged();
         }
 
