@@ -1,8 +1,8 @@
 # MunShot
 
-**A photo mode for [KSP2 Redux](https://github.com/KSP2Redux/Redux).** Pause the game, bring any kerbal into the shot, pose them, frame it with a free or orbiting camera, and take the picture.
+**A photo mode for [KSP2 Redux](https://github.com/KSP2Redux/Redux).** Pause the game, bring any kerbal into the shot, pose them, light the scene, add effects, frame it with a free or orbiting camera, and take the picture.
 
-> 🚧 Pre-release (0.3.0): early, but working. Please report problems on the [issues page](https://github.com/BillMeabrod/MunShot/issues).
+> 🚧 Pre-release (0.4.0): early, but working. Please report problems on the [issues page](https://github.com/BillMeabrod/MunShot/issues).
 
 ![A kerbal standing on a rocket in orbit, with the sun flaring behind it and the planet below](Screenshots/Orbit.png)
 
@@ -37,6 +37,15 @@
 
 ![A shocked kerbal floating past a rover lit with red lights, the hazy sky blurred behind](Screenshots/KerbinRoverLights.png)
 *Lights and depth of field together.*
+
+![A worried kerbal in glasses on a misty blue path at night, a stop sign looming out of the fog behind](Screenshots/KSCFoggyNight.png)
+*"In restless dreams, I see that space program..." - Use steam effects to set atmospheric mood in your photos*
+
+![A spaceplane banking low over the space center, a fireball erupting from a building behind it](Screenshots/KSCJetExplosion.png)
+*Here comes the boom!*
+
+![A kerbal grinning wide with arms out, lit orange by a wall of fire and smoke, a radar dish behind](Screenshots/KSCFireGrin.png)
+*FIRE! MWAHAHAHAHHAHA*
 
 ![A kerbal hanging on to the side of a rocket during launch, high above the space center, with two crewmates looking out of the window](Screenshots/LaunchHangingOn.png)
 *Hanging On, during a launch.*
