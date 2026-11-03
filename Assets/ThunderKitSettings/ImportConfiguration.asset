@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-8272899716965063806
+--- !u!114 &-7175403597574054432
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -9,11 +9,24 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c6cd3e7075ad4866acd4e84eb27923d3, type: 3}
-  m_Name: Generate SDK Assets
-  m_EditorClassIdentifier: ksp2community.ksp2unitytools.editor::Ksp2UnityTools.Editor.SDKAssets.GenerateSDKAssets
+  m_Script: {fileID: 11500000, guid: 52610fcf3c7c01e43ad95185897e1eb5, type: 3}
+  m_Name: Prompt Restart
+  m_EditorClassIdentifier: 
+  enabled: 0
+--- !u!114 &-5275622810615467033
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7f32e9d1a0c584763d21af8c5b9e049, type: 3}
+  m_Name: Ensure Assembly Definitions
+  m_EditorClassIdentifier: ThunderKit.Core::ThunderKit.Core.Config.Common.EnsureAssemblyDefinitions
   enabled: 1
---- !u!114 &-5048138266894141543
+--- !u!114 &-5211667788096018800
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -22,11 +35,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8dcb1359c6da7c049b1063e3561a1ecf, type: 3}
-  m_Name: Check Unity Version
+  m_Script: {fileID: 11500000, guid: a4e66fd1b2f0a6b4e951af502eba5a2b, type: 3}
+  m_Name: Create Game Package
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &-1345848683591802264
+--- !u!114 &-2599753615013449949
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -39,33 +52,7 @@ MonoBehaviour:
   m_Name: Import Addressable Catalog
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: dc02a62d93c1105498092e320b2f0f46, type: 3}
-  m_Name: ImportConfiguration
-  m_EditorClassIdentifier: ThunderKit.Core::ThunderKit.Core.Data.ImportConfiguration
-  ConfigurationExecutors:
-  - {fileID: -5048138266894141543}
-  - {fileID: 1497596923009805140}
-  - {fileID: 3220380946666278548}
-  - {fileID: 620267149435815977}
-  - {fileID: -8272899716965063806}
-  - {fileID: 2634497544565025290}
-  - {fileID: 3699757223706400462}
-  - {fileID: -1345848683591802264}
-  - {fileID: 1454666923091805673}
-  - {fileID: 3900345257010938287}
-  - {fileID: 8451873988013078469}
-  configurationIndex: -1
-  totalImportExtensionCount: 11
---- !u!114 &620267149435815977
+--- !u!114 &-1916049236433686432
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -78,7 +65,7 @@ MonoBehaviour:
   m_Name: Import Assemblies
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &1454666923091805673
+--- !u!114 &-1122296531533094418
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -91,7 +78,7 @@ MonoBehaviour:
   m_Name: Get Bitness
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &1497596923009805140
+--- !u!114 &-1062047953958666295
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -104,7 +91,7 @@ MonoBehaviour:
   m_Name: Disable Assembly Updater
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &2634497544565025290
+--- !u!114 &-812746114758298494
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -118,7 +105,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enabled: 1
   IncludedSettings: 0
---- !u!114 &3220380946666278548
+--- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,11 +114,37 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b7f32e9d1a0c584763d21af8c5b9e049, type: 3}
-  m_Name: Ensure Assembly Definitions
-  m_EditorClassIdentifier: ThunderKit.Core::ThunderKit.Core.Config.Common.EnsureAssemblyDefinitions
+  m_Script: {fileID: 11500000, guid: dc02a62d93c1105498092e320b2f0f46, type: 3}
+  m_Name: ImportConfiguration
+  m_EditorClassIdentifier: ThunderKit.Core::ThunderKit.Core.Data.ImportConfiguration
+  ConfigurationExecutors:
+  - {fileID: 565335419151084814}
+  - {fileID: -1062047953958666295}
+  - {fileID: -5275622810615467033}
+  - {fileID: -1916049236433686432}
+  - {fileID: 318225392978420889}
+  - {fileID: -812746114758298494}
+  - {fileID: -5211667788096018800}
+  - {fileID: -2599753615013449949}
+  - {fileID: -1122296531533094418}
+  - {fileID: 6778922578086393198}
+  - {fileID: -7175403597574054432}
+  configurationIndex: 11
+  totalImportExtensionCount: 11
+--- !u!114 &318225392978420889
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6cd3e7075ad4866acd4e84eb27923d3, type: 3}
+  m_Name: Generate SDK Assets
+  m_EditorClassIdentifier: ksp2community.ksp2unitytools.editor::Ksp2UnityTools.Editor.SDKAssets.GenerateSDKAssets
   enabled: 1
---- !u!114 &3699757223706400462
+--- !u!114 &565335419151084814
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -140,11 +153,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a4e66fd1b2f0a6b4e951af502eba5a2b, type: 3}
-  m_Name: Create Game Package
+  m_Script: {fileID: 11500000, guid: 8dcb1359c6da7c049b1063e3561a1ecf, type: 3}
+  m_Name: Check Unity Version
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &3900345257010938287
+--- !u!114 &6778922578086393198
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -157,16 +170,3 @@ MonoBehaviour:
   m_Name: Beep
   m_EditorClassIdentifier: 
   enabled: 1
---- !u!114 &8451873988013078469
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 52610fcf3c7c01e43ad95185897e1eb5, type: 3}
-  m_Name: Prompt Restart
-  m_EditorClassIdentifier: 
-  enabled: 0
