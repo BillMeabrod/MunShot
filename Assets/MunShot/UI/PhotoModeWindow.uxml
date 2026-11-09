@@ -150,6 +150,11 @@
                                                 <ui:ScrollView name="pose-list" class="pm-list pm-list--tall" />
                                             </uitk:InvertedCornerBox>
                                             <ui:Toggle name="jetpack" label="#MunShot/UI/Jetpack" class="switch" />
+                                            <!-- The selected kerbal's pose bent joint by joint in the pose controls window, over the pose above -->
+                                            <ui:Toggle name="customize-pose" label="#MunShot/UI/CustomizePose" class="switch" />
+                                            <ui:VisualElement class="pm-row">
+                                                <uitk:OabButton name="pose-controls" text="#MunShot/UI/PoseControls" class="pm-grow" />
+                                            </ui:VisualElement>
                                             <ui:VisualElement class="pm-row">
                                                 <uitk:OabButton name="tool-move" text="#MunShot/UI/Move" class="pm-grow">
                                                     <Bindings>

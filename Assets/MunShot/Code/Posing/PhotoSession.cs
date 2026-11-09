@@ -38,6 +38,15 @@ namespace MunShot.Posing
             /// <summary>Whether the double's jetpack is deployed for flying, or folded away.</summary>
             public bool Jetpack { get; internal set; }
 
+            /// <summary>
+            /// Whether the player's slider edits (<see cref="Edits"/>) are laid over the pose (the Pose tab's Customize
+            /// pose). Switching it off keeps the edits for when it's switched on again.
+            /// </summary>
+            public bool Customized { get; internal set; }
+
+            /// <summary>The player's slider settings in the pose controls window.</summary>
+            public PoseEdits Edits { get; } = new PoseEdits();
+
             internal Transform[] Bones;
             internal KerbalHitShape HitShape;
 

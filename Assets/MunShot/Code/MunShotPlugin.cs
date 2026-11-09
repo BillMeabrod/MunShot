@@ -26,6 +26,7 @@ namespace MunShot
         private const string WindowAddress = "MunShot/PhotoModeWindow.uxml";
         // App tray icon: 48px like the stock toolbar icons (drawn by Tools/Icons/make_toolbar_icon.py)
         private const string ToolbarIconAddress = "MunShot/toolbar.png";
+        private const string PoseKerbalAddress = "MunShot/pose-kerbal.png";
 
         private const string LoadAssetsStep = "MunShot: Loading photo mode";
 
@@ -35,6 +36,7 @@ namespace MunShot
         private PoseLabWindow _poseLab;
         private PauseMenuButton _pauseMenuButton;
         private VisualTreeAsset _windowUxml;
+        private Texture2D _poseKerbal;
         private bool _assetsRequested;
 
         public override void OnPreInitialized()
@@ -110,7 +112,7 @@ namespace MunShot
             }
 
             _assetsRequested = true;
-            int pending = 2;
+            int pending = 3;
             void Loaded()
             {
                 if (--pending == 0) done();
@@ -120,6 +122,12 @@ namespace MunShot
             {
                 _windowUxml = uxml;
                 if (uxml == null) SWLogger.LogError($"Could not load the photo mode window '{WindowAddress}'; photo mode will open without it.");
+                Loaded();
+            });
+            Assets.Load<Texture2D>(PoseKerbalAddress, texture =>
+            {
+                _poseKerbal = texture;
+                if (texture == null) SWLogger.LogError($"Could not load the pose controls kerbal '{PoseKerbalAddress}'; the window shows its dots without it.");
                 Loaded();
             });
             Assets.Load<Texture2D>(ToolbarIconAddress, texture =>
@@ -178,7 +186,7 @@ namespace MunShot
                 SWLogger.LogError($"Photo mode: no window to show; '{WindowAddress}' isn't loaded. Close photo mode with the keyboard shortcut.");
                 return;
             }
-            _window = new PhotoModeWindow(_photoMode, _windowUxml, SWLogger);
+            _window = new PhotoModeWindow(_photoMode, _windowUxml, _poseKerbal, SWLogger);
         }
 
         private void Update()
@@ -191,9 +199,11 @@ namespace MunShot
                 if (_photoMode.IsOpen) _photoMode.Close();
                 else OpenPhotoMode();
             }
-            // Typing in a text field (only the Pose lab has any) isn't pressing photo mode's keys or flying the camera
+            // Typing in a text field (the pose controls' number boxes, the Pose lab) isn't pressing photo mode's keys or
+            // flying the camera
             bool labAlive = _poseLab != null && _poseLab.IsAlive;
-            bool typing = labAlive && _poseLab.IsTyping;
+            bool windowAlive = _window != null && _window.IsAlive;
+            bool typing = (labAlive && _poseLab.IsTyping) || (windowAlive && _window.IsTyping);
             if (_photoMode.IsOpen && MunShotSettings.HideUi.Down && !typing)
                 _photoMode.ToggleUiHidden();
             if (_photoMode.IsOpen && !typing && (MunShotSettings.RemoveKerbal.Down || MunShotSettings.RemoveKerbalAlternate.Down))
@@ -208,7 +218,6 @@ namespace MunShot
 
             // Clicks in photo mode's windows aren't for the scene or the camera
             Vector2 mouse = global::Mouse.Position;
-            bool windowAlive = _window != null && _window.IsAlive;
             bool pointerOverUi = (windowAlive && _window.IsPointerOver(mouse)) || (labAlive && _poseLab.IsPointerOver(mouse));
             _photoMode.Tick(pointerOverUi, typing);
             if (windowAlive) _window.Tick();

@@ -365,6 +365,7 @@ namespace MunShot
                 // The double's own animation has the jetpack folded
                 entry.Player.Release();
                 entry.Preset = null;
+                ApplyEdits(entry);
                 return true;
             }
 
@@ -379,8 +380,63 @@ namespace MunShot
 
             bool held = entry.Player.Hold(animator, clip, BonePose.Over(jetpack, preset?.Bones), preset?.Eyes, preset?.Lashes ?? false);
             if (held) entry.Preset = preset;
-            else Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset?.DisplayName ?? Localization.Translate(Localization.NoPose)));
+            ApplyEdits(entry);
+            if (!held) Status?.Invoke(Localization.Format("MunShot/Status/CouldNotHold", preset?.DisplayName ?? Localization.Translate(Localization.NoPose)));
             return held;
+        }
+
+        // ---- Customize pose ----
+
+        /// <summary>
+        /// Lays the selected double's slider edits over its pose, or takes them off (they're kept for switching on
+        /// again).
+        /// </summary>
+        public void SetCustomized(bool on)
+        {
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null) return;
+            selected.Customized = on;
+            ApplyEdits(selected);
+            RaiseChanged();
+        }
+
+        /// <summary>
+        /// Moves one of the selected double's sliders. Doesn't raise <see cref="Changed"/>: it's called on every step
+        /// of a drag, and only the pose controls window shows slider settings.
+        /// </summary>
+        public void SetPoseControl(PoseJoints.Control control, float degrees)
+        {
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null || !selected.Customized) return;
+            selected.Edits.Set(control, degrees);
+            ApplyEdits(selected);
+        }
+
+        /// <summary>Puts every slider of one joint of the selected double back.</summary>
+        public void ResetJoint(PoseJoints.Joint joint)
+        {
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null) return;
+            selected.Edits.Reset(joint);
+            ApplyEdits(selected);
+            RaiseChanged();
+        }
+
+        /// <summary>Puts every slider of the selected double back.</summary>
+        public void ResetPoseEdits()
+        {
+            PhotoSession.Entry selected = ReadySelected();
+            if (selected == null) return;
+            selected.Edits.Clear();
+            ApplyEdits(selected);
+            RaiseChanged();
+        }
+
+        // The edits over whatever the double shows, while Customize pose is on
+        private static void ApplyEdits(PhotoSession.Entry entry)
+        {
+            if (entry.Customized && !entry.Edits.IsEmpty) entry.Player.SetEdits(entry.Double.Animator, entry.Edits.ToBones());
+            else if (entry.Player.HasEdits) entry.Player.SetEdits(entry.Double.Animator, null);
         }
 
         public void SetHelmet(bool on)

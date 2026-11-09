@@ -87,6 +87,10 @@ namespace MunShot.UI
         private Toggle _helmetLights;
         private Toggle _angleSnap;
         private Toggle _jetpack;
+        private Toggle _customizePose;
+        private Button _openPoseControls;
+        private PoseControlsWindow _poseControls;
+        private readonly Texture2D _poseKerbal;
         // The handle tool's buttons, on the Pose tab and again on the Light tab
         private Button _move;
         private Button _rotate;
@@ -126,8 +130,9 @@ namespace MunShot.UI
         /// </summary>
         public bool IsAlive => _renderer != null;
 
-        public PhotoModeWindow(PhotoMode photoMode, VisualTreeAsset uxml, ILogger logger)
+        public PhotoModeWindow(PhotoMode photoMode, VisualTreeAsset uxml, Texture2D poseKerbal, ILogger logger)
         {
+            _poseKerbal = poseKerbal;
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
@@ -173,6 +178,7 @@ namespace MunShot.UI
             _photoMode.Capture.Started -= OnCaptureStarted;
             _photoMode.Capture.Finished -= OnCaptureFinished;
             LocalizationManager.OnLocalizeEvent -= OnLanguageChanged;
+            _poseControls?.Dispose();
             if (_renderer != null) UnityEngine.Object.Destroy(_renderer.gameObject);
         }
 
@@ -201,6 +207,9 @@ namespace MunShot.UI
             _selectionBox.style.height = bottomRight.y - topLeft.y;
         }
 
+        /// <summary>Whether a text box in photo mode's windows has the keyboard, so typing isn't photo mode's keys.</summary>
+        public bool IsTyping => _poseControls != null && _poseControls.IsTyping;
+
         /// <summary>
         /// Whether the mouse is over UI that takes clicks (the overlay's panels, the Bring in menu, any window on the
         /// same panel), so clicks there aren't for the scene. The overlay's full-screen parts let clicks through
@@ -208,6 +217,7 @@ namespace MunShot.UI
         /// </summary>
         public bool IsPointerOver(Vector2 screen)
         {
+            if (_poseControls != null && _poseControls.IsPointerOver(screen)) return true;
             if (!_photoMode.IsOpen || _photoMode.UiHidden || _root?.panel == null) return false;
             // Screen positions count up from the bottom, panel positions down from the top
             Vector2 inPanel = RuntimePanelUtils.ScreenToPanel(_root.panel, new Vector2(screen.x, Screen.height - screen.y));
@@ -289,6 +299,8 @@ namespace MunShot.UI
             _lightRotate = Required<Button>(root, "light-tool-rotate");
             _angleSnap = Required<Toggle>(root, "angle-snap");
             _jetpack = Required<Toggle>(root, "jetpack");
+            _customizePose = Required<Toggle>(root, "customize-pose");
+            _openPoseControls = Required<Button>(root, "pose-controls");
             _free = Required<Button>(root, "camera-free");
             _orbit = Required<Button>(root, "camera-orbit");
             _fieldOfView = Required<Slider>(root, "field-of-view");
@@ -309,6 +321,8 @@ namespace MunShot.UI
             _helmetLights?.RegisterValueChangedCallback(change => _photoMode.SetHelmetLights(change.newValue));
             _angleSnap?.RegisterValueChangedCallback(change => _photoMode.SetAngleSnap(change.newValue));
             _jetpack?.RegisterValueChangedCallback(change => _photoMode.SetJetpack(change.newValue));
+            _customizePose?.RegisterValueChangedCallback(change => _photoMode.SetCustomized(change.newValue));
+            if (_openPoseControls != null) _openPoseControls.clicked += OpenPoseControls;
             if (_fieldOfView != null)
             {
                 _fieldOfView.lowValue = PhotoCamera.MinFieldOfView;
@@ -417,6 +431,7 @@ namespace MunShot.UI
         {
             _hintsFor = null;
             ListPoses();   // sorted by their names in the new language
+            _poseControls?.Relocalize();
             Refresh();
         }
 
@@ -582,10 +597,21 @@ namespace MunShot.UI
             _model.RefreshCommands();
         }
 
+        // The pose controls window, made the first time it's opened
+        private void OpenPoseControls()
+        {
+            _poseControls ??= new PoseControlsWindow(_photoMode, _poseKerbal);
+            _poseControls.Open();
+        }
+
         private void RefreshPoses(PhotoSession.Entry selected, bool ready)
         {
             _jetpack?.SetEnabled(ready);
             _jetpack?.SetValueWithoutNotify(ready && selected.Jetpack);
+            bool customized = ready && selected.Customized;
+            _customizePose?.SetEnabled(ready);
+            _customizePose?.SetValueWithoutNotify(customized);
+            _openPoseControls?.SetEnabled(customized);
             if (_poseList == null) return;
             _poseList.Clear();
             PosePreset current = ready ? selected.Preset : null;
