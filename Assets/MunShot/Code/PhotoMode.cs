@@ -198,6 +198,7 @@ namespace MunShot
             Session.Tick();
             if (!IsOpen) return;
             Look.Tick(CurrentCamera());
+            Camera.UpClose = IsUpClose(CurrentCamera());
             // The lights' and effects' markers are for placing them: not in the photo, nor while the UI is hidden to frame it
             bool markers = !UiHidden && !Capture.IsCapturing;
             Lights.ShowMarkers(markers);
@@ -882,6 +883,20 @@ namespace MunShot
         }
 
         private void OnScreenshotKey(InputAction.CallbackContext context) => Capture.Take();
+
+        // Whether anything is near enough the camera that it should draw from up close: the ground, a building or a
+        // vessel (by their colliders), or a double (by its body, which has none)
+        private bool IsUpClose(UnityEngine.Camera camera)
+        {
+            if (camera == null) return false;
+            Vector3 at = camera.transform.position;
+            const float range = PhotoCamera.UpCloseRange;
+            if (Physics.CheckSphere(at, range, SurfaceSnap.GroundLayers, QueryTriggerInteraction.Ignore)) return true;
+            foreach (PhotoSession.Entry entry in Session.Entries)
+                if (PhotoSession.BoundsOf(entry, out Bounds bounds) && bounds.SqrDistance(at) < range * range)
+                    return true;
+            return false;
+        }
 
         private static UnityEngine.Camera CurrentCamera() => GameManager.Instance?.Game?.GraphicsManager?.GetCurrentUnityCamera();
     }
