@@ -79,6 +79,7 @@ rows = [
     ("MunShot/UI/Filters", "Photo mode tab: camera filters and film looks laid over the picture", "Filters"),
     ("MunShot/UI/Filter", "Caption above the button that picks the one filter laid over the picture", "Filter"),
     ("MunShot/Filter/None", "Filter list: no filter", "None"),
+    ("MunShot/Filter/CelShaded", "Filter list: the picture redrawn as a cartoon, flat colours and ink outlines (cel shading)", "Cel shaded"),
     ("MunShot/Filter/OldFilm", "Filter list: an aged sepia photo print, yellowed and faded", "Old film"),
     ("MunShot/UI/Fisheye", "Caption above the slider that bulges the picture out from its middle, like a fisheye lens", "Fisheye"),
     ("MunShot/UI/Grid", "Caption above the picker for lines drawn over the picture to help compose it (rule of thirds and so on)", "Grid"),

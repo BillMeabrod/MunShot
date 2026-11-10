@@ -64,6 +64,7 @@ T = {
     "MunShot/UI/Filters": ["Filter", "Filtres", "Filtri", "Filtros", "フィルター", "필터", "Filtry", "Фильтры", "滤镜", "Filtros", "濾鏡"],
     "MunShot/UI/Filter": ["Filter", "Filtre", "Filtro", "Filtro", "フィルター", "필터", "Filtr", "Фильтр", "滤镜", "Filtro", "濾鏡"],
     "MunShot/Filter/None": ["Keiner", "Aucun", "Nessuno", "Ninguno", "なし", "없음", "Brak", "Нет", "无", "Nenhum", "無"],
+    "MunShot/Filter/CelShaded": ["Cel-Shading", "Cel shading", "Cel shading", "Cel shading", "セルシェーディング", "셀 셰이딩", "Cel shading", "Сел-шейдинг", "卡通渲染", "Cel shading", "卡通渲染"],
     "MunShot/Filter/OldFilm": ["Alter Film", "Vieux film", "Pellicola d'epoca", "Película antigua", "古いフィルム", "오래된 필름", "Stary film", "Старая плёнка", "老照片", "Filme antigo", "老照片"],
     "MunShot/UI/Fisheye": ["Fischauge", "Fisheye", "Fisheye", "Ojo de pez", "魚眼", "어안", "Rybie oko", "Рыбий глаз", "鱼眼", "Olho de peixe", "魚眼"],
     "MunShot/UI/Grid": ["Raster", "Grille", "Griglia", "Cuadrícula", "グリッド", "격자", "Siatka", "Сетка", "网格", "Grade", "格線"],

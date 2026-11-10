@@ -1,4 +1,5 @@
 using System;
+using Redux.Rendering;
 using Redux.Rendering.PostProcessing;
 using SpaceWarp2.API;
 using UnityEngine;
@@ -11,7 +12,8 @@ namespace MunShot.Cameras
     public enum PhotoFilter
     {
         None,
-        OldFilm
+        OldFilm,
+        CelShaded
     }
 
     /// <summary>
@@ -24,8 +26,10 @@ namespace MunShot.Cameras
     /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
     /// else stays the game's.
     /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
-    /// setting starts afresh the next time. As the <see cref="IScreenLens"/>, it tells where the fisheye moves things
-    /// on screen, so the mouse picks what's seen under it.
+    /// setting starts afresh the next time. Cel shaded redraws the picture rather than recolouring it: it's MunShot's
+    /// own passes (<see cref="CelShading"/>, <see cref="CelOutlines"/>), Redux camera render hooks registered for the
+    /// same time. As the
+    /// <see cref="IScreenLens"/>, it tells where the fisheye moves things on screen, so the mouse picks what's seen under it.
     /// </summary>
     public sealed class PhotoLook : IScreenLens
     {
@@ -88,6 +92,9 @@ namespace MunShot.Cameras
         private WhiteBalance _whiteBalance;
         private ChannelMixer _channelMixer;
         private LiftGammaGain _liftGammaGain;
+        private ReduxAmbientOcclusion _occlusion;
+        private CelShading _celShading;
+        private CelOutlines _celOutlines;
 
         // The camera's volume layers last seen, so a change is only looked at (and logged) once
         private int _volumeLayers = -1;
@@ -136,6 +143,9 @@ namespace MunShot.Cameras
         /// <summary>The filter over the picture; <see cref="PhotoFilter.None"/> for none.</summary>
         public PhotoFilter Filter { get; set; }
 
+        /// <summary>MunShot's cel shading shader, once loaded with the mod's assets; without it, Cel shaded leaves the picture as it is.</summary>
+        public Shader CelShader { get; set; }
+
         public PhotoLook(Action<string> logInfo, Action<string> logWarning)
         {
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
@@ -165,6 +175,7 @@ namespace MunShot.Cameras
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
             _channelMixer = _profile.Add<ChannelMixer>(overrides: false);
             _liftGammaGain = _profile.Add<LiftGammaGain>(overrides: false);
+            _occlusion = _profile.Add<ReduxAmbientOcclusion>(overrides: false);
 
             // On the layer the game keeps its post-processing volumes on, which its cameras read
             _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave, layer = Layers.LayerRenderPostProcessing };
@@ -173,6 +184,17 @@ namespace MunShot.Cameras
             volume.priority = Priority;
             volume.weight = 1f;
             volume.sharedProfile = _profile;
+            if (CelShader != null)
+            {
+                _celShading = new CelShading(CelShader, _logInfo);
+                _celOutlines = new CelOutlines(CelShader);
+                CameraRenderHooks.Register(_celShading);
+                CameraRenderHooks.Register(_celOutlines);
+            }
+            else
+            {
+                _logWarning("Photo mode: MunShot's cel shading shader isn't loaded, so the Cel shaded filter won't change the picture.");
+            }
             Apply(null);
             _logInfo("Photo mode: photo look laid over the game's.");
         }
@@ -192,6 +214,15 @@ namespace MunShot.Cameras
         public void Release()
         {
             if (!IsEngaged) return;
+            if (_celShading != null)
+            {
+                CameraRenderHooks.Unregister(_celShading);
+                CameraRenderHooks.Unregister(_celOutlines);
+                _celShading.Destroy();
+                _celOutlines.Destroy();
+                _celShading = null;
+                _celOutlines = null;
+            }
             UnityEngine.Object.Destroy(_holder);
             UnityEngine.Object.Destroy(_depthOfField);
             UnityEngine.Object.Destroy(_lensDistortion);
@@ -200,6 +231,7 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_whiteBalance);
             UnityEngine.Object.Destroy(_channelMixer);
             UnityEngine.Object.Destroy(_liftGammaGain);
+            UnityEngine.Object.Destroy(_occlusion);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
             _depthOfField = null;
@@ -209,6 +241,7 @@ namespace MunShot.Cameras
             _whiteBalance = null;
             _channelMixer = null;
             _liftGammaGain = null;
+            _occlusion = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
         }
@@ -259,6 +292,21 @@ namespace MunShot.Cameras
             ApplyChannelMixer(oldFilm ? SepiaMix : null);
             Set(_liftGammaGain.lift, oldFilm, OldFilmLift);
             Set(_liftGammaGain.gain, oldFilm, OldFilmGain);
+
+            // Cel shaded has no soft shadows in creases: Redux's ambient occlusion, drawn over the picture after the cel
+            // pass, would put grey smudges on its flat colours
+            bool cel = Filter == PhotoFilter.CelShaded;
+            Set(_occlusion.Enabled, cel, false);
+            if (_celShading != null)
+            {
+                if (camera != null)
+                {
+                    _celShading.Camera = camera;
+                    _celOutlines.Camera = camera;
+                }
+                _celShading.IsOn = cel;
+                _celOutlines.IsOn = cel;
+            }
         }
 
         // A filter's colour mix, or the game's own colours for null. URP's channel mixer takes percentages
