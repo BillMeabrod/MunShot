@@ -7,9 +7,16 @@ using UnityEngine.Rendering.Universal;
 
 namespace MunShot.Cameras
 {
+    /// <summary>The filter laid over the picture: one at a time, as a camera has one filter on its lens.</summary>
+    public enum PhotoFilter
+    {
+        None,
+        OldFilm
+    }
+
     /// <summary>
-    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, fisheye, vignette, and
-    /// the picture's exposure, contrast, saturation and warmth.
+    /// Photo mode's own look, laid over the game's while photo mode is open: depth of field, fisheye, vignette, the
+    /// picture's exposure, contrast, saturation and warmth, and a filter (<see cref="PhotoFilter"/>).
     ///
     /// Redux renders the game's post-processing from URP volumes (it mirrors the game's own effects into them every
     /// frame, see Redux's PostProcessingBridge): depth of field with its own effect, <see cref="ReduxDepthOfField"/>,
@@ -47,6 +54,15 @@ namespace MunShot.Cameras
         public const float MaxExposure = 3f;
         public const float MaxColorAdjustment = 100f;
 
+        // Old film, as an aged sepia print: the brightness alone, tinted so white comes out cream-yellow (a colour mix for
+        // URP's channel mixer, each row how much of the red, green and blue going in make that colour coming out); blacks
+        // lifted to a soft brown and whites dimmed, as a faded print's; flatter; and darker towards the edges
+        private static readonly float[,] SepiaMix = Tinted(new Vector3(0.3f, 0.59f, 0.11f), new Vector3(1.1f, 0.93f, 0.68f));
+        private static readonly Vector4 OldFilmLift = new Vector4(1f, 0.94f, 0.86f, 0.08f);
+        private static readonly Vector4 OldFilmGain = new Vector4(1f, 1f, 1f, -0.06f);
+        private const float OldFilmContrast = -15f;
+        private const float OldFilmVignette = 0.5f;
+
         private const float DefaultFocusDistance = 5f;
         private const float DefaultAperture = 4f;
 
@@ -70,6 +86,8 @@ namespace MunShot.Cameras
         private UnityEngine.Rendering.Universal.Vignette _vignette;
         private ColorAdjustments _colorAdjustments;
         private WhiteBalance _whiteBalance;
+        private ChannelMixer _channelMixer;
+        private LiftGammaGain _liftGammaGain;
 
         // The camera's volume layers last seen, so a change is only looked at (and logged) once
         private int _volumeLayers = -1;
@@ -115,6 +133,9 @@ namespace MunShot.Cameras
             Warmth = 0f;
         }
 
+        /// <summary>The filter over the picture; <see cref="PhotoFilter.None"/> for none.</summary>
+        public PhotoFilter Filter { get; set; }
+
         public PhotoLook(Action<string> logInfo, Action<string> logWarning)
         {
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
@@ -131,6 +152,7 @@ namespace MunShot.Cameras
             Fisheye = 0f;
             Vignette = 0f;
             ResetColor();
+            Filter = PhotoFilter.None;
             _volumeLayers = -1;
 
             _profile = ScriptableObject.CreateInstance<VolumeProfile>();
@@ -141,6 +163,8 @@ namespace MunShot.Cameras
             _vignette = _profile.Add<UnityEngine.Rendering.Universal.Vignette>(overrides: false);
             _colorAdjustments = _profile.Add<ColorAdjustments>(overrides: false);
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
+            _channelMixer = _profile.Add<ChannelMixer>(overrides: false);
+            _liftGammaGain = _profile.Add<LiftGammaGain>(overrides: false);
 
             // On the layer the game keeps its post-processing volumes on, which its cameras read
             _holder = new GameObject("MunShot photo look") { hideFlags = HideFlags.DontSave, layer = Layers.LayerRenderPostProcessing };
@@ -174,6 +198,8 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_vignette);
             UnityEngine.Object.Destroy(_colorAdjustments);
             UnityEngine.Object.Destroy(_whiteBalance);
+            UnityEngine.Object.Destroy(_channelMixer);
+            UnityEngine.Object.Destroy(_liftGammaGain);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
             _depthOfField = null;
@@ -181,6 +207,8 @@ namespace MunShot.Cameras
             _vignette = null;
             _colorAdjustments = null;
             _whiteBalance = null;
+            _channelMixer = null;
+            _liftGammaGain = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
         }
@@ -206,24 +234,56 @@ namespace MunShot.Cameras
             Set(_lensDistortion.xMultiplier, bulge, 1f);
             Set(_lensDistortion.yMultiplier, bulge, 1f);
 
-            // Black, from the middle of the picture, following its shape (a wide picture darkens in a wide oval)
-            float vignette = Mathf.Clamp01(Vignette);
+            // Black, from the middle of the picture, following its shape (a wide picture darkens in a wide oval); old
+            // film darkens the edges too, the vignette slider's or its own, whichever is darker
+            bool oldFilm = Filter == PhotoFilter.OldFilm;
+            float vignette = Mathf.Max(Mathf.Clamp01(Vignette) * MaxVignetteIntensity, oldFilm ? OldFilmVignette : 0f);
             bool darken = vignette > 0f;
-            Set(_vignette.intensity, darken, vignette * MaxVignetteIntensity);
+            Set(_vignette.intensity, darken, vignette);
             Set(_vignette.smoothness, darken, VignetteSmoothness);
             Set(_vignette.color, darken, Color.black);
             Set(_vignette.center, darken, new Vector2(0.5f, 0.5f));
             Set(_vignette.rounded, darken, false);
 
-            // Each colour setting at 0 leaves the game's own value (the game grades some scenes itself)
+            // Each colour setting at 0 leaves the game's own value (the game grades some scenes itself). Old film adds to
+            // the contrast slider
             float exposure = Mathf.Clamp(Exposure, -MaxExposure, MaxExposure);
-            float contrast = Mathf.Clamp(Contrast, -MaxColorAdjustment, MaxColorAdjustment);
+            float contrast = Mathf.Clamp(Contrast + (oldFilm ? OldFilmContrast : 0f), -MaxColorAdjustment, MaxColorAdjustment);
             float saturation = Mathf.Clamp(Saturation, -MaxColorAdjustment, MaxColorAdjustment);
             float warmth = Mathf.Clamp(Warmth, -MaxColorAdjustment, MaxColorAdjustment);
             Set(_colorAdjustments.postExposure, exposure != 0f, exposure);
             Set(_colorAdjustments.contrast, contrast != 0f, contrast);
             Set(_colorAdjustments.saturation, saturation != 0f, saturation);
             Set(_whiteBalance.temperature, warmth != 0f, warmth);
+
+            ApplyChannelMixer(oldFilm ? SepiaMix : null);
+            Set(_liftGammaGain.lift, oldFilm, OldFilmLift);
+            Set(_liftGammaGain.gain, oldFilm, OldFilmGain);
+        }
+
+        // A filter's colour mix, or the game's own colours for null. URP's channel mixer takes percentages
+        private void ApplyChannelMixer(float[,] mix)
+        {
+            bool on = mix != null;
+            Set(_channelMixer.redOutRedIn, on, on ? mix[0, 0] * 100f : 0f);
+            Set(_channelMixer.redOutGreenIn, on, on ? mix[0, 1] * 100f : 0f);
+            Set(_channelMixer.redOutBlueIn, on, on ? mix[0, 2] * 100f : 0f);
+            Set(_channelMixer.greenOutRedIn, on, on ? mix[1, 0] * 100f : 0f);
+            Set(_channelMixer.greenOutGreenIn, on, on ? mix[1, 1] * 100f : 0f);
+            Set(_channelMixer.greenOutBlueIn, on, on ? mix[1, 2] * 100f : 0f);
+            Set(_channelMixer.blueOutRedIn, on, on ? mix[2, 0] * 100f : 0f);
+            Set(_channelMixer.blueOutGreenIn, on, on ? mix[2, 1] * 100f : 0f);
+            Set(_channelMixer.blueOutBlueIn, on, on ? mix[2, 2] * 100f : 0f);
+        }
+
+        // A mix giving every colour the brightness (from the weights) in one tint
+        private static float[,] Tinted(Vector3 weights, Vector3 tint)
+        {
+            var mix = new float[3, 3];
+            for (int row = 0; row < 3; row++)
+                for (int column = 0; column < 3; column++)
+                    mix[row, column] = tint[row] * weights[column];
+            return mix;
         }
 
         private static void Set<T>(VolumeParameter<T> parameter, bool on, T value)

@@ -64,6 +64,12 @@
                                         </Bindings>
                                         <ui:VisualElement class="pm-strip-icon pm-icon-color" picking-mode="Ignore" />
                                     </uitk:OabButton>
+                                    <uitk:OabButton name="tab-filters" tooltip="R:#MunShot/UI/Filters" class="pm-strip-tab">
+                                        <Bindings>
+                                            <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowFiltersCommand" />
+                                        </Bindings>
+                                        <ui:VisualElement class="pm-strip-icon pm-icon-filters" picking-mode="Ignore" />
+                                    </uitk:OabButton>
                                     <uitk:OabButton name="tab-light" tooltip="R:#MunShot/UI/Light" class="pm-strip-tab">
                                         <Bindings>
                                             <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ShowLightCommand" />
@@ -348,6 +354,21 @@
                                         <uitk:OabButton name="reset-color" text="#MunShot/UI/ResetColor" class="pm-wide">
                                             <Bindings>
                                                 <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ResetColorCommand" />
+                                            </Bindings>
+                                        </uitk:OabButton>
+                                    </ui:VisualElement>
+
+                                    <!-- Filters: one filter or film look over the picture, as a camera has one filter on its lens; the
+                                         button shows the chosen one and opens the list (None first) -->
+                                    <ui:VisualElement name="page-filters" class="pm-page">
+                                        <ui:VisualElement class="pm-heading-row">
+                                            <ui:Label text="## " class="pm-heading pm-dim" />
+                                            <ui:Label text="#MunShot/UI/Filter" class="pm-heading uppercase" />
+                                        </ui:VisualElement>
+                                        <uitk:OabButton name="choose-filter" class="pm-wide">
+                                            <Bindings>
+                                                <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ChooseFilterCommand" />
+                                                <ui:DataBinding property="text" data-source-path="FilterName" binding-mode="ToTarget" />
                                             </Bindings>
                                         </uitk:OabButton>
                                     </ui:VisualElement>

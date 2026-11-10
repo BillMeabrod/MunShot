@@ -124,6 +124,7 @@
 .pm-icon-pose { background-image: url("Icons/tab-pose.png"); }
 .pm-icon-camera { background-image: url("Icons/tab-camera.png"); }
 .pm-icon-color { background-image: url("Icons/tab-color.png"); }
+.pm-icon-filters { background-image: url("Icons/tab-filters.png"); }
 .pm-icon-light { background-image: url("Icons/tab-light.png"); }
 .pm-icon-fx { background-image: url("Icons/tab-fx.png"); }
 

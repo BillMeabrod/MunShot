@@ -59,6 +59,10 @@ MunShot/UI/Contrast,Text,Caption above the slider for more or less difference be
 MunShot/UI/Saturation,Text,Caption above the slider for more or less colourful (lowest is black and white),Saturation,Sättigung,Saturation,Saturazione,Saturación,彩度,채도,Nasycenie,Насыщенность,饱和度,Saturação,飽和度
 MunShot/UI/Warmth,Text,Caption above the slider that makes the picture warmer (orange) or cooler (blue),Warmth,Wärme,Chaleur,Calore,Calidez,色温,색온도,Ciepło,Теплота,色温,Calor,色溫
 MunShot/UI/ResetColor,Text,"Button: put exposure, contrast, saturation and warmth back to normal",Reset,Zurücksetzen,Réinitialiser,Ripristina,Restablecer,リセット,초기화,Resetuj,Сбросить,重置,Redefinir,重設
+MunShot/UI/Filters,Text,Photo mode tab: camera filters and film looks laid over the picture,Filters,Filter,Filtres,Filtri,Filtros,フィルター,필터,Filtry,Фильтры,滤镜,Filtros,濾鏡
+MunShot/UI/Filter,Text,Caption above the button that picks the one filter laid over the picture,Filter,Filter,Filtre,Filtro,Filtro,フィルター,필터,Filtr,Фильтр,滤镜,Filtro,濾鏡
+MunShot/Filter/None,Text,Filter list: no filter,None,Keiner,Aucun,Nessuno,Ninguno,なし,없음,Brak,Нет,无,Nenhum,無
+MunShot/Filter/OldFilm,Text,"Filter list: an aged sepia photo print, yellowed and faded",Old film,Alter Film,Vieux film,Pellicola d'epoca,Película antigua,古いフィルム,오래된 필름,Stary film,Старая плёнка,老照片,Filme antigo,老照片
 MunShot/UI/Fisheye,Text,"Caption above the slider that bulges the picture out from its middle, like a fisheye lens",Fisheye,Fischauge,Fisheye,Fisheye,Ojo de pez,魚眼,어안,Rybie oko,Рыбий глаз,鱼眼,Olho de peixe,魚眼
 MunShot/UI/Grid,Text,Caption above the picker for lines drawn over the picture to help compose it (rule of thirds and so on),Grid,Raster,Grille,Griglia,Cuadrícula,グリッド,격자,Siatka,Сетка,网格,Grade,格線
 MunShot/UI/GridNone,Text,Grid picker choice: no lines,None,Keins,Aucune,Nessuna,Ninguna,なし,없음,Brak,Нет,无,Nenhuma,無

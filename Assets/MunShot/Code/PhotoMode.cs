@@ -721,6 +721,18 @@ namespace MunShot
             RaiseChanged();
         }
 
+        // ---- Filters ----
+
+        /// <summary>Lays a filter over the picture in place of any before; <see cref="PhotoFilter.None"/> takes it off.</summary>
+        public void SetFilter(PhotoFilter filter)
+        {
+            Look.Filter = filter;
+            RaiseChanged();
+        }
+
+        /// <summary>A filter's name ("Old film").</summary>
+        public static string FilterName(PhotoFilter filter) => Localization.Translate("MunShot/Filter/" + filter);
+
         /// <summary>How much the picture bulges, as through a fisheye lens: 0 (flat) to 1.</summary>
         public void SetFisheye(float amount)
         {

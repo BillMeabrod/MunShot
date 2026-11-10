@@ -75,6 +75,7 @@ namespace MunShot.UI
             [PhotoModeTab.Pose] = "MunShot/UI/Pose",
             [PhotoModeTab.Camera] = "MunShot/UI/Camera",
             [PhotoModeTab.Color] = "MunShot/UI/Color",
+            [PhotoModeTab.Filters] = "MunShot/UI/Filters",
             [PhotoModeTab.Light] = "MunShot/UI/Light",
             [PhotoModeTab.Fx] = "MunShot/UI/Fx"
         };
@@ -112,6 +113,7 @@ namespace MunShot.UI
         private Slider _contrast;
         private Slider _saturation;
         private Slider _warmth;
+        private Button _chooseFilter;
         private ScrollView _lightList;
         private Button _pointLight;
         private Button _spotLight;
@@ -136,7 +138,7 @@ namespace MunShot.UI
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
-            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu);
+            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu, OpenFilterMenu);
 
             var options = new WindowOptions
             {
@@ -278,6 +280,7 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
             _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
+            _tabs[PhotoModeTab.Filters] = (Required<Button>(root, "tab-filters"), Required<VisualElement>(root, "page-filters"));
             _tabs[PhotoModeTab.Light] = (Required<Button>(root, "tab-light"), Required<VisualElement>(root, "page-light"));
             _tabs[PhotoModeTab.Fx] = (Required<Button>(root, "tab-fx"), Required<VisualElement>(root, "page-fx"));
             // The tabs are icons; each shows its name on hover, through Redux's Tooltip as Redux's own windows do
@@ -313,6 +316,7 @@ namespace MunShot.UI
             _contrast = ColorSlider(root, "contrast", PhotoLook.MaxColorAdjustment, _photoMode.SetContrast);
             _saturation = ColorSlider(root, "saturation", PhotoLook.MaxColorAdjustment, _photoMode.SetSaturation);
             _warmth = ColorSlider(root, "warmth", PhotoLook.MaxColorAdjustment, _photoMode.SetWarmth);
+            _chooseFilter = Required<Button>(root, "choose-filter");
             BindLights(root);
             BindEffects(root);
 
@@ -571,6 +575,7 @@ namespace MunShot.UI
             }
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
+            _model.FilterName = PhotoMode.FilterName(_photoMode.Look.Filter);
             RefreshLights(_photoMode.Lights);
             RefreshEffects(_photoMode.Effects);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingBody);
@@ -808,6 +813,19 @@ namespace MunShot.UI
                 }
             }
             menu.DropDown(_addEffect.worldBound, _addEffect, DropdownMenuSizeMode.Auto);
+        }
+
+        // Every filter by name, None first, the chosen one ticked; picking one lays it over the picture in place of any before
+        private void OpenFilterMenu()
+        {
+            if (_chooseFilter == null) return;
+            var menu = new GenericDropdownMenu();
+            foreach (PhotoFilter filter in (PhotoFilter[])Enum.GetValues(typeof(PhotoFilter)))
+            {
+                PhotoFilter chosen = filter;
+                menu.AddItem(PhotoMode.FilterName(filter), filter == _photoMode.Look.Filter, () => _photoMode.SetFilter(chosen));
+            }
+            menu.DropDown(_chooseFilter.worldBound, _chooseFilter, DropdownMenuSizeMode.Auto);
         }
 
         private bool AddSection(GenericDropdownMenu menu, string headingKey, List<KerbalCandidate> candidates, bool separate)

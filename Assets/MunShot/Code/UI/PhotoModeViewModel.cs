@@ -16,6 +16,7 @@ namespace MunShot.UI
         Pose,
         Camera,
         Color,
+        Filters,
         Light,
         Fx
     }
@@ -38,6 +39,7 @@ namespace MunShot.UI
         private string _contrastText = string.Empty;
         private string _saturationText = string.Empty;
         private string _warmthText = string.Empty;
+        private string _filterName = string.Empty;
         private bool _hasLights;
         private bool _hasEffects;
         private bool _hasSelectedEffect;
@@ -58,17 +60,21 @@ namespace MunShot.UI
         /// <param name="showTab">Shows a tab of the side panel (the window's own layout).</param>
         /// <param name="openKerbalMenu">Opens the list of kerbals to bring in.</param>
         /// <param name="openEffectMenu">Opens the list of effects to add.</param>
-        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu, Action openEffectMenu)
+        /// <param name="openFilterMenu">Opens the list of filters to choose from.</param>
+        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu, Action openEffectMenu,
+                                  Action openFilterMenu)
         {
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             if (showTab == null) throw new ArgumentNullException(nameof(showTab));
             if (openKerbalMenu == null) throw new ArgumentNullException(nameof(openKerbalMenu));
             if (openEffectMenu == null) throw new ArgumentNullException(nameof(openEffectMenu));
+            if (openFilterMenu == null) throw new ArgumentNullException(nameof(openFilterMenu));
 
             ShowKerbalsCommand = new RelayCommand(() => showTab(PhotoModeTab.Kerbals));
             ShowPoseCommand = new RelayCommand(() => showTab(PhotoModeTab.Pose));
             ShowCameraCommand = new RelayCommand(() => showTab(PhotoModeTab.Camera));
             ShowColorCommand = new RelayCommand(() => showTab(PhotoModeTab.Color));
+            ShowFiltersCommand = new RelayCommand(() => showTab(PhotoModeTab.Filters));
             ShowLightCommand = new RelayCommand(() => showTab(PhotoModeTab.Light));
             ShowFxCommand = new RelayCommand(() => showTab(PhotoModeTab.Fx));
             AddEffectCommand = new RelayCommand(openEffectMenu, () => photoMode.Effects.CanAdd);
@@ -84,6 +90,7 @@ namespace MunShot.UI
             OrbitCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Orbit));
             FocusOnSelectedCommand = new RelayCommand(photoMode.FocusOnSelected);
             ResetColorCommand = new RelayCommand(photoMode.ResetColor, () => photoMode.Look.ColorChanged);
+            ChooseFilterCommand = new RelayCommand(openFilterMenu);
             TakePhotoCommand = new RelayCommand(photoMode.TakePhoto);
         }
 
@@ -91,6 +98,7 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand ShowPoseCommand { get; }
         [CreateProperty] public RelayCommand ShowCameraCommand { get; }
         [CreateProperty] public RelayCommand ShowColorCommand { get; }
+        [CreateProperty] public RelayCommand ShowFiltersCommand { get; }
         [CreateProperty] public RelayCommand ShowLightCommand { get; }
         [CreateProperty] public RelayCommand ShowFxCommand { get; }
 
@@ -105,6 +113,9 @@ namespace MunShot.UI
 
         /// <summary>Puts the colour settings back to the game's own picture; only when one is changed.</summary>
         [CreateProperty] public RelayCommand ResetColorCommand { get; }
+
+        /// <summary>Opens the list of filters, None first.</summary>
+        [CreateProperty] public RelayCommand ChooseFilterCommand { get; }
 
         /// <summary>Opens the list of kerbals to bring in; only when someone isn't in yet.</summary>
         [CreateProperty] public RelayCommand BringInCommand { get; }
@@ -315,6 +326,14 @@ namespace MunShot.UI
         {
             get => _warmthText;
             set => SetField(ref _warmthText, value);
+        }
+
+        /// <summary>The chosen filter's name, on the button that opens the list ("None", "Old film").</summary>
+        [CreateProperty]
+        public string FilterName
+        {
+            get => _filterName;
+            set => SetField(ref _filterName, value);
         }
 
         /// <summary>How far away things are sharp, as shown next to its slider ("12 m").</summary>
