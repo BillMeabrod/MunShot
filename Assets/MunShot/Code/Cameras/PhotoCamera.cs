@@ -41,8 +41,15 @@ namespace MunShot.Cameras
     /// </summary>
     public sealed class PhotoCamera : ICameraShotProvider, ICameraShot, ICameraNearClipProvider
     {
-        // Close enough to put the camera right up to a kerbal's face; what Redux's first-person camera uses
-        private const float NearClip = 0.05f;
+        // How near the camera draws from: close enough to put it right up to a kerbal's face (what Redux's first-person
+        // camera uses) while something's up close, otherwise the flight camera's own. Redux's check for whether the sun
+        // is hidden (its lens flare fading behind what's in front) misses anything more than a metre or two away at the
+        // close one, so the flare shone through buildings
+        private const float CloseNearClip = 0.05f;
+        private const float NearClip = 0.5f;
+
+        /// <summary>How near something has to be for the camera to draw from up close (<see cref="UpClose"/>).</summary>
+        public const float UpCloseRange = 2f;
 
         // Degrees per second of roll at normal speed
         private const float RollSpeed = 45f;
@@ -123,7 +130,13 @@ namespace MunShot.Cameras
         // Wide enough for a fisheye shot: past 100° a flat picture stretches at the edges, which Fisheye pulls back in
         public const float MaxFieldOfView = 140f;
         public double OrthographicSize => 5.0;
-        public float NearClipPlane => NearClip;
+        public float NearClipPlane => UpClose ? CloseNearClip : NearClip;
+
+        /// <summary>
+        /// Whether something is within <see cref="UpCloseRange"/> of the camera, so it draws from up close; set each
+        /// frame by whatever knows what's in the scene.
+        /// </summary>
+        public bool UpClose { get; set; }
 
         /// <summary>
         /// Takes over the flight camera, starting exactly where the game's camera is now, in Free mode.
@@ -200,6 +213,7 @@ namespace MunShot.Cameras
             _firstPersonTarget = null;
             Target = null;
             Mode = PhotoCameraMode.Free;
+            UpClose = false;
             _logInfo("Photo camera: gave the flight camera back.");
         }
 
