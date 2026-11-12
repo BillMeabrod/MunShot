@@ -16,6 +16,7 @@ namespace MunShot.UI
         Pose,
         Camera,
         Color,
+        Filters,
         Light,
         Fx
     }
@@ -38,6 +39,7 @@ namespace MunShot.UI
         private string _contrastText = string.Empty;
         private string _saturationText = string.Empty;
         private string _warmthText = string.Empty;
+        private string _filterName = string.Empty;
         private bool _hasLights;
         private bool _hasEffects;
         private bool _hasSelectedEffect;
@@ -46,6 +48,11 @@ namespace MunShot.UI
         private string _effectSizeText = string.Empty;
         private bool _hasSelectedLight;
         private bool _isSpotLight;
+        private bool _isInk;
+        private bool _isCel;
+        private bool _hasLines;
+        private string _lineDetailText = string.Empty;
+        private string _shadeText = string.Empty;
         private string _selectedLightName = string.Empty;
         private string _lightBrightnessText = string.Empty;
         private string _lightRangeText = string.Empty;
@@ -58,17 +65,21 @@ namespace MunShot.UI
         /// <param name="showTab">Shows a tab of the side panel (the window's own layout).</param>
         /// <param name="openKerbalMenu">Opens the list of kerbals to bring in.</param>
         /// <param name="openEffectMenu">Opens the list of effects to add.</param>
-        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu, Action openEffectMenu)
+        /// <param name="openFilterMenu">Opens the list of filters to choose from.</param>
+        public PhotoModeViewModel(PhotoMode photoMode, Action<PhotoModeTab> showTab, Action openKerbalMenu, Action openEffectMenu,
+                                  Action openFilterMenu)
         {
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             if (showTab == null) throw new ArgumentNullException(nameof(showTab));
             if (openKerbalMenu == null) throw new ArgumentNullException(nameof(openKerbalMenu));
             if (openEffectMenu == null) throw new ArgumentNullException(nameof(openEffectMenu));
+            if (openFilterMenu == null) throw new ArgumentNullException(nameof(openFilterMenu));
 
             ShowKerbalsCommand = new RelayCommand(() => showTab(PhotoModeTab.Kerbals));
             ShowPoseCommand = new RelayCommand(() => showTab(PhotoModeTab.Pose));
             ShowCameraCommand = new RelayCommand(() => showTab(PhotoModeTab.Camera));
             ShowColorCommand = new RelayCommand(() => showTab(PhotoModeTab.Color));
+            ShowFiltersCommand = new RelayCommand(() => showTab(PhotoModeTab.Filters));
             ShowLightCommand = new RelayCommand(() => showTab(PhotoModeTab.Light));
             ShowFxCommand = new RelayCommand(() => showTab(PhotoModeTab.Fx));
             AddEffectCommand = new RelayCommand(openEffectMenu, () => photoMode.Effects.CanAdd);
@@ -84,6 +95,11 @@ namespace MunShot.UI
             OrbitCameraCommand = new RelayCommand(() => photoMode.SetCameraMode(PhotoCameraMode.Orbit));
             FocusOnSelectedCommand = new RelayCommand(photoMode.FocusOnSelected);
             ResetColorCommand = new RelayCommand(photoMode.ResetColor, () => photoMode.Look.ColorChanged);
+            ChooseFilterCommand = new RelayCommand(openFilterMenu);
+            ClassicInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Classic));
+            BlueprintInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Blueprint));
+            SepiaInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Sepia));
+            ChalkInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Chalk));
             TakePhotoCommand = new RelayCommand(photoMode.TakePhoto);
         }
 
@@ -91,6 +107,7 @@ namespace MunShot.UI
         [CreateProperty] public RelayCommand ShowPoseCommand { get; }
         [CreateProperty] public RelayCommand ShowCameraCommand { get; }
         [CreateProperty] public RelayCommand ShowColorCommand { get; }
+        [CreateProperty] public RelayCommand ShowFiltersCommand { get; }
         [CreateProperty] public RelayCommand ShowLightCommand { get; }
         [CreateProperty] public RelayCommand ShowFxCommand { get; }
 
@@ -105,6 +122,15 @@ namespace MunShot.UI
 
         /// <summary>Puts the colour settings back to the game's own picture; only when one is changed.</summary>
         [CreateProperty] public RelayCommand ResetColorCommand { get; }
+
+        /// <summary>Opens the list of filters, None first.</summary>
+        [CreateProperty] public RelayCommand ChooseFilterCommand { get; }
+
+        /// <summary>The Ink filter's looks: its ink and paper colours together.</summary>
+        [CreateProperty] public RelayCommand ClassicInkCommand { get; }
+        [CreateProperty] public RelayCommand BlueprintInkCommand { get; }
+        [CreateProperty] public RelayCommand SepiaInkCommand { get; }
+        [CreateProperty] public RelayCommand ChalkInkCommand { get; }
 
         /// <summary>Opens the list of kerbals to bring in; only when someone isn't in yet.</summary>
         [CreateProperty] public RelayCommand BringInCommand { get; }
@@ -219,6 +245,46 @@ namespace MunShot.UI
             set => SetField(ref _isSpotLight, value);
         }
 
+        /// <summary>Whether the Ink filter is on, so its colours show.</summary>
+        [CreateProperty]
+        public bool IsInk
+        {
+            get => _isInk;
+            set => SetField(ref _isInk, value);
+        }
+
+        /// <summary>Whether the Cel shaded filter is on, so its shade shows.</summary>
+        [CreateProperty]
+        public bool IsCel
+        {
+            get => _isCel;
+            set => SetField(ref _isCel, value);
+        }
+
+        /// <summary>Whether a filter with ink lines is on (Cel shaded or Ink), so the line settings show.</summary>
+        [CreateProperty]
+        public bool HasLines
+        {
+            get => _hasLines;
+            set => SetField(ref _hasLines, value);
+        }
+
+        /// <summary>How much detail the lines show, as shown next to their slider ("80%").</summary>
+        [CreateProperty]
+        public string LineDetailText
+        {
+            get => _lineDetailText;
+            set => SetField(ref _lineDetailText, value);
+        }
+
+        /// <summary>How dark Cel shaded's shade is, as shown next to its slider ("50%").</summary>
+        [CreateProperty]
+        public string ShadeText
+        {
+            get => _shadeText;
+            set => SetField(ref _shadeText, value);
+        }
+
         /// <summary>The selected light's name, in capitals, as its settings' heading.</summary>
         [CreateProperty]
         public string SelectedLightName
@@ -315,6 +381,14 @@ namespace MunShot.UI
         {
             get => _warmthText;
             set => SetField(ref _warmthText, value);
+        }
+
+        /// <summary>The chosen filter's name, on the button that opens the list ("None", "Old film").</summary>
+        [CreateProperty]
+        public string FilterName
+        {
+            get => _filterName;
+            set => SetField(ref _filterName, value);
         }
 
         /// <summary>How far away things are sharp, as shown next to its slider ("12 m").</summary>

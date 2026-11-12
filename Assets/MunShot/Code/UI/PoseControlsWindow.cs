@@ -92,13 +92,17 @@ namespace MunShot.UI
             Refresh();
         }
 
+        /// <summary>Whether the window is open and on screen (not hidden with photo mode's UI or for a photo).</summary>
+        public bool IsShown => IsOpen && _shell?.panel != null && _shell.resolvedStyle.display != DisplayStyle.None
+                               && _renderer.gameObject.activeInHierarchy;
+
         /// <summary>Whether the mouse is over the window, so clicks there aren't for the scene.</summary>
         public bool IsPointerOver(Vector2 screen)
         {
-            if (!IsOpen || _shell?.panel == null || _shell.resolvedStyle.display == DisplayStyle.None) return false;
+            if (!IsShown) return false;
             // Screen positions count up from the bottom, panel positions down from the top
             Vector2 inPanel = RuntimePanelUtils.ScreenToPanel(_shell.panel, new Vector2(screen.x, Screen.height - screen.y));
-            return _renderer.gameObject.activeInHierarchy && _shell.worldBound.Contains(inPanel);
+            return _shell.worldBound.Contains(inPanel);
         }
 
         /// <summary>Whether one of the number boxes has the keyboard, so typing isn't photo mode's keys.</summary>

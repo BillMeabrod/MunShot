@@ -75,6 +75,7 @@ namespace MunShot.UI
             [PhotoModeTab.Pose] = "MunShot/UI/Pose",
             [PhotoModeTab.Camera] = "MunShot/UI/Camera",
             [PhotoModeTab.Color] = "MunShot/UI/Color",
+            [PhotoModeTab.Filters] = "MunShot/UI/Filters",
             [PhotoModeTab.Light] = "MunShot/UI/Light",
             [PhotoModeTab.Fx] = "MunShot/UI/Fx"
         };
@@ -112,10 +113,18 @@ namespace MunShot.UI
         private Slider _contrast;
         private Slider _saturation;
         private Slider _warmth;
+        private Button _chooseFilter;
         private ScrollView _lightList;
         private Button _pointLight;
         private Button _spotLight;
         private ColorPicker _lightColor;
+
+        // The Ink filter's looks (in InkLook's order) and its colours
+        private readonly List<(InkLook look, Button button)> _inkLooks = new List<(InkLook, Button)>();
+        private ColorPicker _inkColor;
+        private ColorPicker _paperColor;
+        private Slider _lineDetail;
+        private Slider _shade;
         private Slider _lightBrightness;
         private Slider _lightRange;
         private Slider _spotAngle;
@@ -136,7 +145,7 @@ namespace MunShot.UI
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
-            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu);
+            _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu, OpenFilterMenu);
 
             var options = new WindowOptions
             {
@@ -210,6 +219,14 @@ namespace MunShot.UI
         /// <summary>Whether a text box in photo mode's windows has the keyboard, so typing isn't photo mode's keys.</summary>
         public bool IsTyping => _poseControls != null && _poseControls.IsTyping;
 
+        /// <summary>Closes the pose controls window if it's on screen, and says whether it was (Esc closes it first).</summary>
+        public bool ClosePoseControls()
+        {
+            if (_poseControls == null || !_poseControls.IsShown) return false;
+            _poseControls.Close();
+            return true;
+        }
+
         /// <summary>
         /// Whether the mouse is over UI that takes clicks (the overlay's panels, the Bring in menu, any window on the
         /// same panel), so clicks there aren't for the scene. The overlay's full-screen parts let clicks through
@@ -278,6 +295,7 @@ namespace MunShot.UI
             _tabs[PhotoModeTab.Pose] = (Required<Button>(root, "tab-pose"), Required<VisualElement>(root, "page-pose"));
             _tabs[PhotoModeTab.Camera] = (Required<Button>(root, "tab-camera"), Required<VisualElement>(root, "page-camera"));
             _tabs[PhotoModeTab.Color] = (Required<Button>(root, "tab-color"), Required<VisualElement>(root, "page-color"));
+            _tabs[PhotoModeTab.Filters] = (Required<Button>(root, "tab-filters"), Required<VisualElement>(root, "page-filters"));
             _tabs[PhotoModeTab.Light] = (Required<Button>(root, "tab-light"), Required<VisualElement>(root, "page-light"));
             _tabs[PhotoModeTab.Fx] = (Required<Button>(root, "tab-fx"), Required<VisualElement>(root, "page-fx"));
             // The tabs are icons; each shows its name on hover, through Redux's Tooltip as Redux's own windows do
@@ -313,6 +331,8 @@ namespace MunShot.UI
             _contrast = ColorSlider(root, "contrast", PhotoLook.MaxColorAdjustment, _photoMode.SetContrast);
             _saturation = ColorSlider(root, "saturation", PhotoLook.MaxColorAdjustment, _photoMode.SetSaturation);
             _warmth = ColorSlider(root, "warmth", PhotoLook.MaxColorAdjustment, _photoMode.SetWarmth);
+            _chooseFilter = Required<Button>(root, "choose-filter");
+            BindInk(root);
             BindLights(root);
             BindEffects(root);
 
@@ -362,6 +382,44 @@ namespace MunShot.UI
             _effectMoment?.RegisterValueChangedCallback(change => _photoMode.ChangeEffect(effect => effect.Moment = change.newValue));
             _effectSize?.RegisterValueChangedCallback(change =>
                 _photoMode.ChangeEffect(effect => effect.Size = ValueAt(change.newValue, PhotoEffect.MinSize, PhotoEffect.MaxSize)));
+        }
+
+        private void BindInk(VisualElement root)
+        {
+            foreach (InkLook look in (InkLook[])Enum.GetValues(typeof(InkLook)))
+                _inkLooks.Add((look, Required<Button>(root, "ink-" + look.ToString().ToLowerInvariant())));
+            _inkColor = Required<ColorPicker>(root, "ink-color");
+            _paperColor = Required<ColorPicker>(root, "paper-color");
+            _inkColor?.RegisterValueChangedCallback(change => _photoMode.SetInkColor(change.newValue));
+            _paperColor?.RegisterValueChangedCallback(change => _photoMode.SetPaperColor(change.newValue));
+
+            // Cel shaded's and Ink's lines, and Cel shaded's shade
+            _lineDetail = Required<Slider>(root, "line-detail");
+            _shade = Required<Slider>(root, "shade");
+            _lineDetail?.RegisterValueChangedCallback(change => _photoMode.SetLineDetail(change.newValue));
+            _shade?.RegisterValueChangedCallback(change => _photoMode.SetShadeDarkness(change.newValue));
+        }
+
+        // The Ink filter's settings while it's on: which look its colours are (if they're one), and the pickers on them;
+        // and the line settings while Cel shaded or Ink is on, and the shade while Cel shaded is
+        private void RefreshInk(PhotoLook look)
+        {
+            _model.IsInk = look.Filter == PhotoFilter.Ink;
+            _model.IsCel = look.Filter == PhotoFilter.CelShaded;
+            _model.HasLines = _model.IsInk || _model.IsCel;
+            _lineDetail?.SetValueWithoutNotify(look.LineDetail);
+            _model.LineDetailText = look.LineDetail.ToString("P0", CultureInfo.CurrentCulture);
+            _shade?.SetValueWithoutNotify(look.ShadeDarkness);
+            _model.ShadeText = look.ShadeDarkness.ToString("P0", CultureInfo.CurrentCulture);
+            foreach ((InkLook inkLook, Button button) in _inkLooks)
+            {
+                (Color ink, Color paper) = PhotoLook.InkLookColors(inkLook);
+                MarkActive(button, look.InkColor == ink && look.PaperColor == paper);
+            }
+            // Set as a change: the SDK's picker only moves its handles on a change event. The change comes back as the
+            // look's own colour, so setting it changes nothing
+            if (_inkColor != null && _inkColor.value != look.InkColor) _inkColor.value = look.InkColor;
+            if (_paperColor != null && _paperColor.value != look.PaperColor) _paperColor.value = look.PaperColor;
         }
 
         private void BindLights(VisualElement root)
@@ -571,6 +629,8 @@ namespace MunShot.UI
             }
             RefreshFocus(_photoMode.Look);
             RefreshColor(_photoMode.Look);
+            _model.FilterName = PhotoMode.FilterName(_photoMode.Look.Filter);
+            RefreshInk(_photoMode.Look);
             RefreshLights(_photoMode.Lights);
             RefreshEffects(_photoMode.Effects);
             ShowHints(camera.Mode, _photoMode.Manipulator.IsDraggingBody);
@@ -808,6 +868,19 @@ namespace MunShot.UI
                 }
             }
             menu.DropDown(_addEffect.worldBound, _addEffect, DropdownMenuSizeMode.Auto);
+        }
+
+        // Every filter by name, None first, the chosen one ticked; picking one lays it over the picture in place of any before
+        private void OpenFilterMenu()
+        {
+            if (_chooseFilter == null) return;
+            var menu = new GenericDropdownMenu();
+            foreach (PhotoFilter filter in (PhotoFilter[])Enum.GetValues(typeof(PhotoFilter)))
+            {
+                PhotoFilter chosen = filter;
+                menu.AddItem(PhotoMode.FilterName(filter), filter == _photoMode.Look.Filter, () => _photoMode.SetFilter(chosen));
+            }
+            menu.DropDown(_chooseFilter.worldBound, _chooseFilter, DropdownMenuSizeMode.Auto);
         }
 
         private bool AddSection(GenericDropdownMenu menu, string headingKey, List<KerbalCandidate> candidates, bool separate)

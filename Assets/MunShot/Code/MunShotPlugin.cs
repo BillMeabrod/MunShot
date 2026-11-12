@@ -27,6 +27,7 @@ namespace MunShot
         // App tray icon: 48px like the stock toolbar icons (drawn by Tools/Icons/make_toolbar_icon.py)
         private const string ToolbarIconAddress = "MunShot/toolbar.png";
         private const string PoseKerbalAddress = "MunShot/pose-kerbal.png";
+        private const string CelShaderAddress = "MunShot/CelShading.shader";
 
         private const string LoadAssetsStep = "MunShot: Loading photo mode";
 
@@ -82,9 +83,16 @@ namespace MunShot
         }
 
         // The pause menu doesn't pause the game, so closing photo mode under it leaves the game as the player had it;
-        // the pause menu's own windows (settings, save, quit) then never open over photo mode's frozen scene
+        // the pause menu's own windows (settings, save, quit) then never open over photo mode's frozen scene. Esc opens
+        // the pause menu: with the pose controls on screen it closes them instead, and the pause menu again, as Esc
+        // closes the window on top first
         private void OnPauseMenuOpened()
         {
+            if (_photoMode.IsOpen && _window != null && _window.ClosePoseControls())
+            {
+                GameManager.Instance?.Game?.UI?.EscapeMenu?.ResumeGame();
+                return;
+            }
             _photoMode.Close();
             _pauseMenuButton.OnPauseMenuOpened();
         }
@@ -112,7 +120,7 @@ namespace MunShot
             }
 
             _assetsRequested = true;
-            int pending = 3;
+            int pending = 4;
             void Loaded()
             {
                 if (--pending == 0) done();
@@ -128,6 +136,13 @@ namespace MunShot
             {
                 _poseKerbal = texture;
                 if (texture == null) SWLogger.LogError($"Could not load the pose controls kerbal '{PoseKerbalAddress}'; the window shows its dots without it.");
+                Loaded();
+            });
+            Assets.Load<Shader>(CelShaderAddress, shader =>
+            {
+                if (shader == null) SWLogger.LogError($"Could not load the cel shading shader '{CelShaderAddress}'; the Cel shaded and Ink filters won't change the picture.");
+                else if (!shader.isSupported) SWLogger.LogError($"The cel shading shader '{CelShaderAddress}' isn't supported on this graphics card; the Cel shaded and Ink filters won't change the picture.");
+                else _photoMode.Look.CelShader = shader;
                 Loaded();
             });
             Assets.Load<Texture2D>(ToolbarIconAddress, texture =>
