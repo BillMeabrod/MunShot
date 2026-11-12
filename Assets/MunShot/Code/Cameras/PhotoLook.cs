@@ -15,6 +15,7 @@ namespace MunShot.Cameras
     {
         None,
         OldFilm,
+        SpaceAge,
         CelShaded,
         Ink
     }
@@ -77,11 +78,22 @@ namespace MunShot.Cameras
         private static readonly Vector4 OldFilmLift = new Vector4(1f, 0.94f, 0.86f, 0.08f);
         private static readonly Vector4 OldFilmGain = new Vector4(1f, 1f, 1f, -0.06f);
 
+        private const float OldFilmContrast = -15f;
+        private const float OldFilmVignette = 0.5f;
+
+        // Space age, as 16 mm colour film from the first trips to the Moon: washed-out colour, a little warmer, and
+        // flatter; the blacks lifted to a milky green-grey and the whites dimmed to ivory; and heavy grain
+        private const float SpaceAgeSaturation = -30f;
+        private const float SpaceAgeWarmth = 8f;
+        private const float SpaceAgeContrast = -15f;
+        private static readonly Vector4 SpaceAgeLift = new Vector4(0.93f, 1f, 0.94f, 0.06f);
+        private static readonly Vector4 SpaceAgeGain = new Vector4(1f, 0.97f, 0.85f, -0.05f);
+        private const float SpaceAgeGrain = 0.6f;
+        private const float SpaceAgeGrainResponse = 0.7f;
+
         // Cel shaded's clear sky is in flat tones only from orbit: none below this share of the way up the atmosphere,
         // all of them at its top (always, where there's none)
         private const float SkyBandsFrom = 0.6f;
-        private const float OldFilmContrast = -15f;
-        private const float OldFilmVignette = 0.5f;
 
         private const float DefaultFocusDistance = 5f;
         private const float DefaultAperture = 4f;
@@ -118,6 +130,7 @@ namespace MunShot.Cameras
         private WhiteBalance _whiteBalance;
         private ChannelMixer _channelMixer;
         private LiftGammaGain _liftGammaGain;
+        private FilmGrain _filmGrain;
         private ReduxAmbientOcclusion _occlusion;
         private CelShading _celShading;
         private InkLines _celOutlines;
@@ -233,6 +246,7 @@ namespace MunShot.Cameras
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
             _channelMixer = _profile.Add<ChannelMixer>(overrides: false);
             _liftGammaGain = _profile.Add<LiftGammaGain>(overrides: false);
+            _filmGrain = _profile.Add<FilmGrain>(overrides: false);
             _occlusion = _profile.Add<ReduxAmbientOcclusion>(overrides: false);
 
             // On the layer the game keeps its post-processing volumes on, which its cameras read
@@ -328,6 +342,7 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_whiteBalance);
             UnityEngine.Object.Destroy(_channelMixer);
             UnityEngine.Object.Destroy(_liftGammaGain);
+            UnityEngine.Object.Destroy(_filmGrain);
             UnityEngine.Object.Destroy(_occlusion);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
@@ -338,6 +353,7 @@ namespace MunShot.Cameras
             _whiteBalance = null;
             _channelMixer = null;
             _liftGammaGain = null;
+            _filmGrain = null;
             _occlusion = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
@@ -376,19 +392,24 @@ namespace MunShot.Cameras
             Set(_vignette.rounded, darken, false);
 
             // Each colour setting at 0 leaves the game's own value (the game grades some scenes itself). Old film adds to
-            // the contrast slider
+            // the contrast slider, Space age to the contrast, saturation and warmth sliders
+            bool spaceAge = Filter == PhotoFilter.SpaceAge;
             float exposure = Mathf.Clamp(Exposure, -MaxExposure, MaxExposure);
-            float contrast = Mathf.Clamp(Contrast + (oldFilm ? OldFilmContrast : 0f), -MaxColorAdjustment, MaxColorAdjustment);
-            float saturation = Mathf.Clamp(Saturation, -MaxColorAdjustment, MaxColorAdjustment);
-            float warmth = Mathf.Clamp(Warmth, -MaxColorAdjustment, MaxColorAdjustment);
+            float filmContrast = oldFilm ? OldFilmContrast : spaceAge ? SpaceAgeContrast : 0f;
+            float contrast = Mathf.Clamp(Contrast + filmContrast, -MaxColorAdjustment, MaxColorAdjustment);
+            float saturation = Mathf.Clamp(Saturation + (spaceAge ? SpaceAgeSaturation : 0f), -MaxColorAdjustment, MaxColorAdjustment);
+            float warmth = Mathf.Clamp(Warmth + (spaceAge ? SpaceAgeWarmth : 0f), -MaxColorAdjustment, MaxColorAdjustment);
             Set(_colorAdjustments.postExposure, exposure != 0f, exposure);
             Set(_colorAdjustments.contrast, contrast != 0f, contrast);
             Set(_colorAdjustments.saturation, saturation != 0f, saturation);
             Set(_whiteBalance.temperature, warmth != 0f, warmth);
 
             ApplyChannelMixer(oldFilm ? SepiaMix : null);
-            Set(_liftGammaGain.lift, oldFilm, OldFilmLift);
-            Set(_liftGammaGain.gain, oldFilm, OldFilmGain);
+            Set(_liftGammaGain.lift, oldFilm || spaceAge, oldFilm ? OldFilmLift : SpaceAgeLift);
+            Set(_liftGammaGain.gain, oldFilm || spaceAge, oldFilm ? OldFilmGain : SpaceAgeGain);
+            Set(_filmGrain.type, spaceAge, FilmGrainLookup.Medium2);
+            Set(_filmGrain.intensity, spaceAge, SpaceAgeGrain);
+            Set(_filmGrain.response, spaceAge, SpaceAgeGrainResponse);
 
             // Cel shaded has no soft shadows in creases: Redux's ambient occlusion, drawn over the picture after the cel
             // pass, would put grey smudges on its flat colours

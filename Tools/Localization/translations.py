@@ -66,6 +66,7 @@ T = {
     "MunShot/Filter/None": ["Keiner", "Aucun", "Nessuno", "Ninguno", "なし", "없음", "Brak", "Нет", "无", "Nenhum", "無"],
     "MunShot/Filter/CelShaded": ["Cel-Shading", "Cel shading", "Cel shading", "Cel shading", "セルシェーディング", "셀 셰이딩", "Cel shading", "Сел-шейдинг", "卡通渲染", "Cel shading", "卡通渲染"],
     "MunShot/Filter/OldFilm": ["Alter Film", "Vieux film", "Pellicola d'epoca", "Película antigua", "古いフィルム", "오래된 필름", "Stary film", "Старая плёнка", "老照片", "Filme antigo", "老照片"],
+    "MunShot/Filter/SpaceAge": ["Weltraumära", "Ère spatiale", "Era spaziale", "Era espacial", "宇宙時代", "우주 시대", "Era kosmiczna", "Космическая эра", "太空时代", "Era espacial", "太空時代"],
     "MunShot/Filter/Ink": ["Tusche", "Encre", "Inchiostro", "Tinta", "インク", "잉크", "Tusz", "Тушь", "墨线", "Nanquim", "墨線"],
     "MunShot/UI/InkLook": ["Stil", "Style", "Stile", "Estilo", "スタイル", "스타일", "Styl", "Стиль", "风格", "Estilo", "風格"],
     "MunShot/InkLook/Classic": ["Klassisch", "Classique", "Classico", "Clásico", "クラシック", "클래식", "Klasyczny", "Классика", "经典", "Clássico", "經典"],

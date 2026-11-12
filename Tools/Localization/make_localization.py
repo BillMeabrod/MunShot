@@ -81,6 +81,7 @@ rows = [
     ("MunShot/Filter/None", "Filter list: no filter", "None"),
     ("MunShot/Filter/CelShaded", "Filter list: the picture redrawn as a cartoon, flat colours and ink outlines (cel shading)", "Cel shaded"),
     ("MunShot/Filter/OldFilm", "Filter list: an aged sepia photo print, yellowed and faded", "Old film"),
+    ("MunShot/Filter/SpaceAge", "Filter list: 1970s 16 mm colour film, as filmed on the first trips to the Moon: washed-out, milky and grainy", "Space age"),
     ("MunShot/Filter/Ink", "Filter list: the picture as an ink drawing, black outlines on plain white", "Ink"),
     ("MunShot/UI/InkLook", "Caption above the buttons that pick the Ink filter's ink and paper colours together", "Look"),
     ("MunShot/InkLook/Classic", "Ink look button: black ink on white paper", "Classic"),
