@@ -97,6 +97,12 @@ Shader "Hidden/MunShot/CelShading"
             static const float SunTint = 0.4;
             static const float SkyLight = 0.25;
 
+            // How dark the shade is, as the player sets it (0 to 1, half as above): its share of the sun, from
+            // ShadeLightest times it at 0 to ShadeDarkest times it at 1
+            float _MunShotShade;
+            static const float ShadeLightest = 1.6;
+            static const float ShadeDarkest = 0.3;
+
             float RawDepth(float2 uv)
             {
                 return SAMPLE_TEXTURE2D_X_LOD(_MunShotDepth, sampler_PointClamp, uv, 0).r;
@@ -184,7 +190,10 @@ Shader "Hidden/MunShot/CelShading"
                 float lit = SharpAbove(reach, ShadeEdge);
 
                 float3 sunColor = lerp(Luminance(sun.color).xxx, sun.color, SunTint);
-                float3 light = sunColor * lerp(Shade, LitShare, lit)
+                float darkness = saturate(_MunShotShade);
+                float shadeScale = darkness < 0.5 ? lerp(ShadeLightest, 1, darkness * 2)
+                                                  : lerp(1, ShadeDarkest, darkness * 2 - 1);
+                float3 light = sunColor * lerp(Shade * shadeScale, LitShare, lit)
                                + SkyLight * 0.5 * (KSP2_SphericalGaussianAmbient(N) + KSP2_SphericalGaussianAmbient(-N));
                 return float4(albedo * light, 1);
             }

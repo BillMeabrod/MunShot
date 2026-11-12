@@ -372,6 +372,45 @@
                                             </Bindings>
                                         </uitk:OabButton>
 
+                                        <!-- Cel shaded's and Ink's lines, while either is on: how much detail (outlines only, up to every
+                                             corner, slope and road marking) -->
+                                        <ui:VisualElement name="line-settings">
+                                            <Bindings>
+                                                <ui:DataBinding property="style.display" data-source-path="HasLines" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                            </Bindings>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/LineDetail" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <ui:Slider name="line-detail" low-value="0" high-value="1" class="pm-grow" />
+                                                <ui:Label class="pm-value">
+                                                    <Bindings>
+                                                        <ui:DataBinding property="text" data-source-path="LineDetailText" binding-mode="ToTarget" />
+                                                    </Bindings>
+                                                </ui:Label>
+                                            </ui:VisualElement>
+                                        </ui:VisualElement>
+
+                                        <!-- Cel shaded's shade, while it's on: how dark the shaded side is -->
+                                        <ui:VisualElement name="cel-settings">
+                                            <Bindings>
+                                                <ui:DataBinding property="style.display" data-source-path="IsCel" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                            </Bindings>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/ShadeDarkness" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <ui:Slider name="shade" low-value="0" high-value="1" class="pm-grow" />
+                                                <ui:Label class="pm-value">
+                                                    <Bindings>
+                                                        <ui:DataBinding property="text" data-source-path="ShadeText" binding-mode="ToTarget" />
+                                                    </Bindings>
+                                                </ui:Label>
+                                            </ui:VisualElement>
+                                        </ui:VisualElement>
+
                                         <!-- Ink's colours, while it's on: a look (its ink and paper together), then each to fine-tune -->
                                         <ui:VisualElement name="ink-settings">
                                             <Bindings>

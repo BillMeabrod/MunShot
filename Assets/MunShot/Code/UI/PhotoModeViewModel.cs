@@ -49,6 +49,10 @@ namespace MunShot.UI
         private bool _hasSelectedLight;
         private bool _isSpotLight;
         private bool _isInk;
+        private bool _isCel;
+        private bool _hasLines;
+        private string _lineDetailText = string.Empty;
+        private string _shadeText = string.Empty;
         private string _selectedLightName = string.Empty;
         private string _lightBrightnessText = string.Empty;
         private string _lightRangeText = string.Empty;
@@ -247,6 +251,38 @@ namespace MunShot.UI
         {
             get => _isInk;
             set => SetField(ref _isInk, value);
+        }
+
+        /// <summary>Whether the Cel shaded filter is on, so its shade shows.</summary>
+        [CreateProperty]
+        public bool IsCel
+        {
+            get => _isCel;
+            set => SetField(ref _isCel, value);
+        }
+
+        /// <summary>Whether a filter with ink lines is on (Cel shaded or Ink), so the line settings show.</summary>
+        [CreateProperty]
+        public bool HasLines
+        {
+            get => _hasLines;
+            set => SetField(ref _hasLines, value);
+        }
+
+        /// <summary>How much detail the lines show, as shown next to their slider ("80%").</summary>
+        [CreateProperty]
+        public string LineDetailText
+        {
+            get => _lineDetailText;
+            set => SetField(ref _lineDetailText, value);
+        }
+
+        /// <summary>How dark Cel shaded's shade is, as shown next to its slider ("50%").</summary>
+        [CreateProperty]
+        public string ShadeText
+        {
+            get => _shadeText;
+            set => SetField(ref _shadeText, value);
         }
 
         /// <summary>The selected light's name, in capitals, as its settings' heading.</summary>

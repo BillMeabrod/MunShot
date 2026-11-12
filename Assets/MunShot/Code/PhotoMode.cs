@@ -755,6 +755,20 @@ namespace MunShot
             RaiseChanged();
         }
 
+        /// <summary>How much detail Cel shaded's and Ink's lines show: 0 only outlines, 1 all of it.</summary>
+        public void SetLineDetail(float detail)
+        {
+            Look.LineDetail = Mathf.Clamp01(detail);
+            RaiseChanged();
+        }
+
+        /// <summary>How dark Cel shaded's shaded tone is: 0 lightest, 1 darkest.</summary>
+        public void SetShadeDarkness(float darkness)
+        {
+            Look.ShadeDarkness = Mathf.Clamp01(darkness);
+            RaiseChanged();
+        }
+
         /// <summary>An Ink look's name ("Blueprint").</summary>
         public static string InkLookName(InkLook look) => Localization.Translate("MunShot/InkLook/" + look);
 

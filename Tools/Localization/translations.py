@@ -74,6 +74,8 @@ T = {
     "MunShot/InkLook/Sepia": ["Sepia", "Sépia", "Seppia", "Sepia", "セピア", "세피아", "Sepia", "Сепия", "棕褐色", "Sépia", "棕褐色"],
     "MunShot/InkLook/Chalk": ["Kreide", "Craie", "Gesso", "Tiza", "チョーク", "분필", "Kreda", "Мел", "粉笔", "Giz", "粉筆"],
     "MunShot/UI/InkColor": ["Tintenfarbe", "Couleur de l'encre", "Colore dell'inchiostro", "Color de la tinta", "インクの色", "잉크 색", "Kolor tuszu", "Цвет туши", "墨水颜色", "Cor da tinta", "墨水顏色"],
+    "MunShot/UI/LineDetail": ["Liniendetail", "Détail des traits", "Dettaglio delle linee", "Detalle de líneas", "線の細かさ", "선 디테일", "Szczegółowość linii", "Детализация линий", "线条细节", "Detalhe das linhas", "線條細節"],
+    "MunShot/UI/ShadeDarkness": ["Schattentiefe", "Intensité des ombres", "Intensità dell'ombra", "Oscuridad de la sombra", "影の濃さ", "그림자 농도", "Głębia cienia", "Глубина тени", "阴影深度", "Intensidade da sombra", "陰影深度"],
     "MunShot/UI/PaperColor": ["Papierfarbe", "Couleur du papier", "Colore della carta", "Color del papel", "紙の色", "종이 색", "Kolor papieru", "Цвет бумаги", "纸张颜色", "Cor do papel", "紙張顏色"],
     "MunShot/UI/Fisheye": ["Fischauge", "Fisheye", "Fisheye", "Ojo de pez", "魚眼", "어안", "Rybie oko", "Рыбий глаз", "鱼眼", "Olho de peixe", "魚眼"],
     "MunShot/UI/Grid": ["Raster", "Grille", "Griglia", "Cuadrícula", "グリッド", "격자", "Siatka", "Сетка", "网格", "Grade", "格線"],

@@ -58,6 +58,7 @@ namespace MunShot.Cameras
         private static readonly int TerrainId = Shader.PropertyToID("_MunShotTerrain");
         private static readonly int HasTerrainId = Shader.PropertyToID("_MunShotHasTerrain");
         private static readonly int CloudsShownId = Shader.PropertyToID("_MunShotCloudsShown");
+        private static readonly int LineDetailId = Shader.PropertyToID("_MunShotLineDetail");
         private static readonly int DepthId = Shader.PropertyToID("_CameraDepthTexture");
         private static readonly int NormalsId = Shader.PropertyToID("_CameraNormalsTexture");
         private static readonly int BlitScaleBiasId = Shader.PropertyToID("_BlitScaleBias");
@@ -80,6 +81,7 @@ namespace MunShot.Cameras
             public TextureHandle Effects;
             public TextureHandle Terrain;
             public float CloudsShown;
+            public float LineDetail;
             public bool Taken;
             public Material Material;
             public int Pass;
@@ -155,6 +157,9 @@ namespace MunShot.Cameras
 
         /// <summary>How much the game's volume clouds show (0 to 1), so the lines behind them fade.</summary>
         public float CloudsShown { get; set; }
+
+        /// <summary>How much detail the lines show: 1 all of it, 0 only outlines, coasts and the planet's edge.</summary>
+        public float LineDetail { get; set; } = 1f;
         public Matrix4x4 FarViewProjection { get; set; } = Matrix4x4.identity;
 
         public RenderPassEvent Event => _onPaper ? RenderPassEvent.AfterRenderingPostProcessing : RenderPassEvent.BeforeRenderingPostProcessing;
@@ -189,7 +194,8 @@ namespace MunShot.Cameras
                 FarPlanet = FarPlanet,
                 FarMetres = FarMetres,
                 FarSea = FarSea,
-                CloudsShown = CloudsShown
+                CloudsShown = CloudsShown,
+                LineDetail = LineDetail
             };
 
             if (FarBody != null && FarPlanet.w > 0f) inputs.FarSurface = DrawFarSurface(renderGraph, color);
@@ -315,6 +321,7 @@ namespace MunShot.Cameras
                 passData.Effects = inputs.Effects;
                 passData.Terrain = inputs.Terrain;
                 passData.CloudsShown = inputs.CloudsShown;
+                passData.LineDetail = inputs.LineDetail;
                 passData.Taken = inputs.Taken;
                 passData.Material = inputs.Material;
                 passData.Pass = pass;
@@ -374,6 +381,7 @@ namespace MunShot.Cameras
                     SetIfThere(properties, TerrainId, data.Terrain);
                     properties.SetFloat(HasTerrainId, data.Terrain.IsValid() ? 1f : 0f);
                     properties.SetFloat(CloudsShownId, data.CloudsShown);
+                    properties.SetFloat(LineDetailId, data.LineDetail);
                     properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
                     context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
                 });

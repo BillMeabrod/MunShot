@@ -83,9 +83,16 @@ namespace MunShot
         }
 
         // The pause menu doesn't pause the game, so closing photo mode under it leaves the game as the player had it;
-        // the pause menu's own windows (settings, save, quit) then never open over photo mode's frozen scene
+        // the pause menu's own windows (settings, save, quit) then never open over photo mode's frozen scene. Esc opens
+        // the pause menu: with the pose controls on screen it closes them instead, and the pause menu again, as Esc
+        // closes the window on top first
         private void OnPauseMenuOpened()
         {
+            if (_photoMode.IsOpen && _window != null && _window.ClosePoseControls())
+            {
+                GameManager.Instance?.Game?.UI?.EscapeMenu?.ResumeGame();
+                return;
+            }
             _photoMode.Close();
             _pauseMenuButton.OnPauseMenuOpened();
         }

@@ -123,6 +123,8 @@ namespace MunShot.UI
         private readonly List<(InkLook look, Button button)> _inkLooks = new List<(InkLook, Button)>();
         private ColorPicker _inkColor;
         private ColorPicker _paperColor;
+        private Slider _lineDetail;
+        private Slider _shade;
         private Slider _lightBrightness;
         private Slider _lightRange;
         private Slider _spotAngle;
@@ -216,6 +218,14 @@ namespace MunShot.UI
 
         /// <summary>Whether a text box in photo mode's windows has the keyboard, so typing isn't photo mode's keys.</summary>
         public bool IsTyping => _poseControls != null && _poseControls.IsTyping;
+
+        /// <summary>Closes the pose controls window if it's on screen, and says whether it was (Esc closes it first).</summary>
+        public bool ClosePoseControls()
+        {
+            if (_poseControls == null || !_poseControls.IsShown) return false;
+            _poseControls.Close();
+            return true;
+        }
 
         /// <summary>
         /// Whether the mouse is over UI that takes clicks (the overlay's panels, the Bring in menu, any window on the
@@ -382,12 +392,25 @@ namespace MunShot.UI
             _paperColor = Required<ColorPicker>(root, "paper-color");
             _inkColor?.RegisterValueChangedCallback(change => _photoMode.SetInkColor(change.newValue));
             _paperColor?.RegisterValueChangedCallback(change => _photoMode.SetPaperColor(change.newValue));
+
+            // Cel shaded's and Ink's lines, and Cel shaded's shade
+            _lineDetail = Required<Slider>(root, "line-detail");
+            _shade = Required<Slider>(root, "shade");
+            _lineDetail?.RegisterValueChangedCallback(change => _photoMode.SetLineDetail(change.newValue));
+            _shade?.RegisterValueChangedCallback(change => _photoMode.SetShadeDarkness(change.newValue));
         }
 
-        // The Ink filter's settings while it's on: which look its colours are (if they're one), and the pickers on them
+        // The Ink filter's settings while it's on: which look its colours are (if they're one), and the pickers on them;
+        // and the line settings while Cel shaded or Ink is on, and the shade while Cel shaded is
         private void RefreshInk(PhotoLook look)
         {
             _model.IsInk = look.Filter == PhotoFilter.Ink;
+            _model.IsCel = look.Filter == PhotoFilter.CelShaded;
+            _model.HasLines = _model.IsInk || _model.IsCel;
+            _lineDetail?.SetValueWithoutNotify(look.LineDetail);
+            _model.LineDetailText = look.LineDetail.ToString("P0", CultureInfo.CurrentCulture);
+            _shade?.SetValueWithoutNotify(look.ShadeDarkness);
+            _model.ShadeText = look.ShadeDarkness.ToString("P0", CultureInfo.CurrentCulture);
             foreach ((InkLook inkLook, Button button) in _inkLooks)
             {
                 (Color ink, Color paper) = PhotoLook.InkLookColors(inkLook);

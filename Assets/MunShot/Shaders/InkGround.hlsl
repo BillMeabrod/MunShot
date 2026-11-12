@@ -94,10 +94,12 @@ float PaintLineAt(float2 uv, bool crowded)
     if (_MunShotTaken <= 0 || !DrawnDeferred(uv)) return 0;
     bool ground = FacingUp(uv);
     if (!ground && crowded) return 0;
+    if (_MunShotLineDetail <= 0) return 0;
     float2 x = float2(_MunShotPixel.x * LinePixels, 0);
     float2 y = float2(0, _MunShotPixel.y * LinePixels);
     float change = max(ChangeAcross(uv, x, ground), ChangeAcross(uv, y, ground));
-    if (change <= (ground ? GroundPaint : WallPaint)) return 0;
+    float fade = 1 + (1 - saturate(_MunShotLineDetail)) * PaintFade;
+    if (change <= (ground ? GroundPaint : WallPaint) * fade) return 0;
     return ground ? CoastInk(uv) : 1;
 }
 

@@ -37,6 +37,14 @@ static const float3 Ink = float3(0.02, 0.02, 0.025);
 static const float OutlineWidth = 2;
 static const float InnerWidth = 1;
 static const float InnerCrease = 0.35;
+// How much detail the lines show, as the player sets it (MunShot.Cameras.PhotoLook): 1 all of it; less raises the bar
+// for the corner, slope and paint lines (corners must turn up to CornerFade more, slopes be steeper, up to the cosine
+// SlopeFadeCos, and paint change up to PaintFade times more), until at 0 only outlines, coasts and the planet's edge
+// are left
+float _MunShotLineDetail;
+static const float CornerFade = 0.65;
+static const float SlopeFadeCos = 0.71;
+static const float PaintFade = 3;
 // The planet the camera is near, in the world the camera is in: xyz its centre, w its radius (0 when there's none);
 // and where the camera is
 float4 _MunShotPlanet;
@@ -62,10 +70,9 @@ static const float Sea = 0.5;
 // slopes are outlined and not a ship's or a building's
 TEXTURE2D_X(_MunShotTerrain);
 float _MunShotHasTerrain;
-// The planet's ground is steep where it leans more than about 20 degrees from level (as the cosine of that, and its
-// sine for the faraway view's lean): a line is drawn where steep ground meets level (a crater's wall, a ridge, a cliff)
+// The planet's ground is steep where it leans more than about 20 degrees from level (as the cosine of that), with all
+// the detail: a line is drawn where steep ground meets level (a crater's wall, a ridge, a cliff)
 static const float SteepCos = 0.94;
-static const float SteepSin = 0.34;
 // From FadeFrom metres above the planet, its own lines (its coasts, the colours on its ground) fade, to Faded of the
 // way from the paper to the ink by HighUp; and then fade out over CoastFadePixels before its edge, looked for
 // CoastFadeSteps times that far out in each of CoastFadeDirections
@@ -333,6 +340,13 @@ float LinesAt(float2 uv, bool crowded)
     bool ground[5][5];
     bool steep[5][5];
 
+    // How much detail the lines show: how far a corner must turn, and how steep a slope must be (as the cosine and sine
+    // of its lean), for a line; none of either at 0
+    float detail = saturate(_MunShotLineDetail);
+    float cornerTurn = detail > 0 ? InnerCrease + (1 - detail) * CornerFade : 3;
+    float steepCos = lerp(SlopeFadeCos, SteepCos, detail);
+    float steepSin = sqrt(1 - steepCos * steepCos);
+
     // Up, away from the planet's centre, where the pixel is (for the camera's own terrain)
     float3 up = 0;
     if (_MunShotPlanet.w > 0)
@@ -363,8 +377,8 @@ float LinesAt(float2 uv, bool crowded)
             terrain[i][j] = !wet[i][j] && w[i][j] > 0 && _MunShotHasTerrain > 0 && _MunShotPlanet.w > 0
                             && SAMPLE_TEXTURE2D_X_LOD(_MunShotTerrain, sampler_PointClamp, at, 0).r > 0.5;
             ground[i][j] = terrain[i][j] || (farSurface[i][j] && !farSea[i][j]);
-            steep[i][j] = terrain[i][j] ? dot(facing[i][j], up) < SteepCos
-                        : ground[i][j] && length(surface.ba * 2 - 1) > SteepSin;
+            steep[i][j] = detail > 0 && (terrain[i][j] ? dot(facing[i][j], up) < steepCos
+                                         : ground[i][j] && length(surface.ba * 2 - 1) > steepSin);
         }
     }
 
@@ -431,7 +445,7 @@ float LinesAt(float2 uv, bool crowded)
                 coast = max(coast, saturate(OutlineWidth * 0.5 + 0.5 - distance));
             else if (slope)
                 coast = max(coast, saturate(InnerWidth * 0.5 + 0.5 - distance));
-            else if (turn > InnerCrease)
+            else if (turn > cornerTurn)
             {
                 float corner = inner * saturate(InnerWidth * 0.5 + 0.5 - distance);
                 if (onTerrain) coast = max(coast, corner);

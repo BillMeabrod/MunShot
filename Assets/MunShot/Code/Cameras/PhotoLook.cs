@@ -82,14 +82,12 @@ namespace MunShot.Cameras
         private const float OldFilmVignette = 0.5f;
 
         // Space age, as 16 mm colour film from the first trips to the Moon: washed-out colour, a little warmer, and
-        // flatter; the blacks lifted to a milky green-grey and the whites dimmed to ivory; and heavy grain
+        // flatter; the blacks lifted to a milky green-grey and the whites dimmed to ivory
         private const float SpaceAgeSaturation = -30f;
         private const float SpaceAgeWarmth = 8f;
         private const float SpaceAgeContrast = -15f;
         private static readonly Vector4 SpaceAgeLift = new Vector4(0.93f, 1f, 0.94f, 0.06f);
         private static readonly Vector4 SpaceAgeGain = new Vector4(1f, 0.97f, 0.85f, -0.05f);
-        private const float SpaceAgeGrain = 0.6f;
-        private const float SpaceAgeGrainResponse = 0.7f;
 
         // Cel shaded's clear sky is in flat tones only from orbit: none below this share of the way up the atmosphere,
         // all of them at its top (always, where there's none)
@@ -130,7 +128,6 @@ namespace MunShot.Cameras
         private WhiteBalance _whiteBalance;
         private ChannelMixer _channelMixer;
         private LiftGammaGain _liftGammaGain;
-        private FilmGrain _filmGrain;
         private ReduxAmbientOcclusion _occlusion;
         private CelShading _celShading;
         private InkLines _celOutlines;
@@ -197,6 +194,16 @@ namespace MunShot.Cameras
         /// <summary>The filter over the picture; <see cref="PhotoFilter.None"/> for none.</summary>
         public PhotoFilter Filter { get; set; }
 
+        /// <summary>
+        /// How much detail Cel shaded's and Ink's lines show: 0 only outlines, coasts and the planet's edge, to 1, all of
+        /// it (corners, slopes and paint lines too).
+        /// </summary>
+        public float LineDetail { get; set; } = 1f;
+
+        /// <summary>How dark Cel shaded's shaded tone is: 0 lightest, 1 darkest, half as it's drawn by default.</summary>
+        public float ShadeDarkness { get; set; } = DefaultShadeDarkness;
+        public const float DefaultShadeDarkness = 0.5f;
+
         /// <summary>The Ink filter's lines and black, and its paper, as they'd be picked (sRGB).</summary>
         public Color InkColor { get; set; }
         public Color PaperColor { get; set; }
@@ -234,6 +241,8 @@ namespace MunShot.Cameras
             ResetColor();
             Filter = PhotoFilter.None;
             (InkColor, PaperColor) = InkLookColors(InkLook.Classic);
+            LineDetail = 1f;
+            ShadeDarkness = DefaultShadeDarkness;
             _volumeLayers = -1;
 
             _profile = ScriptableObject.CreateInstance<VolumeProfile>();
@@ -246,7 +255,6 @@ namespace MunShot.Cameras
             _whiteBalance = _profile.Add<WhiteBalance>(overrides: false);
             _channelMixer = _profile.Add<ChannelMixer>(overrides: false);
             _liftGammaGain = _profile.Add<LiftGammaGain>(overrides: false);
-            _filmGrain = _profile.Add<FilmGrain>(overrides: false);
             _occlusion = _profile.Add<ReduxAmbientOcclusion>(overrides: false);
 
             // On the layer the game keeps its post-processing volumes on, which its cameras read
@@ -342,7 +350,6 @@ namespace MunShot.Cameras
             UnityEngine.Object.Destroy(_whiteBalance);
             UnityEngine.Object.Destroy(_channelMixer);
             UnityEngine.Object.Destroy(_liftGammaGain);
-            UnityEngine.Object.Destroy(_filmGrain);
             UnityEngine.Object.Destroy(_occlusion);
             UnityEngine.Object.Destroy(_profile);
             _holder = null;
@@ -353,7 +360,6 @@ namespace MunShot.Cameras
             _whiteBalance = null;
             _channelMixer = null;
             _liftGammaGain = null;
-            _filmGrain = null;
             _occlusion = null;
             _profile = null;
             _logInfo("Photo mode: photo look taken away.");
@@ -407,9 +413,6 @@ namespace MunShot.Cameras
             ApplyChannelMixer(oldFilm ? SepiaMix : null);
             Set(_liftGammaGain.lift, oldFilm || spaceAge, oldFilm ? OldFilmLift : SpaceAgeLift);
             Set(_liftGammaGain.gain, oldFilm || spaceAge, oldFilm ? OldFilmGain : SpaceAgeGain);
-            Set(_filmGrain.type, spaceAge, FilmGrainLookup.Medium2);
-            Set(_filmGrain.intensity, spaceAge, SpaceAgeGrain);
-            Set(_filmGrain.response, spaceAge, SpaceAgeGrainResponse);
 
             // Cel shaded has no soft shadows in creases: Redux's ambient occlusion, drawn over the picture after the cel
             // pass, would put grey smudges on its flat colours
@@ -483,6 +486,7 @@ namespace MunShot.Cameras
                     _ink.FarViewProjection = farViewProjection;
                 }
                 _celShading.IsOn = cel;
+                _celShading.Shade = Mathf.Clamp01(ShadeDarkness);
                 _celOutlines.IsOn = cel;
                 _celEffects.IsOn = cel;
                 // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has
@@ -495,6 +499,9 @@ namespace MunShot.Cameras
                 _inkEffects.IsOn = ink || cel;
                 if (ink || cel) DrawPlumesAfter(_inkBeforeEffects);
                 _ink.IsOn = ink;
+                float lineDetail = Mathf.Clamp01(LineDetail);
+                _celOutlines.LineDetail = lineDetail;
+                _ink.LineDetail = lineDetail;
                 _ink.Lens = LensParameters(intensity);
                 // The paper is drawn after the post-processing, into the picture's linear colours
                 _ink.InkColor = InkColor.linear;
