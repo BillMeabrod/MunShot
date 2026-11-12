@@ -19,6 +19,10 @@ namespace MunShot.Cameras
     ///   picture; among a tree's leaves, only the outlines. With what <see cref="InkCapture"/> took earlier in the
     ///   frame, also ground lines (road markings, kerbs) and the kerbals' pupils and dark hair; and solid black wherever
     ///   the finished picture (copied just before) was near black.
+    /// Both draw the engines' exhaust and smoke as a cartoon cloud (<see cref="InkFrame.Effects"/>): no lines inside,
+    /// an outline round it; over the picture, <see cref="CelEffects"/> has drawn it in flat tones; on paper, it's
+    /// washed lightly with the ink. Both fade the lines behind the planet's clouds (the game's own cloud texture, as
+    /// much as <see cref="CloudsShown"/>).
     /// </summary>
     internal sealed class InkLines : ICameraRenderHook
     {
@@ -45,8 +49,15 @@ namespace MunShot.Cameras
         private static readonly int FarSurfaceId = Shader.PropertyToID("_MunShotFarSurface");
         private static readonly int FarSeaId = Shader.PropertyToID("_MunShotFarSea");
         private static readonly int FarViewProjectionId = Shader.PropertyToID("_MunShotFarViewProjection");
+        private static readonly int HasFarSurfaceId = Shader.PropertyToID("_MunShotHasFarSurface");
         private static readonly int PackedMapId = Shader.PropertyToID("_PackedMap");
+        private static readonly int NormalMapId = Shader.PropertyToID("_NormalMap");
         private static readonly int PictureId = Shader.PropertyToID("_MunShotPicture");
+        private static readonly int EffectsId = Shader.PropertyToID("_MunShotEffects");
+        private static readonly int HasEffectsId = Shader.PropertyToID("_MunShotHasEffects");
+        private static readonly int TerrainId = Shader.PropertyToID("_MunShotTerrain");
+        private static readonly int HasTerrainId = Shader.PropertyToID("_MunShotHasTerrain");
+        private static readonly int CloudsShownId = Shader.PropertyToID("_MunShotCloudsShown");
         private static readonly int DepthId = Shader.PropertyToID("_CameraDepthTexture");
         private static readonly int NormalsId = Shader.PropertyToID("_CameraNormalsTexture");
         private static readonly int BlitScaleBiasId = Shader.PropertyToID("_BlitScaleBias");
@@ -66,6 +77,9 @@ namespace MunShot.Cameras
             public TextureHandle KerbalInk;
             public TextureHandle Leaves;
             public TextureHandle Picture;
+            public TextureHandle Effects;
+            public TextureHandle Terrain;
+            public float CloudsShown;
             public bool Taken;
             public Material Material;
             public int Pass;
@@ -81,6 +95,7 @@ namespace MunShot.Cameras
             public Vector4 FarPlanet;
             public float FarMetres;
             public TextureHandle FarSurface;
+            public bool FarSea;
         }
 
         private readonly Material _material;
@@ -131,11 +146,15 @@ namespace MunShot.Cameras
         public float FarMetres { get; set; }
 
         /// <summary>
-        /// The faraway planet itself (its renderer in that view; none for a planet with no sea) and that view's
-        /// camera's view and projection, as drawn into a texture: where its surface is seen and how smooth it is there
-        /// is drawn, for its coasts.
+        /// The faraway planet itself (its renderer in that view), whether it has a sea, and that view's camera's view and
+        /// projection, as drawn into a texture: where its surface is seen, how smooth it is there and which way it leans
+        /// is drawn, for its coasts (with a sea) and its relief (crater rims, ridges).
         /// </summary>
         public Renderer FarBody { get; set; }
+        public bool FarSea { get; set; }
+
+        /// <summary>How much the game's volume clouds show (0 to 1), so the lines behind them fade.</summary>
+        public float CloudsShown { get; set; }
         public Matrix4x4 FarViewProjection { get; set; } = Matrix4x4.identity;
 
         public RenderPassEvent Event => _onPaper ? RenderPassEvent.AfterRenderingPostProcessing : RenderPassEvent.BeforeRenderingPostProcessing;
@@ -168,12 +187,19 @@ namespace MunShot.Cameras
                 FarLook = FarLook,
                 FarEye = FarEye,
                 FarPlanet = FarPlanet,
-                FarMetres = FarMetres
+                FarMetres = FarMetres,
+                FarSea = FarSea,
+                CloudsShown = CloudsShown
             };
 
             if (FarBody != null && FarPlanet.w > 0f) inputs.FarSurface = DrawFarSurface(renderGraph, color);
 
             InkFrame ink = frameData.Contains<InkFrame>() ? frameData.Get<InkFrame>() : null;
+            if (ink != null)
+            {
+                inputs.Effects = ink.Effects;
+                inputs.Terrain = ink.Terrain;
+            }
             if (!_onPaper)
             {
                 // The ground lines, with the depth now as the depth once everything solid is drawn
@@ -190,7 +216,7 @@ namespace MunShot.Cameras
 
             // On paper, the finished picture is copied first, as it's then drawn over; with what was taken earlier in the
             // frame (without all of which there are just the lines and the black), and where lines crowd, worked out first
-            inputs.Picture = CopyOf(renderGraph, color);
+            inputs.Picture = CopyOf(renderGraph, color, "MunShot Ink Picture");
 
             inputs.Taken = ink != null && ink.IsComplete;
             if (inputs.Taken)
@@ -206,15 +232,15 @@ namespace MunShot.Cameras
             Draw(renderGraph, "MunShot Ink", PaperPass, color, inputs);
         }
 
-        // A copy of the picture as it is now
-        private static TextureHandle CopyOf(RenderGraph renderGraph, TextureHandle color)
+        /// <summary>A copy of the picture as it is now.</summary>
+        internal static TextureHandle CopyOf(RenderGraph renderGraph, TextureHandle color, string name)
         {
             TextureDesc pictureDesc = renderGraph.GetTextureDesc(color);
-            pictureDesc.name = "MunShot Ink Picture";
+            pictureDesc.name = name;
             pictureDesc.clearBuffer = false;
             pictureDesc.depthBufferBits = DepthBits.None;
             TextureHandle picture = renderGraph.CreateTexture(pictureDesc);
-            renderGraph.AddBlitPass(color, picture, Vector2.one, Vector2.zero, passName: "MunShot Ink Picture");
+            renderGraph.AddBlitPass(color, picture, Vector2.one, Vector2.zero, passName: name);
             return picture;
         }
 
@@ -224,20 +250,26 @@ namespace MunShot.Cameras
             public Material Material;
         }
 
-        // Where the faraway planet's surface is seen and how smooth it is there, drawn from that view's camera with the
-        // planet's own mesh
+        // Where the faraway planet's surface is seen, how smooth it is there and which way it leans from the smooth sphere,
+        // drawn from that view's camera with the planet's own mesh
         private TextureHandle DrawFarSurface(RenderGraph renderGraph, TextureHandle color)
         {
             Material surface = FarBody.sharedMaterial;
-            if (surface == null || !surface.HasTexture(PackedMapId)) return TextureHandle.nullHandle;
-            _farMaterial.SetTexture(PackedMapId, surface.GetTexture(PackedMapId));
+            if (surface == null) return TextureHandle.nullHandle;
+            // Its packed map (only a planet with a sea has one) and its normal map, none standing for a smooth surface
+            Texture packed = surface.HasTexture(PackedMapId) ? surface.GetTexture(PackedMapId) : null;
+            _farMaterial.SetTexture(PackedMapId, packed != null ? packed : Texture2D.blackTexture);
+            Texture normals = surface.HasTexture(NormalMapId) ? surface.GetTexture(NormalMapId) : null;
+            _farMaterial.SetTexture(NormalMapId, normals != null ? normals : Texture2D.normalTexture);
+            _farMaterial.SetTextureScale(NormalMapId, normals != null ? surface.GetTextureScale(NormalMapId) : Vector2.one);
+            _farMaterial.SetTextureOffset(NormalMapId, normals != null ? surface.GetTextureOffset(NormalMapId) : Vector2.zero);
             _farMaterial.SetMatrix(FarViewProjectionId, FarViewProjection);
             _farMaterial.SetVector(FarEyeId, FarEye);
 
             TextureDesc desc = renderGraph.GetTextureDesc(color);
             desc.name = "MunShot Far Surface";
             desc.depthBufferBits = DepthBits.None;
-            desc.format = GraphicsFormat.R8G8_UNorm;
+            desc.format = GraphicsFormat.R8G8B8A8_UNorm;
             desc.clearBuffer = true;
             desc.clearColor = Color.clear;
             desc.msaaSamples = MSAASamples.None;
@@ -280,6 +312,9 @@ namespace MunShot.Cameras
                 passData.KerbalInk = inputs.KerbalInk;
                 passData.Leaves = inputs.Leaves;
                 passData.Picture = inputs.Picture;
+                passData.Effects = inputs.Effects;
+                passData.Terrain = inputs.Terrain;
+                passData.CloudsShown = inputs.CloudsShown;
                 passData.Taken = inputs.Taken;
                 passData.Material = inputs.Material;
                 passData.Pass = pass;
@@ -295,13 +330,15 @@ namespace MunShot.Cameras
                 passData.FarPlanet = inputs.FarPlanet;
                 passData.FarMetres = inputs.FarMetres;
                 passData.FarSurface = inputs.FarSurface;
+                passData.FarSea = inputs.FarSea;
                 foreach (TextureHandle input in new[]
                          {
                              inputs.Depth, inputs.Normals, inputs.SceneDepth, inputs.Albedo, inputs.OpaqueDepth,
-                             inputs.KerbalInk, inputs.Leaves, inputs.Picture, inputs.FarSurface
+                             inputs.KerbalInk, inputs.Leaves, inputs.Picture, inputs.FarSurface, inputs.Effects,
+                             inputs.Terrain
                          })
                     if (input.IsValid()) draw.UseTexture(input);
-                // For the game's water depth, which it sets as a global texture
+                // For the game's water depth and its clouds, which it sets as global textures
                 draw.UseAllGlobalTextures(true);
                 // The outlines are laid over the picture (blended by their coverage); every other pass covers all of
                 // its target (the paper reads the picture's copy, not the picture)
@@ -323,7 +360,8 @@ namespace MunShot.Cameras
                     properties.SetVector(FarPlanetId, data.FarPlanet);
                     properties.SetFloat(FarMetresId, data.FarMetres);
                     SetIfThere(properties, FarSurfaceId, data.FarSurface);
-                    properties.SetFloat(FarSeaId, data.FarSurface.IsValid() ? 1f : 0f);
+                    properties.SetFloat(HasFarSurfaceId, data.FarSurface.IsValid() ? 1f : 0f);
+                    properties.SetFloat(FarSeaId, data.FarSurface.IsValid() && data.FarSea ? 1f : 0f);
                     properties.SetFloat(TakenId, data.Taken ? 1f : 0f);
                     SetIfThere(properties, SceneDepthId, data.SceneDepth);
                     SetIfThere(properties, AlbedoId, data.Albedo);
@@ -331,6 +369,11 @@ namespace MunShot.Cameras
                     SetIfThere(properties, KerbalInkId, data.KerbalInk);
                     SetIfThere(properties, LeavesId, data.Leaves);
                     SetIfThere(properties, PictureId, data.Picture);
+                    SetIfThere(properties, EffectsId, data.Effects);
+                    properties.SetFloat(HasEffectsId, data.Effects.IsValid() ? 1f : 0f);
+                    SetIfThere(properties, TerrainId, data.Terrain);
+                    properties.SetFloat(HasTerrainId, data.Terrain.IsValid() ? 1f : 0f);
+                    properties.SetFloat(CloudsShownId, data.CloudsShown);
                     properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
                     context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
                 });

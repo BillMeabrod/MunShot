@@ -76,6 +76,10 @@ namespace MunShot.Cameras
         private static readonly float[,] SepiaMix = Tinted(new Vector3(0.3f, 0.59f, 0.11f), new Vector3(1.1f, 0.93f, 0.68f));
         private static readonly Vector4 OldFilmLift = new Vector4(1f, 0.94f, 0.86f, 0.08f);
         private static readonly Vector4 OldFilmGain = new Vector4(1f, 1f, 1f, -0.06f);
+
+        // Cel shaded's clear sky is in flat tones only from orbit: none below this share of the way up the atmosphere,
+        // all of them at its top (always, where there's none)
+        private const float SkyBandsFrom = 0.6f;
         private const float OldFilmContrast = -15f;
         private const float OldFilmVignette = 0.5f;
 
@@ -117,8 +121,15 @@ namespace MunShot.Cameras
         private ReduxAmbientOcclusion _occlusion;
         private CelShading _celShading;
         private InkLines _celOutlines;
+        private InkCapture _inkBeforeTerrain;
         private InkCapture _inkScene;
         private InkCapture _inkOpaque;
+        private InkCapture _inkBeforeEffects;
+        private InkCapture _inkEffects;
+        // Redux's exhaust and smoke pass, when it's been moved after _inkBeforeEffects, and what came after it before
+        private ICameraRenderHook _movedPlumes;
+        private readonly List<ICameraRenderHook> _afterPlumes = new List<ICameraRenderHook>();
+        private CelEffects _celEffects;
         private InkLines _ink;
 
         // The kerbals' eyeballs and dark hair, for Ink, and when they're next looked for
@@ -235,13 +246,22 @@ namespace MunShot.Cameras
             {
                 _celShading = new CelShading(CelShader, _logInfo);
                 _celOutlines = new InkLines(CelShader, onPaper: false);
+                _inkBeforeTerrain = new InkCapture(CelShader, InkCapture.Stage.BeforeTerrain);
                 _inkScene = new InkCapture(CelShader, InkCapture.Stage.Scene);
                 _inkOpaque = new InkCapture(CelShader, InkCapture.Stage.Opaque);
+                _inkBeforeEffects = new InkCapture(CelShader, InkCapture.Stage.BeforeEffects);
+                _inkEffects = new InkCapture(CelShader, InkCapture.Stage.Effects);
+                _celEffects = new CelEffects(CelShader);
                 _ink = new InkLines(CelShader, onPaper: true);
                 CameraRenderHooks.Register(_celShading);
                 CameraRenderHooks.Register(_celOutlines);
+                CameraRenderHooks.Register(_inkBeforeTerrain);
                 CameraRenderHooks.Register(_inkScene);
                 CameraRenderHooks.Register(_inkOpaque);
+                CameraRenderHooks.Register(_inkBeforeEffects);
+                CameraRenderHooks.Register(_inkEffects);
+                // After the effects mask, at the same time: hooks at one time go in the order registered
+                CameraRenderHooks.Register(_celEffects);
                 CameraRenderHooks.Register(_ink);
                 _nextKerbalSearch = 0f;
             }
@@ -272,18 +292,31 @@ namespace MunShot.Cameras
             {
                 CameraRenderHooks.Unregister(_celShading);
                 CameraRenderHooks.Unregister(_celOutlines);
+                CameraRenderHooks.Unregister(_inkBeforeTerrain);
                 CameraRenderHooks.Unregister(_inkScene);
                 CameraRenderHooks.Unregister(_inkOpaque);
+                CameraRenderHooks.Unregister(_inkBeforeEffects);
+                CameraRenderHooks.Unregister(_inkEffects);
+                CameraRenderHooks.Unregister(_celEffects);
                 CameraRenderHooks.Unregister(_ink);
+                RestorePlumes();
                 _celShading.Destroy();
                 _celOutlines.Destroy();
+                _inkBeforeTerrain.Destroy();
                 _inkScene.Destroy();
                 _inkOpaque.Destroy();
+                _inkBeforeEffects.Destroy();
+                _inkEffects.Destroy();
+                _celEffects.Destroy();
                 _ink.Destroy();
                 _celShading = null;
                 _celOutlines = null;
+                _inkBeforeTerrain = null;
                 _inkScene = null;
                 _inkOpaque = null;
+                _inkBeforeEffects = null;
+                _inkEffects = null;
+                _celEffects = null;
                 _ink = null;
                 _kerbalParts.Clear();
             }
@@ -367,34 +400,51 @@ namespace MunShot.Cameras
                 {
                     _celShading.Camera = camera;
                     _celOutlines.Camera = camera;
+                    _inkBeforeTerrain.Camera = camera;
                     _inkScene.Camera = camera;
                     _inkOpaque.Camera = camera;
+                    _inkBeforeEffects.Camera = camera;
+                    _inkEffects.Camera = camera;
+                    _celEffects.Camera = camera;
                     _ink.Camera = camera;
                     Vector3 up = Planet.UpAt(camera.transform.position, Vector3.up);
                     _celShading.Up = up;
                     _celOutlines.Up = up;
                     _ink.Up = up;
-                    // The planet, so its coasts can be faded from high above it
-                    Vector4 planet = Planet.Find(out Vector3 centre, out double radius)
-                        ? new Vector4(centre.x, centre.y, centre.z, (float)radius)
-                        : Vector4.zero;
+                    // The planet, so its coasts can be faded the higher above it the camera is, and the clear sky put in
+                    // flat tones from orbit
+                    bool found = Planet.Find(out Vector3 centre, out double radius, out double atmosphere);
+                    Vector4 planet = found ? new Vector4(centre.x, centre.y, centre.z, (float)radius) : Vector4.zero;
                     _celOutlines.Planet = planet;
                     _ink.Planet = planet;
-                    // The planet as Redux's faraway view draws it, clouds and all, for its edge
+                    float height = Vector3.Distance(camera.transform.position, centre) - (float)radius;
+                    _celEffects.SkyBands = !found ? 0f
+                        : atmosphere <= 0 ? 1f
+                        : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SkyBandsFrom * (float)atmosphere, (float)atmosphere, height));
+                    // The game's volume clouds, so the lines behind them fade and Cel shaded puts them in flat tones
+                    float cloudsShown = Planet.CloudsShown(camera);
+                    _celOutlines.CloudsShown = cloudsShown;
+                    _ink.CloudsShown = cloudsShown;
+                    _celEffects.CloudsShown = cloudsShown;
+                    // The planet as Redux's faraway view draws it, clouds and all, for its edge; only from above its
+                    // clouds, as from among them the edge would hang in the sky over the horizon
                     Matrix4x4 farLook = Matrix4x4.identity;
                     Vector3 farEye = Vector3.zero;
                     Vector4 farPlanet = Vector4.zero;
                     float farMetres = 0f;
                     Renderer farBody = null;
+                    bool farSea = false;
                     Matrix4x4 farViewProjection = Matrix4x4.identity;
-                    if (Planet.FindDrawn(out Camera farCamera, out Vector3 farCentre, out float farRadius, out farMetres, out Renderer surface, out bool sea))
+                    if (Planet.FindDrawn(out Camera farCamera, out Vector3 farCentre, out float farRadius, out farMetres, out Renderer surface, out bool sea)
+                        && Vector3.Distance(farCamera.transform.position, farCentre) > farRadius)
                     {
                         farLook = (farCamera.projectionMatrix * farCamera.worldToCameraMatrix).inverse;
                         farEye = farCamera.transform.position;
                         farPlanet = new Vector4(farCentre.x, farCentre.y, farCentre.z, farRadius);
-                        // Its coasts, from its own surface, only where it has a sea
+                        // Its own surface, for its coasts (where it has a sea) and its relief
                         farViewProjection = GL.GetGPUProjectionMatrix(farCamera.projectionMatrix, true) * farCamera.worldToCameraMatrix;
-                        if (sea) farBody = surface;
+                        farBody = surface;
+                        farSea = sea;
                     }
                     _celOutlines.FarLook = farLook;
                     _celOutlines.FarEye = farEye;
@@ -405,17 +455,24 @@ namespace MunShot.Cameras
                     _ink.FarPlanet = farPlanet;
                     _ink.FarMetres = farMetres;
                     _celOutlines.FarBody = farBody;
+                    _celOutlines.FarSea = farSea;
                     _celOutlines.FarViewProjection = farViewProjection;
                     _ink.FarBody = farBody;
+                    _ink.FarSea = farSea;
                     _ink.FarViewProjection = farViewProjection;
                 }
                 _celShading.IsOn = cel;
                 _celOutlines.IsOn = cel;
+                _celEffects.IsOn = cel;
                 // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has
                 // bent the picture under it
                 bool ink = Filter == PhotoFilter.Ink;
+                _inkBeforeTerrain.IsOn = ink || cel;
                 _inkScene.IsOn = ink || cel;
                 _inkOpaque.IsOn = ink;
+                _inkBeforeEffects.IsOn = ink || cel;
+                _inkEffects.IsOn = ink || cel;
+                if (ink || cel) DrawPlumesAfter(_inkBeforeEffects);
                 _ink.IsOn = ink;
                 _ink.Lens = LensParameters(intensity);
                 // The paper is drawn after the post-processing, into the picture's linear colours
@@ -454,6 +511,49 @@ namespace MunShot.Cameras
             }
             Material material = hair.sharedMaterial;
             return material != null && material.HasColor(HairColorId) ? material.GetColor(HairColorId) : Color.white;
+        }
+
+        // Redux's exhaust and smoke pass, which registers itself when the first engine appears, is moved after copy (taken
+        // at the same time, just before it): hooks at one time go in the order registered. What came after it is noted, so
+        // RestorePlumes can put it back where it was
+        private void DrawPlumesAfter(ICameraRenderHook copy)
+        {
+            IReadOnlyList<ICameraRenderHook> hooks = CameraRenderHooks.Hooks;
+            int at = -1;
+            for (int i = 0; i < hooks.Count && hooks[i] != copy; i++)
+                if (hooks[i].GetType().DeclaringType == typeof(Redux.VFX.Plume.Volumetric.VolumetricPlumeRenderer)) at = i;
+            if (at < 0) return;
+            ICameraRenderHook plumes = hooks[at];
+            if (_movedPlumes == null)
+            {
+                _movedPlumes = plumes;
+                for (int i = at + 1; i < hooks.Count; i++) _afterPlumes.Add(hooks[i]);
+            }
+            CameraRenderHooks.Unregister(plumes);
+            CameraRenderHooks.Register(plumes);
+        }
+
+        // Redux's exhaust and smoke pass back where it was, once photo mode's own hooks are gone: what came after it
+        // before it was moved is registered again, in order, after it
+        private void RestorePlumes()
+        {
+            if (_movedPlumes == null) return;
+            if (IsRegistered(_movedPlumes))
+                foreach (ICameraRenderHook hook in _afterPlumes)
+                    if (IsRegistered(hook))
+                    {
+                        CameraRenderHooks.Unregister(hook);
+                        CameraRenderHooks.Register(hook);
+                    }
+            _movedPlumes = null;
+            _afterPlumes.Clear();
+        }
+
+        private static bool IsRegistered(ICameraRenderHook hook)
+        {
+            foreach (ICameraRenderHook registered in CameraRenderHooks.Hooks)
+                if (registered == hook) return true;
+            return false;
         }
 
         // The fisheye as URP's lens distortion draws it, for a shader to do the same: its angle, its sigma and how far it

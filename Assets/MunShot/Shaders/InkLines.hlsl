@@ -1,8 +1,10 @@
 // MunShot's ink lines, shared by the CelShading shader's Outlines pass (over the Cel shaded picture) and its Paper pass
 // (the Ink filter: the lines alone, on white), from the camera's depth (the water's surface over it) and normals. Solid
 // lines of two weights: heavier where the depth jumps (an outline, a step, the planet's edge) or the water meets the
-// land, at any distance; lighter where the surface turns at a corner. From high above the planet, its coasts are
-// faded.
+// land, at any distance; lighter where the surface turns at a corner, or where the planet's ground turns steep (a
+// crater's wall, a ridge). The planet's own lines (its coasts and slopes, and the outlines and corners on its terrain)
+// fade, more the higher the camera is. Where the engines' exhaust and smoke cover them, none: the cartoon smoke cloud
+// they're drawn as is outlined instead. Faded where the planet's clouds cover them.
 //
 // Needs URP's Core, DeclareDepthTexture and DeclareNormalsTexture included first.
 #ifndef MUNSHOT_INK_LINES_INCLUDED
@@ -47,26 +49,39 @@ float4x4 _MunShotFarLook;
 float4 _MunShotFarEye;
 float4 _MunShotFarPlanet;
 float _MunShotFarMetres;
-// Where the faraway view sees the planet's surface (g 1), how smooth it is (r: its seas are smoother than Sea), so its
-// coasts are drawn there too, past where the camera's own ground and water end (MunShot.Cameras.InkLines' FarSurface
-// pass, from the planet's own packed map); _MunShotFarSea 0 when there's none, for a planet with no sea
+// Where the faraway view sees the planet's surface (g 1), how smooth it is (r: its seas are smoother than Sea), and
+// which way its surface leans from the smooth sphere (ba, from its normal map: -1 to 1 as 0 to 1), so its coasts and
+// slopes are drawn there too, past where the camera's own ground and water end (MunShot.Cameras.InkLines' FarSurface
+// pass, from the planet's own maps); _MunShotHasFarSurface 0 when it wasn't drawn, _MunShotFarSea 0 for a planet with
+// no sea
 TEXTURE2D_X(_MunShotFarSurface);
+float _MunShotHasFarSurface;
 float _MunShotFarSea;
 static const float Sea = 0.5;
-// From more than HighUp metres above the planet, its own lines (its coasts, the colours on its ground) are drawn
-// Faded of the way from the paper to the ink, and fade out over CoastFadePixels before its edge, looked for
+// Where the deferred pass drew the planet's own terrain (MunShot.Cameras.InkCapture's), when it was taken, so its
+// slopes are outlined and not a ship's or a building's
+TEXTURE2D_X(_MunShotTerrain);
+float _MunShotHasTerrain;
+// The planet's ground is steep where it leans more than about 20 degrees from level (as the cosine of that, and its
+// sine for the faraway view's lean): a line is drawn where steep ground meets level (a crater's wall, a ridge, a cliff)
+static const float SteepCos = 0.94;
+static const float SteepSin = 0.34;
+// From FadeFrom metres above the planet, its own lines (its coasts, the colours on its ground) fade, to Faded of the
+// way from the paper to the ink by HighUp; and then fade out over CoastFadePixels before its edge, looked for
 // CoastFadeSteps times that far out in each of CoastFadeDirections
+static const float FadeFrom = 2000;
 static const float HighUp = 20000;
 static const float Faded = 0.35;
 static const float CoastFadePixels = 48;
 static const int CoastFadeSteps = 4;
 static const int CoastFadeDirections = 8;
 
-// How much of the ink the planet's own lines get: all of it, unless the camera is high above it
+// How much of the ink the planet's own lines get: all of it near the ground, less the higher the camera is above it
 float PlanetInk()
 {
-    bool highUp = _MunShotPlanet.w > 0 && length(_MunShotEye.xyz - _MunShotPlanet.xyz) - _MunShotPlanet.w > HighUp;
-    return highUp ? Faded : 1;
+    if (_MunShotPlanet.w <= 0) return 1;
+    float height = length(_MunShotEye.xyz - _MunShotPlanet.xyz) - _MunShotPlanet.w;
+    return lerp(1, Faded, smoothstep(FadeFrom, HighUp, height));
 }
 
 // How much of an edge counts before it's inked, and how quickly it goes from none to fully black
@@ -174,6 +189,70 @@ bool Crowded(float2 uv)
     return crowd > Busy * BusyPoints;
 }
 
+// How much the engines' exhaust and smoke cover each pixel (MunShot.Cameras.InkCapture's), when it was taken
+TEXTURE2D_X(_MunShotEffects);
+float _MunShotHasEffects;
+
+// How much the exhaust and smoke cover a pixel, so the lines behind them don't show through
+float EffectsAt(float2 uv)
+{
+    return _MunShotHasEffects > 0 ? SAMPLE_TEXTURE2D_X_LOD(_MunShotEffects, sampler_LinearClamp, uv, 0).r : 0;
+}
+
+// The exhaust and smoke are drawn as a cartoon smoke cloud with a hard edge: inside it where they cover more than
+// SmokeEdge, evened out over SmokeEdgePixels round the pixel so the edge is smooth rather than grainy
+static const float SmokeEdge = 0.5;
+static const float SmokeEdgePixels = 2;
+
+bool InSmoke(float2 uv)
+{
+    float2 d = _MunShotPixel.xy * SmokeEdgePixels;
+    float cover = (2 * EffectsAt(uv) + EffectsAt(uv + d) + EffectsAt(uv - d)
+                   + EffectsAt(uv + float2(d.x, -d.y)) + EffectsAt(uv + float2(-d.x, d.y))) / 6;
+    return cover > SmokeEdge;
+}
+
+// How much ink the smoke cloud's outline gives a pixel (0 to 1): every pixel within half an outline's width of its
+// edge, as LinesAt draws an outline
+float SmokeOutlineAt(float2 uv)
+{
+    if (_MunShotHasEffects <= 0) return 0;
+    bool inside[5][5];
+    [unroll]
+    for (int i = 0; i < 5; i++)
+    {
+        [unroll]
+        for (int j = 0; j < 5; j++)
+            inside[i][j] = InSmoke(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
+    }
+    float ink = 0;
+    [unroll]
+    for (int a = 1; a <= 3; a++)
+    {
+        [unroll]
+        for (int b = 1; b <= 3; b++)
+        {
+            bool edge = inside[a][b] && (!inside[a - 1][b] || !inside[a + 1][b] || !inside[a][b - 1] || !inside[a][b + 1]);
+            if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
+        }
+    }
+    return ink;
+}
+
+// The game's volume clouds, as it draws them for the picture (KSP.VolumeCloud's, set for every shader): their light,
+// and how much they cover each pixel (alpha); and how much they show (0 to 1, as they give way to the faraway view's
+// on the way up; 0 when there are none). Lines behind them fade, and Cel shaded draws them in flat tones where they
+// cover more than CloudsEdge
+TEXTURE2D(_CloudTex);
+float _MunShotCloudsShown;
+static const float CloudsEdge = 0.5;
+
+float CloudsAt(float2 uv)
+{
+    if (_MunShotCloudsShown <= 0) return 0;
+    return saturate(SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, uv, 0).a) * _MunShotCloudsShown;
+}
+
 // Solid ink: an edge is drawn fully black, only its last sliver softened against jagged steps
 float Solid(float edge)
 {
@@ -206,8 +285,8 @@ float FarDepth(float2 uv)
     return ahead * dot(toward, forward) * _MunShotFarMetres;
 }
 
-// How much of the ink the planet's own lines get at a pixel: all of it, unless the camera is high above the planet;
-// then Faded, fading out towards its edge (the nearest of them past it)
+// How much of the ink the planet's own lines get at a pixel: all of it near the ground; higher up, less (PlanetInk),
+// fading out towards the planet's edge (the nearest of them past it)
 float CoastInk(float2 uv)
 {
     float ink = PlanetInk();
@@ -242,13 +321,22 @@ float TurnTo(float3 normal, float3 neighbour, float w, bool water)
 float LinesAt(float2 uv, bool crowded)
 {
     // The depth (as 1 / distance, 0 for the sky), whether it's water, whether it's the faraway view's (no corner is told
-    // there, and its shore is from its own sea, where its surface is drawn), and the facing, 5 by 5 round the pixel
+    // there; its shore is from its own sea, where its surface is drawn), the facing, and whether it's the planet's ground
+    // (the camera's own terrain, or the faraway view's surface) and steep there, 5 by 5 round the pixel
     float w[5][5];
     bool wet[5][5];
     bool far[5][5];
     bool farSurface[5][5];
     bool farSea[5][5];
     float3 facing[5][5];
+    bool terrain[5][5];
+    bool ground[5][5];
+    bool steep[5][5];
+
+    // Up, away from the planet's centre, where the pixel is (for the camera's own terrain)
+    float3 up = 0;
+    if (_MunShotPlanet.w > 0)
+        up = normalize(ComputeWorldSpacePosition(uv, SampleSceneDepth(uv), UNITY_MATRIX_I_VP) - _MunShotPlanet.xyz);
     [unroll]
     for (int i = 0; i < 5; i++)
     {
@@ -266,12 +354,17 @@ float LinesAt(float2 uv, bool crowded)
                 if (far[i][j]) w[i][j] = 1.0 / faraway;
             }
             wet[i][j] = water || far[i][j];
-            float2 surface = far[i][j] && _MunShotFarSea > 0
-                ? SAMPLE_TEXTURE2D_X_LOD(_MunShotFarSurface, sampler_PointClamp, at, 0).rg
+            float4 surface = far[i][j] && _MunShotHasFarSurface > 0
+                ? SAMPLE_TEXTURE2D_X_LOD(_MunShotFarSurface, sampler_PointClamp, at, 0)
                 : 0;
             farSurface[i][j] = surface.g > 0.5;
-            farSea[i][j] = surface.r > Sea;
+            farSea[i][j] = _MunShotFarSea > 0 && surface.r > Sea;
             facing[i][j] = SampleSceneNormals(at);
+            terrain[i][j] = !wet[i][j] && w[i][j] > 0 && _MunShotHasTerrain > 0 && _MunShotPlanet.w > 0
+                            && SAMPLE_TEXTURE2D_X_LOD(_MunShotTerrain, sampler_PointClamp, at, 0).r > 0.5;
+            ground[i][j] = terrain[i][j] || (farSurface[i][j] && !farSea[i][j]);
+            steep[i][j] = terrain[i][j] ? dot(facing[i][j], up) < SteepCos
+                        : ground[i][j] && length(surface.ba * 2 - 1) > SteepSin;
         }
     }
 
@@ -279,7 +372,8 @@ float LinesAt(float2 uv, bool crowded)
     float inner = w[2][2] > 0 && !crowded ? 1 : 0;
 
     // Each of the 3 by 3 round the pixel: what edge it's on, and how much of this pixel that edge's line covers (a
-    // coast's, as much as the planet's own lines get there)
+    // coast's, a slope's, or an outline's or corner's wholly on the camera's own terrain, as much as the planet's own
+    // lines get there)
     float ink = 0;
     float coast = 0;
     [unroll]
@@ -307,6 +401,13 @@ float LinesAt(float2 uv, bool crowded)
                                || (farSurface[a + 1][b] && farSea[a + 1][b] != farSea[a][b])
                                || (farSurface[a][b - 1] && farSea[a][b - 1] != farSea[a][b])
                                || (farSurface[a][b + 1] && farSea[a][b + 1] != farSea[a][b]));
+            // Wholly on the camera's own terrain (no ship, building or sky beside it): the planet's own line
+            bool onTerrain = terrain[a][b] && terrain[a - 1][b] && terrain[a + 1][b]
+                             && terrain[a][b - 1] && terrain[a][b + 1];
+            // Steep ground beside level ground (a crater's wall, a ridge, a cliff)
+            bool slope = steep[a][b]
+                         && ((ground[a - 1][b] && !steep[a - 1][b]) || (ground[a + 1][b] && !steep[a + 1][b])
+                             || (ground[a][b - 1] && !steep[a][b - 1]) || (ground[a][b + 1] && !steep[a][b + 1]));
             float turn = 0;
             if (!wet[a][b])
             {
@@ -321,11 +422,21 @@ float LinesAt(float2 uv, bool crowded)
             bool toSky = w[a - 1][b] <= 0 || w[a + 1][b] <= 0 || w[a][b - 1] <= 0 || w[a][b + 1] <= 0;
             bool toFar = far[a][b] || far[a - 1][b] || far[a + 1][b] || far[a][b - 1] || far[a][b + 1];
             if (toSky || bend > (crowded || toFar ? OutlineBend : DepthBend))
-                ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - distance));
+            {
+                float outline = saturate(OutlineWidth * 0.5 + 0.5 - distance);
+                if (onTerrain) coast = max(coast, outline);
+                else ink = max(ink, outline);
+            }
             else if (shore)
                 coast = max(coast, saturate(OutlineWidth * 0.5 + 0.5 - distance));
+            else if (slope)
+                coast = max(coast, saturate(InnerWidth * 0.5 + 0.5 - distance));
             else if (turn > InnerCrease)
-                ink = max(ink, inner * saturate(InnerWidth * 0.5 + 0.5 - distance));
+            {
+                float corner = inner * saturate(InnerWidth * 0.5 + 0.5 - distance);
+                if (onTerrain) coast = max(coast, corner);
+                else ink = max(ink, corner);
+            }
         }
     }
     return coast > 0 ? max(ink, coast * CoastInk(uv)) : ink;

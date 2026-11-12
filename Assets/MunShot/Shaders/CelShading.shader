@@ -1,4 +1,4 @@
-// MunShot's Cel shaded and Ink filters, drawn by MunShot.Cameras.CelShading, InkCapture and InkLines.
+// MunShot's Cel shaded and Ink filters, drawn by MunShot.Cameras.CelShading, CelEffects, InkCapture and InkLines.
 //
 // Flat pass: right after the game's deferred lighting, every pixel it lit is drawn again as a cartoon from URP's
 // G-buffer (the surface's own colour and facing, before any light):
@@ -23,11 +23,21 @@
 // - Paint lines: where a surface's own colour changes sharply (road markings, a logo on a wall).
 // - The kerbals' pupils, from their eyes' own texture, and dark hair.
 //
-// High above the planet, in the Outlines and Paper passes: lines only where the picture shows something there too, so
-// the planet's coasts under cloud and its edge in the haze aren't drawn (InkGround.hlsl).
+// In the Outlines and Paper passes: where the planet's ground turns steep (a crater's wall, a ridge); and from above
+// its clouds, its edge where Redux's faraway view draws it (to the top of its clouds), and its coasts and slopes out
+// to the horizon. The coasts and slopes, and the colours on its ground, fade the higher the camera is, and away near
+// the edge (InkLines.hlsl).
 //
-// KeepDepth and KerbalInk passes: InkCapture's, for the above. Leaves pass: InkLines', just before the paper (where
-// lines crowd).
+// CelEffects pass: Cel shaded's exhaust and smoke, right after Redux draws them, as a cartoon smoke cloud: in flat
+// tones inside its hard edge, the picture as it was before them outside. The Outlines and Paper passes draw nothing of
+// what's behind that cloud, and an outline round it; on paper, it's washed lightly with the ink. All from the Effects
+// pass. CelEffects also draws the planet's clouds in flat tones, and the clear sky from orbit; both passes fade the
+// lines behind the clouds (from the game's own cloud texture).
+//
+// KeepDepth, KerbalInk and Effects passes: InkCapture's, for the above (Effects: how much what was drawn between two
+// copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain among the surfaces'
+// colours). Leaves pass: InkLines', just before the paper (where lines crowd). FarSurface pass: InkLines', the faraway
+// planet's surface, for its coasts and slopes. CelEffects pass: MunShot.Cameras.CelEffects'.
 Shader "Hidden/MunShot/CelShading"
 {
     SubShader
@@ -204,6 +214,9 @@ Shader "Hidden/MunShot/CelShading"
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 bool crowded = Crowded(input.texcoord);
                 float ink = max(LinesAt(input.texcoord, crowded), PaintLineAt(input.texcoord, crowded));
+                ink *= 1 - CloudsAt(input.texcoord);
+                if (InSmoke(input.texcoord)) ink = 0;
+                ink = max(ink, SmokeOutlineAt(input.texcoord));
                 if (ink <= 0) discard;
                 return float4(Ink, ink);
             }
@@ -227,6 +240,9 @@ Shader "Hidden/MunShot/CelShading"
             #include "InkLines.hlsl"
             #include "InkPaper.hlsl"
 
+            // How much of the ink the exhaust and smoke's cloud is washed with
+            static const float Wash = 0.15;
+
             float KerbalInkAt(float2 uv)
             {
                 return SAMPLE_TEXTURE2D_X_LOD(_MunShotKerbalInk, sampler_LinearClamp, uv, 0).r;
@@ -240,8 +256,12 @@ Shader "Hidden/MunShot/CelShading"
                 // Among a tree's leaves, only the outlines, and paint lines only on the ground
                 bool leafy = Leafy(uv);
                 float ink = max(LinesAt(uv, leafy), PaintLineAt(uv, leafy));
-                ink = max(ink, Fill(input.texcoord));
                 if (_MunShotTaken > 0) ink = max(ink, KerbalInkAt(uv));
+                // The planet's clouds fade what's behind them; the exhaust and smoke hide it: inside their cloud, only a
+                // light wash
+                ink *= 1 - CloudsAt(uv);
+                ink = InSmoke(uv) ? Wash : max(ink, Fill(input.texcoord));
+                ink = max(ink, SmokeOutlineAt(uv));
                 return float4(lerp(_MunShotPaperColor.rgb, _MunShotInkColor.rgb, ink), 1);
             }
             ENDHLSL
@@ -371,9 +391,13 @@ Shader "Hidden/MunShot/CelShading"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             // The planet's packed map, from its material in Redux's faraway view: its alpha is how smooth the surface
-            // is (the seas smooth, the land rough)
+            // is (the seas smooth, the land rough; black for a planet with no sea, which has none); and its normal map,
+            // which way its surface leans from the smooth sphere
             TEXTURE2D(_PackedMap);
             SAMPLER(sampler_PackedMap);
+            TEXTURE2D(_NormalMap);
+            SAMPLER(sampler_NormalMap);
+            float4 _NormalMap_ST;
 
             // That view's camera: its view and projection (as drawn into a texture), and where it is
             float4x4 _MunShotFarViewProjection;
@@ -401,13 +425,135 @@ Shader "Hidden/MunShot/CelShading"
                 return output;
             }
 
-            // Where the faraway view sees the planet's surface (g 1): how smooth it is there (r). Only its near side,
-            // as it's drawn without depth
+            // Where the faraway view sees the planet's surface (g 1): how smooth it is there (r), and which way it
+            // leans (ba: its normal map's x and y, -1 to 1 as 0 to 1). Only its near side, as it's drawn without depth
             float4 FarSurfaceFragment(FarSurfaceVaryings input) : SV_Target
             {
                 float3 centre = UNITY_MATRIX_M._m03_m13_m23;
                 if (dot(input.positionWS - centre, _MunShotFarEye.xyz - input.positionWS) <= 0) discard;
-                return float4(SAMPLE_TEXTURE2D(_PackedMap, sampler_PackedMap, input.uv).a, 1, 0, 0);
+                float smooth = SAMPLE_TEXTURE2D(_PackedMap, sampler_PackedMap, input.uv).a;
+                float2 lean = UnpackNormalMapRGorAG(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap,
+                                                                     TRANSFORM_TEX(input.uv, _NormalMap))).xy;
+                return float4(smooth, 1, lean * 0.5 + 0.5);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "Effects"
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment EffectsFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+
+            // Just before and just after something is drawn: the picture, either side of Redux's exhaust and smoke; or
+            // the surfaces' colours, either side of the planet's terrain
+            TEXTURE2D_X(_MunShotBeforeEffects);
+            TEXTURE2D_X(_MunShotAfterEffects);
+
+            // How much a pixel must change, for how bright it is, to be just touched by what was drawn, and wholly
+            // covered
+            static const float EffectsFaint = 0.05;
+            static const float EffectsThick = 0.5;
+
+            // How much what was drawn covers the pixel: how much it changed it, for how bright it is either way
+            float4 EffectsFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                float3 before = SAMPLE_TEXTURE2D_X_LOD(_MunShotBeforeEffects, sampler_PointClamp, input.texcoord, 0).rgb;
+                float3 after = SAMPLE_TEXTURE2D_X_LOD(_MunShotAfterEffects, sampler_PointClamp, input.texcoord, 0).rgb;
+                float3 change = abs(after - before);
+                float brightest = max(Max3(before.r, before.g, before.b), Max3(after.r, after.g, after.b));
+                float covered = Max3(change.r, change.g, change.b) / max(brightest, 1e-4);
+                return smoothstep(EffectsFaint, EffectsThick, covered);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "CelEffects"
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment CelEffectsFragment
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
+            #include "InkLines.hlsl"
+
+            // The picture just before Redux draws the engines' exhaust and smoke, and a copy of it just after
+            TEXTURE2D_X(_MunShotBeforeEffects);
+            TEXTURE2D_X(_MunShotPicture);
+
+            // How much of the flat tones the clear sky gets (0 to 1): none near the ground, all of them from orbit
+            float _MunShotSkyBands;
+
+
+            // The smoke's colour is evened out over SmokeRings rings of SmokeDirections out to SmokePixels round each
+            // pixel (only what's in the cloud), so its grain doesn't show, then split into tones ToneStops apart (each
+            // twice as bright as the last: as many for a dim cloud as a bright one)
+            static const float SmokePixels = 6;
+            static const int SmokeRings = 2;
+            static const int SmokeDirections = 8;
+            static const float ToneStops = 1;
+
+            float4 Picture(float2 uv)
+            {
+                return SAMPLE_TEXTURE2D_X_LOD(_MunShotPicture, sampler_PointClamp, uv, 0);
+            }
+
+            // A colour in flat tones: its brightness to the middle of its tone, its hue kept
+            float3 Toned(float3 color)
+            {
+                float brightness = max(Luminance(color), 1e-6);
+                float tone = exp2((floor(log2(brightness) / ToneStops) + 0.5) * ToneStops);
+                return color * (tone / brightness);
+            }
+
+            // Inside the smoke cloud, the smoke and fire in flat tones. Outside it: the planet's clouds in flat tones,
+            // as they are (not evened out); the clear sky (where nothing has depth: the atmosphere's glow, the planet
+            // from far off) as it is near the ground, in flat tones from orbit (not evened out either, so the stars
+            // stay); and anything else as it was before the smoke (no thin wisps or shimmer round its cloud)
+            float4 CelEffectsFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                float2 uv = input.texcoord;
+                float4 own = Picture(uv);
+                if (!InSmoke(uv))
+                {
+                    if (CloudsAt(uv) > CloudsEdge) return float4(Toned(own.rgb), own.a);
+                    if (IsSky(SampleSceneDepth(uv))) return float4(lerp(own.rgb, Toned(own.rgb), _MunShotSkyBands), own.a);
+                    return SAMPLE_TEXTURE2D_X_LOD(_MunShotBeforeEffects, sampler_PointClamp, uv, 0);
+                }
+
+                float3 sum = own.rgb;
+                float weight = 1;
+                [unroll]
+                for (int ring = 1; ring <= SmokeRings; ring++)
+                {
+                    float radius = SmokePixels * ring / SmokeRings;
+                    [unroll]
+                    for (int d = 0; d < SmokeDirections; d++)
+                    {
+                        float angle = (d + 0.5 * (ring & 1)) * (6.2831853 / SmokeDirections);
+                        float2 at = uv + float2(cos(angle), sin(angle)) * radius * _MunShotPixel.xy;
+                        if (!InSmoke(at)) continue;
+                        sum += Picture(at).rgb;
+                        weight += 1;
+                    }
+                }
+                return float4(Toned(sum / weight), own.a);
             }
             ENDHLSL
         }

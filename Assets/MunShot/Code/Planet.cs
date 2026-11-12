@@ -1,6 +1,8 @@
 using KSP.Game;
+using KSP.Rendering.Planets;
 using KSP.Sim;
 using KSP.Sim.impl;
+using KSP.VolumeCloud;
 using UnityEngine;
 
 namespace MunShot
@@ -31,20 +33,38 @@ namespace MunShot
         }
 
         /// <summary>
-        /// The body the active vessel orbits: its centre in physics space and its radius at sea level, in metres. False
-        /// when the game can't tell.
+        /// The body the active vessel orbits: its centre in physics space, its radius at sea level and how high its
+        /// atmosphere reaches above that (0 when it has none), in metres. False when the game can't tell.
         /// </summary>
-        public static bool Find(out Vector3 centre, out double radius)
+        public static bool Find(out Vector3 centre, out double radius, out double atmosphere)
         {
             centre = Vector3.zero;
             radius = 0;
+            atmosphere = 0;
             GameInstance game = GameManager.Instance?.Game;
             CelestialBodyComponent body = game?.ViewController?.GetActiveSimVessel()?.mainBody;
             IPhysicsSpaceProvider physicsSpace = game?.UniverseView?.PhysicsSpace;
             if (body == null || physicsSpace == null) return false;
             centre = physicsSpace.PositionToPhysics(new Position(body.transform.celestialFrame, Vector3d.zero));
             radius = body.radius;
+            atmosphere = body.hasAtmosphere ? body.atmosphereDepth : 0;
             return true;
+        }
+
+        /// <summary>
+        /// How much the game's volume clouds show for a camera (0 to 1): none when it draws none for it, and less as they
+        /// give way to the faraway view's clouds on the way up (as Redux's exhaust takes them).
+        /// </summary>
+        public static float CloudsShown(Camera camera)
+        {
+            if (camera == null || !camera.TryGetComponent(out VolumeCloudRenderer clouds) || !clouds.isActiveAndEnabled) return 0f;
+            GameInstance game = GameManager.Instance?.Game;
+            CelestialBodyComponent body = game?.ViewController?.GetActiveSimVessel()?.mainBody;
+            if (body == null || game.CelestialBodies == null
+                || !game.CelestialBodies.TryGetCelestialBodyBehavior(body.bodyName, out CelestialBodyBehavior behavior))
+                return 0f;
+            PQSRenderer surface = behavior != null && behavior.PqsController != null ? behavior.PqsController.PQSRenderer : null;
+            return surface != null ? 1f - Mathf.Clamp01(surface.GetTransition(scaled: false)) : 0f;
         }
 
         /// <summary>

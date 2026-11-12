@@ -11,7 +11,8 @@ namespace MunShot.Cameras
 {
     /// <summary>
     /// What <see cref="InkLines"/> takes from earlier in the frame (Ink's paper all of it, Cel shaded's outlines the
-    /// ground's depth and colours), kept in the camera's frame data (URP resets it every frame).
+    /// ground's depth and colours; both where the terrain, exhaust and smoke are), and <see cref="CelEffects"/> too, kept in the
+    /// camera's frame data (URP resets it every frame).
     /// </summary>
     internal sealed class InkFrame : ContextItem
     {
@@ -36,6 +37,25 @@ namespace MunShot.Cameras
         /// </summary>
         public TextureHandle KerbalInk;
 
+        /// <summary>The surfaces' own colours just before the planet's terrain is drawn among them.</summary>
+        public TextureHandle BeforeTerrain;
+
+        /// <summary>
+        /// Where the planet's own terrain was drawn (0 to 1), from how much drawing it changed the surfaces' colours, so
+        /// its slopes are outlined and not a ship's or a building's.
+        /// </summary>
+        public TextureHandle Terrain;
+
+        /// <summary>The picture just before Redux draws the engines' exhaust and smoke over it.</summary>
+        public TextureHandle BeforeEffects;
+
+
+        /// <summary>
+        /// How much the engines' exhaust and smoke cover each pixel (0 to 1), from how much drawing them changed it, so
+        /// both filters can draw them as a cartoon cloud, the lines behind it hidden (<see cref="InkLines"/>, <see cref="CelEffects"/>).
+        /// </summary>
+        public TextureHandle Effects;
+
         /// <summary>Whether the deferred pass's depth and colours were taken, for the ground lines.</summary>
         public bool HasGround => SceneDepth.IsValid() && Albedo.IsValid();
 
@@ -48,25 +68,37 @@ namespace MunShot.Cameras
             Albedo = TextureHandle.nullHandle;
             OpaqueDepth = TextureHandle.nullHandle;
             KerbalInk = TextureHandle.nullHandle;
+            BeforeTerrain = TextureHandle.nullHandle;
+            Terrain = TextureHandle.nullHandle;
+            BeforeEffects = TextureHandle.nullHandle;
+            Effects = TextureHandle.nullHandle;
         }
     }
 
     /// <summary>
     /// Takes what the Ink filter needs from the frame as it's drawn, into <see cref="InkFrame"/> (MunShot's CelShading
     /// shader). A Redux camera render hook, which <see cref="PhotoLook"/> registers once for each <see cref="Stage"/>
-    /// (Scene for Cel shaded too):
+    /// (all but Opaque for Cel shaded too):
+    /// - <see cref="Stage.BeforeTerrain"/>, after URP's G-buffer pass and before Redux draws the planet's terrain into
+    ///   it (at 221): the surfaces' own colours so far, so <see cref="Stage.Scene"/> can tell where the terrain went.
     /// - <see cref="Stage.Scene"/>, right after the deferred lighting: the depth so far and the surfaces' own colours,
     ///   so the paper can tell what the deferred pass drew (the ground, buildings, trees, parts) from what's drawn after.
     /// - <see cref="Stage.Opaque"/>, before the see-through things: the depth so far, and the kerbals' own ink
     ///   (<see cref="KerbalParts"/>): their pupils, drawn from their eyes' own texture, and dark hair, so neither light
     ///   nor the visor in front changes them.
+    /// - <see cref="Stage.BeforeEffects"/> and <see cref="Stage.Effects"/>, just before and just after Redux draws the
+    ///   engines' exhaust and smoke (its volumetric plumes, their smoke trails and the ground flow, all in one pass at
+    ///   AfterRenderingTransparents): a copy of the picture, then how much drawing them changed each pixel.
     /// </summary>
     internal sealed class InkCapture : ICameraRenderHook
     {
         public enum Stage
         {
+            BeforeTerrain,
             Scene,
-            Opaque
+            Opaque,
+            BeforeEffects,
+            Effects
         }
 
         private static readonly int DepthId = Shader.PropertyToID("_MunShotDepth");
@@ -74,16 +106,26 @@ namespace MunShot.Cameras
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
         private static readonly int SolidId = Shader.PropertyToID("_MunShotSolid");
         private static readonly int OpaqueDepthId = Shader.PropertyToID("_MunShotOpaqueDepth");
+        private static readonly int BeforeEffectsId = Shader.PropertyToID("_MunShotBeforeEffects");
+        private static readonly int AfterEffectsId = Shader.PropertyToID("_MunShotAfterEffects");
 
         // URP's G-buffer slot for the surface's colour
         private const int AlbedoSlot = 0;
 
         private const int KeepDepthPass = 3;
         private const int KerbalInkPass = 4;
+        private const int EffectsPass = 7;
 
         private sealed class DepthData
         {
             public TextureHandle Depth;
+            public Material Material;
+        }
+
+        private sealed class EffectsData
+        {
+            public TextureHandle Before;
+            public TextureHandle After;
             public Material Material;
         }
 
@@ -119,9 +161,25 @@ namespace MunShot.Cameras
         /// </summary>
         public IReadOnlyList<(Renderer part, bool hair)> KerbalParts { get; set; }
 
-        public RenderPassEvent Event => _stage == Stage.Scene
-            ? RenderPassEvent.AfterRenderingDeferredLights
-            : RenderPassEvent.BeforeRenderingTransparents;
+        public RenderPassEvent Event
+        {
+            get
+            {
+                switch (_stage)
+                {
+                    case Stage.BeforeTerrain: return RenderPassEvent.AfterRenderingGbuffer;
+                    case Stage.Scene: return RenderPassEvent.AfterRenderingDeferredLights;
+                    case Stage.Opaque: return RenderPassEvent.BeforeRenderingTransparents;
+                    // Either side of Redux's exhaust and smoke, at AfterRenderingTransparents. Before it at the same time
+                    // (any earlier is before URP's own see-through things, the atmosphere and the sea among them):
+                    // passes at one time go in the order registered, so PhotoLook moves Redux's after this. After it,
+                    // one later, as Redux registers its pass again whenever an engine starts. Its clouds' last pass is
+                    // at 503.
+                    case Stage.BeforeEffects: return RenderPassEvent.AfterRenderingTransparents;
+                    default: return RenderPassEvent.AfterRenderingTransparents + 1;
+                }
+            }
+        }
 
         public ScriptableRenderPassInput Inputs => ScriptableRenderPassInput.None;
 
@@ -135,16 +193,31 @@ namespace MunShot.Cameras
             if (!color.IsValid() || !depth.IsValid()) return;
             InkFrame ink = frameData.GetOrCreate<InkFrame>();
 
-            if (_stage == Stage.Scene)
+            if (_stage == Stage.BeforeTerrain || _stage == Stage.Scene)
             {
                 TextureHandle[] gBuffer = resources.gBuffer;
                 if (gBuffer == null || gBuffer.Length <= AlbedoSlot || !gBuffer[AlbedoSlot].IsValid()) return;
-                TextureDesc albedoDesc = renderGraph.GetTextureDesc(gBuffer[AlbedoSlot]);
-                albedoDesc.name = "MunShot Ink Albedo";
-                albedoDesc.clearBuffer = false;
-                ink.Albedo = renderGraph.CreateTexture(albedoDesc);
-                renderGraph.AddBlitPass(gBuffer[AlbedoSlot], ink.Albedo, Vector2.one, Vector2.zero, passName: "MunShot Ink Albedo");
+                if (_stage == Stage.BeforeTerrain)
+                {
+                    ink.BeforeTerrain = CopyOf(renderGraph, gBuffer[AlbedoSlot], "MunShot Ink Before Terrain");
+                    return;
+                }
+                ink.Albedo = CopyOf(renderGraph, gBuffer[AlbedoSlot], "MunShot Ink Albedo");
                 ink.SceneDepth = KeepDepth(renderGraph, color, depth, "MunShot Ink Scene Depth");
+                if (ink.BeforeTerrain.IsValid())
+                    ink.Terrain = DrawChange(renderGraph, color, ink.BeforeTerrain, ink.Albedo, "MunShot Ink Terrain");
+                return;
+            }
+
+            if (_stage == Stage.BeforeEffects)
+            {
+                ink.BeforeEffects = InkLines.CopyOf(renderGraph, color, "MunShot Ink Before Effects");
+                return;
+            }
+
+            if (_stage == Stage.Effects)
+            {
+                if (ink.BeforeEffects.IsValid()) ink.Effects = DrawChange(renderGraph, color, ink.BeforeEffects, color, "MunShot Ink Effects");
                 return;
             }
 
@@ -171,6 +244,42 @@ namespace MunShot.Cameras
                 });
             }
             return kept;
+        }
+
+        // A copy of a texture as it is now
+        private static TextureHandle CopyOf(RenderGraph renderGraph, TextureHandle source, string name)
+        {
+            TextureDesc desc = renderGraph.GetTextureDesc(source);
+            desc.name = name;
+            desc.clearBuffer = false;
+            TextureHandle copy = renderGraph.CreateTexture(desc);
+            renderGraph.AddBlitPass(source, copy, Vector2.one, Vector2.zero, passName: name);
+            return copy;
+        }
+
+        // How much what was drawn between before and after (the exhaust and smoke on the picture, or the terrain among
+        // the surfaces' colours) changed each pixel, the size of the picture
+        private TextureHandle DrawChange(RenderGraph renderGraph, TextureHandle color, TextureHandle before, TextureHandle after, string name)
+        {
+            TextureHandle effects = renderGraph.CreateTexture(Like(renderGraph, color, name, GraphicsFormat.R8_UNorm));
+            using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass(name, out EffectsData passData))
+            {
+                passData.Before = before;
+                passData.After = after;
+                passData.Material = _material;
+                draw.UseTexture(before);
+                draw.UseTexture(after);
+                draw.SetRenderAttachment(effects, 0, AccessFlags.Write);
+                draw.SetRenderFunc((EffectsData data, RasterGraphContext context) =>
+                {
+                    MaterialPropertyBlock properties = context.renderGraphPool.GetTempMaterialPropertyBlock();
+                    properties.SetTexture(BeforeEffectsId, data.Before);
+                    properties.SetTexture(AfterEffectsId, data.After);
+                    properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
+                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, EffectsPass, MeshTopology.Triangles, 3, 1, properties);
+                });
+            }
+            return effects;
         }
 
         // The pupils and dark hair, where they're seen (not behind an eyelid, a hand or the helmet), and nothing elsewhere
