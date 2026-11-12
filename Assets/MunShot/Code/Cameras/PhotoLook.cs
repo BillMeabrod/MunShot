@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using KSP.Game;
 using Redux.Rendering;
 using Redux.Rendering.PostProcessing;
 using SpaceWarp2.API;
@@ -13,7 +15,17 @@ namespace MunShot.Cameras
     {
         None,
         OldFilm,
-        CelShaded
+        CelShaded,
+        Ink
+    }
+
+    /// <summary>The Ink filter's ink and paper as a set: black on white, white on blue, brown on cream, white on black.</summary>
+    public enum InkLook
+    {
+        Classic,
+        Blueprint,
+        Sepia,
+        Chalk
     }
 
     /// <summary>
@@ -26,9 +38,9 @@ namespace MunShot.Cameras
     /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
     /// else stays the game's.
     /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
-    /// setting starts afresh the next time. Cel shaded redraws the picture rather than recolouring it: it's MunShot's
-    /// own passes (<see cref="CelShading"/>, <see cref="CelOutlines"/>), Redux camera render hooks registered for the
-    /// same time. As the
+    /// setting starts afresh the next time. Cel shaded and Ink redraw the picture rather than recolouring it: they're
+    /// MunShot's own passes (<see cref="CelShading"/>, <see cref="InkCapture"/>, <see cref="InkLines"/>), Redux camera render hooks registered
+    /// for the same time. As the
     /// <see cref="IScreenLens"/>, it tells where the fisheye moves things on screen, so the mouse picks what's seen under it.
     /// </summary>
     public sealed class PhotoLook : IScreenLens
@@ -80,6 +92,16 @@ namespace MunShot.Cameras
         // Redux's depth of field works out the blur for a 24 mm high film, as a 35 mm still camera has
         private const float FilmHeightMillimetres = 24f;
 
+        // A kerbal's eyeballs are "mesh_eye_m_ball_l_original" and the like on the kerbal rig, and its hair
+        // "hairstyle_m_01", coloured by its material's _RandomColor (KSP2/KerbalHair2); Ink fills hair darker than
+        // DarkHair (its brightness, 0 to 1). Looked for again this often while Ink is on, as kerbals come and go
+        private const string EyePrefix = "mesh_eye_";
+        private const string EyeballName = "_ball_";
+        private const string HairPrefix = "hairstyle_";
+        private static readonly int HairColorId = Shader.PropertyToID("_RandomColor");
+        private const float DarkHair = 0.4f;
+        private const float KerbalSearchSeconds = 1f;
+
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logWarning;
 
@@ -94,7 +116,15 @@ namespace MunShot.Cameras
         private LiftGammaGain _liftGammaGain;
         private ReduxAmbientOcclusion _occlusion;
         private CelShading _celShading;
-        private CelOutlines _celOutlines;
+        private InkLines _celOutlines;
+        private InkCapture _inkScene;
+        private InkCapture _inkOpaque;
+        private InkLines _ink;
+
+        // The kerbals' eyeballs and dark hair, for Ink, and when they're next looked for
+        private readonly List<(Renderer, bool)> _kerbalParts = new List<(Renderer, bool)>();
+        private readonly MaterialPropertyBlock _hairProperties = new MaterialPropertyBlock();
+        private float _nextKerbalSearch;
 
         // The camera's volume layers last seen, so a change is only looked at (and logged) once
         private int _volumeLayers = -1;
@@ -143,7 +173,23 @@ namespace MunShot.Cameras
         /// <summary>The filter over the picture; <see cref="PhotoFilter.None"/> for none.</summary>
         public PhotoFilter Filter { get; set; }
 
-        /// <summary>MunShot's cel shading shader, once loaded with the mod's assets; without it, Cel shaded leaves the picture as it is.</summary>
+        /// <summary>The Ink filter's lines and black, and its paper, as they'd be picked (sRGB).</summary>
+        public Color InkColor { get; set; }
+        public Color PaperColor { get; set; }
+
+        /// <summary>The ink and paper colours of one of the Ink filter's looks.</summary>
+        public static (Color ink, Color paper) InkLookColors(InkLook look)
+        {
+            switch (look)
+            {
+                case InkLook.Blueprint: return (new Color(0.93f, 0.96f, 1f), new Color(0.11f, 0.29f, 0.56f));
+                case InkLook.Sepia: return (new Color(0.33f, 0.2f, 0.11f), new Color(0.95f, 0.9f, 0.78f));
+                case InkLook.Chalk: return (new Color(0.94f, 0.94f, 0.91f), new Color(0.14f, 0.16f, 0.15f));
+                default: return (new Color(0.15f, 0.15f, 0.16f), Color.white);
+            }
+        }
+
+        /// <summary>MunShot's cel shading shader, once loaded with the mod's assets; without it, Cel shaded and Ink leave the picture as it is.</summary>
         public Shader CelShader { get; set; }
 
         public PhotoLook(Action<string> logInfo, Action<string> logWarning)
@@ -163,6 +209,7 @@ namespace MunShot.Cameras
             Vignette = 0f;
             ResetColor();
             Filter = PhotoFilter.None;
+            (InkColor, PaperColor) = InkLookColors(InkLook.Classic);
             _volumeLayers = -1;
 
             _profile = ScriptableObject.CreateInstance<VolumeProfile>();
@@ -187,13 +234,20 @@ namespace MunShot.Cameras
             if (CelShader != null)
             {
                 _celShading = new CelShading(CelShader, _logInfo);
-                _celOutlines = new CelOutlines(CelShader);
+                _celOutlines = new InkLines(CelShader, onPaper: false);
+                _inkScene = new InkCapture(CelShader, InkCapture.Stage.Scene);
+                _inkOpaque = new InkCapture(CelShader, InkCapture.Stage.Opaque);
+                _ink = new InkLines(CelShader, onPaper: true);
                 CameraRenderHooks.Register(_celShading);
                 CameraRenderHooks.Register(_celOutlines);
+                CameraRenderHooks.Register(_inkScene);
+                CameraRenderHooks.Register(_inkOpaque);
+                CameraRenderHooks.Register(_ink);
+                _nextKerbalSearch = 0f;
             }
             else
             {
-                _logWarning("Photo mode: MunShot's cel shading shader isn't loaded, so the Cel shaded filter won't change the picture.");
+                _logWarning("Photo mode: MunShot's cel shading shader isn't loaded, so the Cel shaded and Ink filters won't change the picture.");
             }
             Apply(null);
             _logInfo("Photo mode: photo look laid over the game's.");
@@ -218,10 +272,20 @@ namespace MunShot.Cameras
             {
                 CameraRenderHooks.Unregister(_celShading);
                 CameraRenderHooks.Unregister(_celOutlines);
+                CameraRenderHooks.Unregister(_inkScene);
+                CameraRenderHooks.Unregister(_inkOpaque);
+                CameraRenderHooks.Unregister(_ink);
                 _celShading.Destroy();
                 _celOutlines.Destroy();
+                _inkScene.Destroy();
+                _inkOpaque.Destroy();
+                _ink.Destroy();
                 _celShading = null;
                 _celOutlines = null;
+                _inkScene = null;
+                _inkOpaque = null;
+                _ink = null;
+                _kerbalParts.Clear();
             }
             UnityEngine.Object.Destroy(_holder);
             UnityEngine.Object.Destroy(_depthOfField);
@@ -303,10 +367,102 @@ namespace MunShot.Cameras
                 {
                     _celShading.Camera = camera;
                     _celOutlines.Camera = camera;
+                    _inkScene.Camera = camera;
+                    _inkOpaque.Camera = camera;
+                    _ink.Camera = camera;
+                    Vector3 up = Planet.UpAt(camera.transform.position, Vector3.up);
+                    _celShading.Up = up;
+                    _celOutlines.Up = up;
+                    _ink.Up = up;
+                    // The planet, so its coasts can be faded from high above it
+                    Vector4 planet = Planet.Find(out Vector3 centre, out double radius)
+                        ? new Vector4(centre.x, centre.y, centre.z, (float)radius)
+                        : Vector4.zero;
+                    _celOutlines.Planet = planet;
+                    _ink.Planet = planet;
+                    // The planet as Redux's faraway view draws it, clouds and all, for its edge
+                    Matrix4x4 farLook = Matrix4x4.identity;
+                    Vector3 farEye = Vector3.zero;
+                    Vector4 farPlanet = Vector4.zero;
+                    float farMetres = 0f;
+                    Renderer farBody = null;
+                    Matrix4x4 farViewProjection = Matrix4x4.identity;
+                    if (Planet.FindDrawn(out Camera farCamera, out Vector3 farCentre, out float farRadius, out farMetres, out Renderer surface, out bool sea))
+                    {
+                        farLook = (farCamera.projectionMatrix * farCamera.worldToCameraMatrix).inverse;
+                        farEye = farCamera.transform.position;
+                        farPlanet = new Vector4(farCentre.x, farCentre.y, farCentre.z, farRadius);
+                        // Its coasts, from its own surface, only where it has a sea
+                        farViewProjection = GL.GetGPUProjectionMatrix(farCamera.projectionMatrix, true) * farCamera.worldToCameraMatrix;
+                        if (sea) farBody = surface;
+                    }
+                    _celOutlines.FarLook = farLook;
+                    _celOutlines.FarEye = farEye;
+                    _celOutlines.FarPlanet = farPlanet;
+                    _celOutlines.FarMetres = farMetres;
+                    _ink.FarLook = farLook;
+                    _ink.FarEye = farEye;
+                    _ink.FarPlanet = farPlanet;
+                    _ink.FarMetres = farMetres;
+                    _celOutlines.FarBody = farBody;
+                    _celOutlines.FarViewProjection = farViewProjection;
+                    _ink.FarBody = farBody;
+                    _ink.FarViewProjection = farViewProjection;
                 }
                 _celShading.IsOn = cel;
                 _celOutlines.IsOn = cel;
+                // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has
+                // bent the picture under it
+                bool ink = Filter == PhotoFilter.Ink;
+                _inkScene.IsOn = ink || cel;
+                _inkOpaque.IsOn = ink;
+                _ink.IsOn = ink;
+                _ink.Lens = LensParameters(intensity);
+                // The paper is drawn after the post-processing, into the picture's linear colours
+                _ink.InkColor = InkColor.linear;
+                _ink.PaperColor = PaperColor.linear;
+                if (ink) _inkOpaque.KerbalParts = FindKerbalParts();
             }
+        }
+
+        // Every kerbal's eyeballs and dark hair in the scene (doubles and originals: a hidden one isn't drawn), looked for
+        // again every KerbalSearchSeconds
+        private IReadOnlyList<(Renderer, bool)> FindKerbalParts()
+        {
+            if (Time.unscaledTime < _nextKerbalSearch) return _kerbalParts;
+            _nextKerbalSearch = Time.unscaledTime + KerbalSearchSeconds;
+            _kerbalParts.Clear();
+            foreach (Kerbal3DModel model in UnityEngine.Object.FindObjectsByType<Kerbal3DModel>(FindObjectsInactive.Exclude))
+                foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+                {
+                    string name = renderer.gameObject.name;
+                    if (name.StartsWith(EyePrefix, StringComparison.Ordinal) && name.IndexOf(EyeballName, StringComparison.Ordinal) >= 0)
+                        _kerbalParts.Add((renderer, false));
+                    else if (name.StartsWith(HairPrefix, StringComparison.Ordinal) && HairColor(renderer).grayscale < DarkHair)
+                        _kerbalParts.Add((renderer, true));
+                }
+            return _kerbalParts;
+        }
+
+        // A kerbal's hair colour: set on its renderer, or else its material
+        private Color HairColor(Renderer hair)
+        {
+            if (hair.HasPropertyBlock())
+            {
+                hair.GetPropertyBlock(_hairProperties);
+                if (_hairProperties.HasColor(HairColorId)) return _hairProperties.GetColor(HairColorId);
+            }
+            Material material = hair.sharedMaterial;
+            return material != null && material.HasColor(HairColorId) ? material.GetColor(HairColorId) : Color.white;
+        }
+
+        // The fisheye as URP's lens distortion draws it, for a shader to do the same: its angle, its sigma and how far it
+        // zooms in; all 0 with no fisheye
+        private static Vector4 LensParameters(float intensity)
+        {
+            if (intensity <= 0f) return Vector4.zero;
+            LensAngles(intensity, out float theta, out float sigma);
+            return new Vector4(theta, sigma, FillingScale(intensity), 0f);
         }
 
         // A filter's colour mix, or the game's own colours for null. URP's channel mixer takes percentages

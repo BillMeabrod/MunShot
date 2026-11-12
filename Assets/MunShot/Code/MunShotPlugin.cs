@@ -133,8 +133,8 @@ namespace MunShot
             });
             Assets.Load<Shader>(CelShaderAddress, shader =>
             {
-                if (shader == null) SWLogger.LogError($"Could not load the cel shading shader '{CelShaderAddress}'; the Cel shaded filter won't change the picture.");
-                else if (!shader.isSupported) SWLogger.LogError($"The cel shading shader '{CelShaderAddress}' isn't supported on this graphics card; the Cel shaded filter won't change the picture.");
+                if (shader == null) SWLogger.LogError($"Could not load the cel shading shader '{CelShaderAddress}'; the Cel shaded and Ink filters won't change the picture.");
+                else if (!shader.isSupported) SWLogger.LogError($"The cel shading shader '{CelShaderAddress}' isn't supported on this graphics card; the Cel shaded and Ink filters won't change the picture.");
                 else _photoMode.Look.CelShader = shader;
                 Loaded();
             });

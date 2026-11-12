@@ -371,6 +371,51 @@
                                                 <ui:DataBinding property="text" data-source-path="FilterName" binding-mode="ToTarget" />
                                             </Bindings>
                                         </uitk:OabButton>
+
+                                        <!-- Ink's colours, while it's on: a look (its ink and paper together), then each to fine-tune -->
+                                        <ui:VisualElement name="ink-settings">
+                                            <Bindings>
+                                                <ui:DataBinding property="style.display" data-source-path="IsInk" binding-mode="ToTarget" source-to-ui-converters="MunShotBoolToDisplay" />
+                                            </Bindings>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/InkLook" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <uitk:OabButton name="ink-classic" text="#MunShot/InkLook/Classic" class="pm-grow">
+                                                    <Bindings>
+                                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ClassicInkCommand" />
+                                                    </Bindings>
+                                                </uitk:OabButton>
+                                                <uitk:OabButton name="ink-blueprint" text="#MunShot/InkLook/Blueprint" class="pm-grow">
+                                                    <Bindings>
+                                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="BlueprintInkCommand" />
+                                                    </Bindings>
+                                                </uitk:OabButton>
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-row">
+                                                <uitk:OabButton name="ink-sepia" text="#MunShot/InkLook/Sepia" class="pm-grow">
+                                                    <Bindings>
+                                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="SepiaInkCommand" />
+                                                    </Bindings>
+                                                </uitk:OabButton>
+                                                <uitk:OabButton name="ink-chalk" text="#MunShot/InkLook/Chalk" class="pm-grow">
+                                                    <Bindings>
+                                                        <UitkForKsp2.MVVM.Bindings.CommandBinding property="viewDataKey" data-source-path="ChalkInkCommand" />
+                                                    </Bindings>
+                                                </uitk:OabButton>
+                                            </ui:VisualElement>
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/InkColor" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <uitk:ColorPicker name="ink-color" class="pm-color-picker" />
+                                            <ui:VisualElement class="pm-heading-row">
+                                                <ui:Label text="## " class="pm-heading pm-dim" />
+                                                <ui:Label text="#MunShot/UI/PaperColor" class="pm-heading uppercase" />
+                                            </ui:VisualElement>
+                                            <uitk:ColorPicker name="paper-color" class="pm-color-picker" />
+                                        </ui:VisualElement>
                                     </ui:VisualElement>
 
                                     <!-- Light: photo mode's own lights (click to select, x to take away), added in front of the

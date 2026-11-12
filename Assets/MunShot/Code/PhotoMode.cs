@@ -733,6 +733,30 @@ namespace MunShot
         /// <summary>A filter's name ("Old film").</summary>
         public static string FilterName(PhotoFilter filter) => Localization.Translate("MunShot/Filter/" + filter);
 
+        /// <summary>Gives the Ink filter one of its looks: its ink and paper colours together.</summary>
+        public void SetInkLook(InkLook look)
+        {
+            (Look.InkColor, Look.PaperColor) = PhotoLook.InkLookColors(look);
+            RaiseChanged();
+        }
+
+        /// <summary>The Ink filter's lines and black.</summary>
+        public void SetInkColor(Color color)
+        {
+            Look.InkColor = color;
+            RaiseChanged();
+        }
+
+        /// <summary>The Ink filter's paper.</summary>
+        public void SetPaperColor(Color color)
+        {
+            Look.PaperColor = color;
+            RaiseChanged();
+        }
+
+        /// <summary>An Ink look's name ("Blueprint").</summary>
+        public static string InkLookName(InkLook look) => Localization.Translate("MunShot/InkLook/" + look);
+
         /// <summary>How much the picture bulges, as through a fisheye lens: 0 (flat) to 1.</summary>
         public void SetFisheye(float amount)
         {

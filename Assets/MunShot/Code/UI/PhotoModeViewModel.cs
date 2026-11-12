@@ -48,6 +48,7 @@ namespace MunShot.UI
         private string _effectSizeText = string.Empty;
         private bool _hasSelectedLight;
         private bool _isSpotLight;
+        private bool _isInk;
         private string _selectedLightName = string.Empty;
         private string _lightBrightnessText = string.Empty;
         private string _lightRangeText = string.Empty;
@@ -91,6 +92,10 @@ namespace MunShot.UI
             FocusOnSelectedCommand = new RelayCommand(photoMode.FocusOnSelected);
             ResetColorCommand = new RelayCommand(photoMode.ResetColor, () => photoMode.Look.ColorChanged);
             ChooseFilterCommand = new RelayCommand(openFilterMenu);
+            ClassicInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Classic));
+            BlueprintInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Blueprint));
+            SepiaInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Sepia));
+            ChalkInkCommand = new RelayCommand(() => photoMode.SetInkLook(InkLook.Chalk));
             TakePhotoCommand = new RelayCommand(photoMode.TakePhoto);
         }
 
@@ -116,6 +121,12 @@ namespace MunShot.UI
 
         /// <summary>Opens the list of filters, None first.</summary>
         [CreateProperty] public RelayCommand ChooseFilterCommand { get; }
+
+        /// <summary>The Ink filter's looks: its ink and paper colours together.</summary>
+        [CreateProperty] public RelayCommand ClassicInkCommand { get; }
+        [CreateProperty] public RelayCommand BlueprintInkCommand { get; }
+        [CreateProperty] public RelayCommand SepiaInkCommand { get; }
+        [CreateProperty] public RelayCommand ChalkInkCommand { get; }
 
         /// <summary>Opens the list of kerbals to bring in; only when someone isn't in yet.</summary>
         [CreateProperty] public RelayCommand BringInCommand { get; }
@@ -228,6 +239,14 @@ namespace MunShot.UI
         {
             get => _isSpotLight;
             set => SetField(ref _isSpotLight, value);
+        }
+
+        /// <summary>Whether the Ink filter is on, so its colours show.</summary>
+        [CreateProperty]
+        public bool IsInk
+        {
+            get => _isInk;
+            set => SetField(ref _isInk, value);
         }
 
         /// <summary>The selected light's name, in capitals, as its settings' heading.</summary>

@@ -64,6 +64,14 @@ MunShot/UI/Filter,Text,Caption above the button that picks the one filter laid o
 MunShot/Filter/None,Text,Filter list: no filter,None,Keiner,Aucun,Nessuno,Ninguno,なし,없음,Brak,Нет,无,Nenhum,無
 MunShot/Filter/CelShaded,Text,"Filter list: the picture redrawn as a cartoon, flat colours and ink outlines (cel shading)",Cel shaded,Cel-Shading,Cel shading,Cel shading,Cel shading,セルシェーディング,셀 셰이딩,Cel shading,Сел-шейдинг,卡通渲染,Cel shading,卡通渲染
 MunShot/Filter/OldFilm,Text,"Filter list: an aged sepia photo print, yellowed and faded",Old film,Alter Film,Vieux film,Pellicola d'epoca,Película antigua,古いフィルム,오래된 필름,Stary film,Старая плёнка,老照片,Filme antigo,老照片
+MunShot/Filter/Ink,Text,"Filter list: the picture as an ink drawing, black outlines on plain white",Ink,Tusche,Encre,Inchiostro,Tinta,インク,잉크,Tusz,Тушь,墨线,Nanquim,墨線
+MunShot/UI/InkLook,Text,Caption above the buttons that pick the Ink filter's ink and paper colours together,Look,Stil,Style,Stile,Estilo,スタイル,스타일,Styl,Стиль,风格,Estilo,風格
+MunShot/InkLook/Classic,Text,Ink look button: black ink on white paper,Classic,Klassisch,Classique,Classico,Clásico,クラシック,클래식,Klasyczny,Классика,经典,Clássico,經典
+MunShot/InkLook/Blueprint,Text,"Ink look button: white lines on blue, like an architect's blueprint",Blueprint,Blaupause,Plan,Cianografia,Plano,青写真,청사진,Plan,Чертёж,蓝图,Planta,藍圖
+MunShot/InkLook/Sepia,Text,"Ink look button: brown ink on cream paper, like an old drawing",Sepia,Sepia,Sépia,Seppia,Sepia,セピア,세피아,Sepia,Сепия,棕褐色,Sépia,棕褐色
+MunShot/InkLook/Chalk,Text,Ink look button: white chalk lines on a dark blackboard,Chalk,Kreide,Craie,Gesso,Tiza,チョーク,분필,Kreda,Мел,粉笔,Giz,粉筆
+MunShot/UI/InkColor,Text,Caption above the colour picker for the Ink filter's lines (the ink),Ink colour,Tintenfarbe,Couleur de l'encre,Colore dell'inchiostro,Color de la tinta,インクの色,잉크 색,Kolor tuszu,Цвет туши,墨水颜色,Cor da tinta,墨水顏色
+MunShot/UI/PaperColor,Text,Caption above the colour picker for the Ink filter's background (the paper),Paper colour,Papierfarbe,Couleur du papier,Colore della carta,Color del papel,紙の色,종이 색,Kolor papieru,Цвет бумаги,纸张颜色,Cor do papel,紙張顏色
 MunShot/UI/Fisheye,Text,"Caption above the slider that bulges the picture out from its middle, like a fisheye lens",Fisheye,Fischauge,Fisheye,Fisheye,Ojo de pez,魚眼,어안,Rybie oko,Рыбий глаз,鱼眼,Olho de peixe,魚眼
 MunShot/UI/Grid,Text,Caption above the picker for lines drawn over the picture to help compose it (rule of thirds and so on),Grid,Raster,Grille,Griglia,Cuadrícula,グリッド,격자,Siatka,Сетка,网格,Grade,格線
 MunShot/UI/GridNone,Text,Grid picker choice: no lines,None,Keins,Aucune,Nessuna,Ninguna,なし,없음,Brak,Нет,无,Nenhuma,無

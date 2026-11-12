@@ -28,6 +28,7 @@ namespace MunShot.Cameras
         private static readonly int NormalsId = Shader.PropertyToID("_MunShotNormals");
         private static readonly int DepthId = Shader.PropertyToID("_MunShotDepth");
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
+        private static readonly int UpId = Shader.PropertyToID("_MunShotUp");
         private static readonly int BlitScaleBiasId = Shader.PropertyToID("_BlitScaleBias");
 
         private const int FlatPass = 0;
@@ -39,6 +40,7 @@ namespace MunShot.Cameras
             public TextureHandle Depth;
             public Material Material;
             public Vector4 Pixel;
+            public Vector4 Up;
         }
 
         private readonly Material _material;
@@ -57,6 +59,9 @@ namespace MunShot.Cameras
         /// <summary>The camera drawn over, and whether the filter is on; nothing is drawn otherwise.</summary>
         public Camera Camera { get; set; }
         public bool IsOn { get; set; }
+
+        /// <summary>Up from the ground where the camera is, so the ground can be told from what stands on it.</summary>
+        public Vector3 Up { get; set; } = Vector3.up;
 
         public RenderPassEvent Event => RenderPassEvent.AfterRenderingDeferredLights;
         public ScriptableRenderPassInput Inputs => ScriptableRenderPassInput.None;
@@ -89,6 +94,7 @@ namespace MunShot.Cameras
                 passData.Depth = depth;
                 passData.Material = _material;
                 passData.Pixel = new Vector4(pixel / Mathf.Max(1, size.width), pixel / Mathf.Max(1, size.height), 0f, 0f);
+                passData.Up = Up;
                 draw.UseTexture(passData.Albedo);
                 draw.UseTexture(passData.Normals);
                 draw.UseTexture(depth);
@@ -102,6 +108,7 @@ namespace MunShot.Cameras
                     properties.SetTexture(NormalsId, data.Normals);
                     properties.SetTexture(DepthId, data.Depth);
                     properties.SetVector(PixelId, data.Pixel);
+                    properties.SetVector(UpId, data.Up);
                     properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
                     context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, FlatPass, MeshTopology.Triangles, 3, 1, properties);
                 });
