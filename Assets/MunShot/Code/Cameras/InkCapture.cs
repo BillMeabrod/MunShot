@@ -96,7 +96,7 @@ namespace MunShot.Cameras
     ///   engines' exhaust and smoke (its volumetric plumes, their smoke trails and the ground flow, all in one pass at
     ///   AfterRenderingTransparents): a copy of the picture, then how much drawing them changed each pixel.
     /// </summary>
-    internal sealed class InkCapture : ICameraRenderHook
+    internal sealed class InkCapture : IFilterHook
     {
         public enum Stage
         {

@@ -15,7 +15,7 @@ namespace MunShot.Cameras
     /// haze) goes over it as usual. A Redux camera render hook; <see cref="PhotoLook"/> registers it while photo mode
     /// is open and says each frame which camera and whether it's on.
     /// </summary>
-    internal sealed class CelShading : ICameraRenderHook
+    internal sealed class CelShading : IFilterHook
     {
         // URP's G-buffer slots: the surface's colour, and its facing
         private const int AlbedoSlot = 0;

@@ -18,7 +18,7 @@ namespace MunShot.Cameras
     /// hook; <see cref="PhotoLook"/> registers it while photo mode is open and says each frame which camera and whether
     /// it's on.
     /// </summary>
-    internal sealed class CelEffects : ICameraRenderHook
+    internal sealed class CelEffects : IFilterHook
     {
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
         private static readonly int BeforeEffectsId = Shader.PropertyToID("_MunShotBeforeEffects");

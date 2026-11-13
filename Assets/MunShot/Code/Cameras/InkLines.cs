@@ -23,7 +23,7 @@ namespace MunShot.Cameras
     /// washed lightly with the ink. Both fade the lines behind the planet's clouds (the game's own cloud texture, as
     /// much as <see cref="CloudsShown"/>).
     /// </summary>
-    internal sealed class InkLines : ICameraRenderHook
+    internal sealed class InkLines : IFilterHook
     {
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
         private static readonly int LensId = Shader.PropertyToID("_MunShotLens");
