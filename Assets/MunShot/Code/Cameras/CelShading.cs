@@ -21,18 +21,13 @@ namespace MunShot.Cameras
         private const int AlbedoSlot = 0;
         private const int NormalSlot = 2;
 
-        // Sizes are in pixels of a picture 1080 high, and as big for the picture's size at others
-        private const float ReferenceHeight = 1080f;
-
         private static readonly int AlbedoId = Shader.PropertyToID("_MunShotAlbedo");
         private static readonly int NormalsId = Shader.PropertyToID("_MunShotNormals");
         private static readonly int DepthId = Shader.PropertyToID("_MunShotDepth");
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
         private static readonly int UpId = Shader.PropertyToID("_MunShotUp");
         private static readonly int ShadeId = Shader.PropertyToID("_MunShotShade");
-        private static readonly int BlitScaleBiasId = Shader.PropertyToID("_BlitScaleBias");
 
-        private const int FlatPass = 0;
 
         private sealed class PassData
         {
@@ -43,9 +38,11 @@ namespace MunShot.Cameras
             public Vector4 Pixel;
             public Vector4 Up;
             public float Shade;
+            public int Pass;
         }
 
         private readonly Material _material;
+        private readonly int _flatPass;
         private readonly Action<string> _logInfo;
 
         // Whether the G-buffer was there last frame, so a change is logged once
@@ -56,6 +53,7 @@ namespace MunShot.Cameras
         {
             _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
             _material = CoreUtils.CreateEngineMaterial(shader);
+            _flatPass = FilterPasses.Find(_material, "Flat");
         }
 
         /// <summary>The camera drawn over, and whether the filter is on; nothing is drawn otherwise.</summary>
@@ -66,7 +64,7 @@ namespace MunShot.Cameras
         public Vector3 Up { get; set; } = Vector3.up;
 
         /// <summary>How dark the shaded tone is: 0 lightest, 1 darkest, half as the filter draws it by default.</summary>
-        public float Shade { get; set; } = 0.5f;
+        public float Shade { get; set; } = PhotoLook.DefaultShadeDarkness;
 
         public RenderPassEvent Event => RenderPassEvent.AfterRenderingDeferredLights;
         public ScriptableRenderPassInput Inputs => ScriptableRenderPassInput.None;
@@ -90,17 +88,16 @@ namespace MunShot.Cameras
             }
             if (!hasGBuffer || !color.IsValid() || !depth.IsValid()) return;
 
-            RenderTargetInfo size = renderGraph.GetRenderTargetInfo(color);
-            float pixel = Mathf.Max(1f, size.height / ReferenceHeight);
             using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass("MunShot Cel Shading Flat", out PassData passData))
             {
                 passData.Albedo = gBuffer[AlbedoSlot];
                 passData.Normals = gBuffer[NormalSlot];
                 passData.Depth = depth;
                 passData.Material = _material;
-                passData.Pixel = new Vector4(pixel / Mathf.Max(1, size.width), pixel / Mathf.Max(1, size.height), 0f, 0f);
+                passData.Pixel = FilterPasses.PixelOf(renderGraph, color);
                 passData.Up = Up;
                 passData.Shade = Shade;
+                passData.Pass = _flatPass;
                 draw.UseTexture(passData.Albedo);
                 draw.UseTexture(passData.Normals);
                 draw.UseTexture(depth);
@@ -116,8 +113,8 @@ namespace MunShot.Cameras
                     properties.SetVector(PixelId, data.Pixel);
                     properties.SetVector(UpId, data.Up);
                     properties.SetFloat(ShadeId, data.Shade);
-                    properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
-                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, FlatPass, MeshTopology.Triangles, 3, 1, properties);
+                    properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
+                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
                 });
             }
         }

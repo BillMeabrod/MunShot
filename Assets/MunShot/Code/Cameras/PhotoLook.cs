@@ -35,14 +35,17 @@ namespace MunShot.Cameras
     ///
     /// Redux renders the game's post-processing from URP volumes (it mirrors the game's own effects into them every
     /// frame, see Redux's PostProcessingBridge): depth of field with its own effect, <see cref="ReduxDepthOfField"/>,
-    /// and the rest, lens distortion, vignette and colour adjustments among them, with URP's. This adds one more volume: global, ranked above the
-    /// game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is overridden; everything
-    /// else stays the game's.
-    /// The volume is made on opening and destroyed on closing, so the game's look comes back untouched, and every
-    /// setting starts afresh the next time. Cel shaded and Ink redraw the picture rather than recolouring it: they're
-    /// MunShot's own passes (<see cref="CelShading"/>, <see cref="InkCapture"/>, <see cref="InkLines"/>), Redux camera render hooks registered
-    /// for the same time. As the
-    /// <see cref="IScreenLens"/>, it tells where the fisheye moves things on screen, so the mouse picks what's seen under it.
+    /// and the rest, lens distortion, vignette and colour adjustments among them, with URP's. This adds one more volume:
+    /// global, ranked above the game's, on a layer the game's camera reads volumes from. Only what photo mode turns on is
+    /// overridden; everything else stays the game's. The volume is made on opening and destroyed on closing, so the
+    /// game's look comes back untouched, and every setting starts afresh the next time.
+    ///
+    /// Cel shaded and Ink redraw the picture rather than recolouring it: they're MunShot's own passes
+    /// (<see cref="CelShading"/>, <see cref="CelEffects"/>, <see cref="InkCapture"/>, <see cref="InkLines"/>), Redux
+    /// camera render hooks registered for the same time.
+    ///
+    /// As the <see cref="IScreenLens"/>, it tells where the fisheye moves things on screen, so the mouse picks what's
+    /// seen under it.
     /// </summary>
     public sealed class PhotoLook : IScreenLens
     {
@@ -139,6 +142,8 @@ namespace MunShot.Cameras
         // Redux's exhaust and smoke pass, when it's been moved after _inkBeforeEffects, and what came after it before
         private ICameraRenderHook _movedPlumes;
         private readonly List<ICameraRenderHook> _afterPlumes = new List<ICameraRenderHook>();
+        // The planets and moons Redux's faraway view draws, found again every frame a filter needs them
+        private readonly List<(Renderer, bool)> _farBodies = new List<(Renderer, bool)>();
         private CelEffects _celEffects;
         private InkLines _ink;
 
@@ -418,9 +423,13 @@ namespace MunShot.Cameras
             // pass, would put grey smudges on its flat colours
             bool cel = Filter == PhotoFilter.CelShaded;
             Set(_occlusion.Enabled, cel, false);
+            // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has bent the
+            // picture under it
+            bool ink = Filter == PhotoFilter.Ink;
             if (_celShading != null)
             {
-                if (camera != null)
+                // Where the camera and the planet are, only while a filter draws from them
+                if (camera != null && (cel || ink))
                 {
                     _celShading.Camera = camera;
                     _celOutlines.Camera = camera;
@@ -465,7 +474,7 @@ namespace MunShot.Cameras
                         farLook = (farCamera.projectionMatrix * farCamera.worldToCameraMatrix).inverse;
                         farEye = farCamera.transform.position;
                         farPlanet = new Vector4(farCentre.x, farCentre.y, farCentre.z, farRadius);
-                        // Its own surface, for its coasts (where it has a sea) and its relief
+                        // Its own surface, for its coasts (where it has a sea) and its slopes
                         farViewProjection = GL.GetGPUProjectionMatrix(farCamera.projectionMatrix, true) * farCamera.worldToCameraMatrix;
                         farBody = surface;
                         farSea = sea;
@@ -484,20 +493,31 @@ namespace MunShot.Cameras
                     _ink.FarBody = farBody;
                     _ink.FarSea = farSea;
                     _ink.FarViewProjection = farViewProjection;
+                    // The distant planets and moons that view draws, from any height, for their tones and outlines
+                    Camera farView = Planet.FarCamera();
+                    Planet.FindDrawnBodies(_farBodies);
+                    _inkScene.FarBodies = farView != null ? _farBodies : null;
+                    _inkScene.FarViewProjection = farView != null
+                        ? GL.GetGPUProjectionMatrix(farView.projectionMatrix, true) * farView.worldToCameraMatrix
+                        : Matrix4x4.identity;
                 }
                 _celShading.IsOn = cel;
                 _celShading.Shade = Mathf.Clamp01(ShadeDarkness);
                 _celOutlines.IsOn = cel;
                 _celEffects.IsOn = cel;
-                // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has
-                // bent the picture under it
-                bool ink = Filter == PhotoFilter.Ink;
                 _inkBeforeTerrain.IsOn = ink || cel;
                 _inkScene.IsOn = ink || cel;
                 _inkOpaque.IsOn = ink;
                 _inkBeforeEffects.IsOn = ink || cel;
                 _inkEffects.IsOn = ink || cel;
-                if (ink || cel) DrawPlumesAfter(_inkBeforeEffects);
+                if (ink || cel)
+                {
+                    // Either side of Redux's exhaust and smoke, whenever it draws them
+                    RenderPassEvent plumesAt = DrawPlumesAfter(_inkBeforeEffects)?.Event ?? RenderPassEvent.AfterRenderingTransparents;
+                    _inkBeforeEffects.EffectsEvent = plumesAt;
+                    _inkEffects.EffectsEvent = plumesAt;
+                    _celEffects.EffectsEvent = plumesAt;
+                }
                 _ink.IsOn = ink;
                 float lineDetail = Mathf.Clamp01(LineDetail);
                 _celOutlines.LineDetail = lineDetail;
@@ -541,17 +561,22 @@ namespace MunShot.Cameras
             return material != null && material.HasColor(HairColorId) ? material.GetColor(HairColorId) : Color.white;
         }
 
-        // Redux's exhaust and smoke pass, which registers itself when the first engine appears, is moved after copy (taken
-        // at the same time, just before it): hooks at one time go in the order registered. What came after it is noted, so
-        // RestorePlumes can put it back where it was
-        private void DrawPlumesAfter(ICameraRenderHook copy)
+        // Redux's exhaust and smoke pass (null while there's none), moved after copy if it's before it: copy is taken at the
+        // same time, just before it, and hooks at one time go in the order registered; Redux registers its pass when the
+        // first engine appears. What came after it is noted, so RestorePlumes can put it back where it was
+        private ICameraRenderHook DrawPlumesAfter(ICameraRenderHook copy)
         {
             IReadOnlyList<ICameraRenderHook> hooks = CameraRenderHooks.Hooks;
             int at = -1;
-            for (int i = 0; i < hooks.Count && hooks[i] != copy; i++)
-                if (hooks[i].GetType().DeclaringType == typeof(Redux.VFX.Plume.Volumetric.VolumetricPlumeRenderer)) at = i;
-            if (at < 0) return;
+            bool afterCopy = false;
+            for (int i = 0; i < hooks.Count && at < 0; i++)
+            {
+                if (hooks[i] == copy) afterCopy = true;
+                else if (hooks[i].GetType().DeclaringType == typeof(Redux.VFX.Plume.Volumetric.VolumetricPlumeRenderer)) at = i;
+            }
+            if (at < 0) return null;
             ICameraRenderHook plumes = hooks[at];
+            if (afterCopy) return plumes;
             if (_movedPlumes == null)
             {
                 _movedPlumes = plumes;
@@ -559,6 +584,7 @@ namespace MunShot.Cameras
             }
             CameraRenderHooks.Unregister(plumes);
             CameraRenderHooks.Register(plumes);
+            return plumes;
         }
 
         // Redux's exhaust and smoke pass back where it was, once photo mode's own hooks are gone: what came after it

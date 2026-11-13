@@ -31,12 +31,13 @@
 // CelEffects pass: Cel shaded's exhaust and smoke, right after Redux draws them, as a cartoon smoke cloud: in flat
 // tones inside its hard edge, the picture as it was before them outside. The Outlines and Paper passes draw nothing of
 // what's behind that cloud, and an outline round it; on paper, it's washed lightly with the ink. All from the Effects
-// pass. CelEffects also draws the planet's clouds in flat tones, and the clear sky from orbit; both passes fade the
-// lines behind the clouds (from the game's own cloud texture).
+// pass. CelEffects also draws the planet's clouds in flat tones, distant planets and moons, and the clear sky from
+// orbit; both passes fade the lines behind the clouds (from the game's own cloud texture), and outline distant planets
+// and moons (where InkCapture's Bodies pass found them in Redux's faraway view).
 //
-// KeepDepth, KerbalInk and Effects passes: InkCapture's, for the above (Effects: how much what was drawn between two
-// copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain among the surfaces'
-// colours). Leaves pass: InkLines', just before the paper (where lines crowd). FarSurface pass: InkLines', the faraway
+// KeepDepth, KerbalInk, Effects and Bodies passes: InkCapture's, for the above (Effects: how much what was drawn
+// between two copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain among the
+// surfaces' colours; Bodies: where the faraway view shows distant planets and moons). Leaves pass: InkLines', just before the paper (where lines crowd). FarSurface pass: InkLines', the faraway
 // planet's surface, for its coasts and slopes. CelEffects pass: MunShot.Cameras.CelEffects'.
 Shader "Hidden/MunShot/CelShading"
 {
@@ -226,6 +227,7 @@ Shader "Hidden/MunShot/CelShading"
                 ink *= 1 - CloudsAt(input.texcoord);
                 if (InSmoke(input.texcoord)) ink = 0;
                 ink = max(ink, SmokeOutlineAt(input.texcoord));
+                ink = max(ink, BodyOutlineAt(input.texcoord));
                 if (ink <= 0) discard;
                 return float4(Ink, ink);
             }
@@ -271,6 +273,7 @@ Shader "Hidden/MunShot/CelShading"
                 ink *= 1 - CloudsAt(uv);
                 ink = InSmoke(uv) ? Wash : max(ink, Fill(input.texcoord));
                 ink = max(ink, SmokeOutlineAt(uv));
+                ink = max(ink, BodyOutlineAt(uv));
                 return float4(lerp(_MunShotPaperColor.rgb, _MunShotInkColor.rgb, ink), 1);
             }
             ENDHLSL
@@ -531,9 +534,10 @@ Shader "Hidden/MunShot/CelShading"
             }
 
             // Inside the smoke cloud, the smoke and fire in flat tones. Outside it: the planet's clouds in flat tones,
-            // as they are (not evened out); the clear sky (where nothing has depth: the atmosphere's glow, the planet
-            // from far off) as it is near the ground, in flat tones from orbit (not evened out either, so the stars
-            // stay); and anything else as it was before the smoke (no thin wisps or shimmer round its cloud)
+            // as they are (not evened out); distant planets and moons in flat tones; the clear sky (where nothing has
+            // depth: the atmosphere's glow, the planet from far off) as it is near the ground, in flat tones from orbit
+            // (not evened out either, so the stars stay); and anything else as it was before the smoke (no thin wisps
+            // or shimmer round its cloud)
             float4 CelEffectsFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -542,7 +546,8 @@ Shader "Hidden/MunShot/CelShading"
                 if (!InSmoke(uv))
                 {
                     if (CloudsAt(uv) > CloudsEdge) return float4(Toned(own.rgb), own.a);
-                    if (IsSky(SampleSceneDepth(uv))) return float4(lerp(own.rgb, Toned(own.rgb), _MunShotSkyBands), own.a);
+                    if (IsSky(SampleSceneDepth(uv)))
+                        return float4(BodyAt(uv) ? Toned(own.rgb) : lerp(own.rgb, Toned(own.rgb), _MunShotSkyBands), own.a);
                     return SAMPLE_TEXTURE2D_X_LOD(_MunShotBeforeEffects, sampler_PointClamp, uv, 0);
                 }
 
@@ -563,6 +568,39 @@ Shader "Hidden/MunShot/CelShading"
                     }
                 }
                 return float4(Toned(sum / weight), own.a);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "Bodies"
+            ZTest LEqual
+            ZWrite On
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex BodiesVertex
+            #pragma fragment BodiesFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            // Redux's faraway view's camera: its view and projection (as drawn into a texture)
+            float4x4 _MunShotFarViewProjection;
+
+            // 1 for a distant planet or moon, 0 for the body the vessel orbits, which only hides what's behind it
+            float _MunShotBodyShown;
+
+            float4 BodiesVertex(float4 positionOS : POSITION) : SV_POSITION
+            {
+                return mul(_MunShotFarViewProjection, mul(UNITY_MATRIX_M, float4(positionOS.xyz, 1)));
+            }
+
+            // Where the faraway view sees a distant planet or moon, nearest first
+            float4 BodiesFragment() : SV_Target
+            {
+                return _MunShotBodyShown;
             }
             ENDHLSL
         }

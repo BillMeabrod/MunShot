@@ -91,10 +91,6 @@ float PlanetInk()
     return lerp(1, Faded, smoothstep(FadeFrom, HighUp, height));
 }
 
-// How much of an edge counts before it's inked, and how quickly it goes from none to fully black
-static const float SolidFrom = 0.2;
-static const float SolidSharpness = 4;
-
 // The nearer of the camera's depth and the water's surface, and whether it's the water's
 float RawDepth(float2 uv, out bool water)
 {
@@ -246,6 +242,43 @@ float SmokeOutlineAt(float2 uv)
     return ink;
 }
 
+// Where Redux's faraway view shows a distant planet or moon (MunShot.Cameras.InkCapture's), when it was taken: Cel
+// shaded puts them in flat tones, and both filters outline them where the camera sees nothing nearer (the sky)
+TEXTURE2D_X(_MunShotBodies);
+float _MunShotHasBodies;
+
+bool BodyAt(float2 uv)
+{
+    return _MunShotHasBodies > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotBodies, sampler_PointClamp, uv, 0).r > 0.5;
+}
+
+// How much ink a distant planet's or moon's outline gives a pixel (0 to 1): every pixel within half an outline's width
+// of its edge, as LinesAt draws an outline, where nothing nearer is in front
+float BodyOutlineAt(float2 uv)
+{
+    if (_MunShotHasBodies <= 0 || !IsSky(SampleSceneDepth(uv))) return 0;
+    bool inside[5][5];
+    [unroll]
+    for (int i = 0; i < 5; i++)
+    {
+        [unroll]
+        for (int j = 0; j < 5; j++)
+            inside[i][j] = BodyAt(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
+    }
+    float ink = 0;
+    [unroll]
+    for (int a = 1; a <= 3; a++)
+    {
+        [unroll]
+        for (int b = 1; b <= 3; b++)
+        {
+            bool edge = inside[a][b] && (!inside[a - 1][b] || !inside[a + 1][b] || !inside[a][b - 1] || !inside[a][b + 1]);
+            if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
+        }
+    }
+    return ink;
+}
+
 // The game's volume clouds, as it draws them for the picture (KSP.VolumeCloud's, set for every shader): their light,
 // and how much they cover each pixel (alpha); and how much they show (0 to 1, as they give way to the faraway view's
 // on the way up; 0 when there are none). Lines behind them fade, and Cel shaded draws them in flat tones where they
@@ -258,12 +291,6 @@ float CloudsAt(float2 uv)
 {
     if (_MunShotCloudsShown <= 0) return 0;
     return saturate(SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, uv, 0).a) * _MunShotCloudsShown;
-}
-
-// Solid ink: an edge is drawn fully black, only its last sliver softened against jagged steps
-float Solid(float edge)
-{
-    return saturate((edge - SolidFrom) / (1 - SolidFrom) * SolidSharpness);
 }
 
 // Where in the faraway view's world a pixel of the picture shows, somewhere along that view's camera's look through it
