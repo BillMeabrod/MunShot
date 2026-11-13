@@ -281,16 +281,139 @@ float BodyOutlineAt(float2 uv)
 
 // The game's volume clouds, as it draws them for the picture (KSP.VolumeCloud's, set for every shader): their light,
 // and how much they cover each pixel (alpha); and how much they show (0 to 1, as they give way to the faraway view's
-// on the way up; 0 when there are none). Lines behind them fade, and Cel shaded draws them in flat tones where they
-// cover more than CloudsEdge
+// on the way up; 0 when there are none). Lines behind them fade; where they cover more than CloudsEdge, Cel shaded
+// draws them in flat tones CloudToneStops apart (by their own light: each twice as bright as the last at 1, finer than
+// the smoke's so a cloud deck's gentle shading still shows), and both filters draw a line round them and, as much as
+// the detail asks, between their tones and where their light changes by more than CloudChangeStops across
+// CloudSmoothPixels either side (a nearer cloud before a brighter one), too gently for a tone of its own, unless a
+// tone's line or their edge is within CloudChangeGapPixels across it, as that already draws it
 TEXTURE2D(_CloudTex);
 float _MunShotCloudsShown;
 static const float CloudsEdge = 0.5;
+static const float CloudToneStops = 0.5;
+// The clouds are evened out over 3 by 3 points CloudSmoothPixels apart (the middle counting most) before their edge and
+// tones are found, as the game draws them grainy: so both follow the clouds' shapes rather than the grain
+static const float CloudSmoothPixels = 4;
+static const float CloudChangeStops = 0.2;
+static const float CloudChangeGapPixels = 5;
+
+float4 CloudsSample(float2 uv)
+{
+    return _MunShotCloudsShown > 0 ? SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, uv, 0) : 0;
+}
 
 float CloudsAt(float2 uv)
 {
-    if (_MunShotCloudsShown <= 0) return 0;
-    return saturate(SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, uv, 0).a) * _MunShotCloudsShown;
+    return saturate(CloudsSample(uv).a) * _MunShotCloudsShown;
+}
+
+bool Clouded(float4 clouds)
+{
+    return saturate(clouds.a) * _MunShotCloudsShown > CloudsEdge;
+}
+
+// The clouds' own light where a sample of them was taken, as bright as where they cover it wholly
+float CloudLight(float4 clouds)
+{
+    return max(Luminance(clouds.rgb) / max(clouds.a, 0.05), 1e-6);
+}
+
+// The clouds round a pixel, evened out
+struct SmoothedClouds
+{
+    // How much they cover it, and how much they show
+    float Cover;
+    // Their own light
+    float Light;
+    // How their light changes across it, in stops from CloudSmoothPixels one side to as far the other (x left to
+    // right, y bottom to top); only from where it's cloud
+    float2 Change;
+};
+
+SmoothedClouds SmoothClouds(float2 uv)
+{
+    float4 samples[3][3];
+    float4 sum = 0;
+    [unroll]
+    for (int i = 0; i < 3; i++)
+    {
+        [unroll]
+        for (int j = 0; j < 3; j++)
+        {
+            samples[i][j] = CloudsSample(uv + float2(i - 1, j - 1) * _MunShotPixel.xy * CloudSmoothPixels);
+            sum += samples[i][j] * ((2 - abs(i - 1)) * (2 - abs(j - 1)));
+        }
+    }
+    sum /= 16;
+    SmoothedClouds clouds;
+    clouds.Cover = saturate(sum.a) * _MunShotCloudsShown;
+    clouds.Light = CloudLight(sum);
+    float stops[3][3];
+    [unroll]
+    for (int k = 0; k < 3; k++)
+    {
+        [unroll]
+        for (int l = 0; l < 3; l++)
+            stops[k][l] = log2(Clouded(samples[k][l]) ? CloudLight(samples[k][l]) : clouds.Light);
+    }
+    clouds.Change = float2(stops[2][0] + 2 * stops[2][1] + stops[2][2] - stops[0][0] - 2 * stops[0][1] - stops[0][2],
+                           stops[0][2] + 2 * stops[1][2] + stops[2][2] - stops[0][0] - 2 * stops[1][0] - stops[2][0]) / 4;
+    return clouds;
+}
+
+bool Clouded(SmoothedClouds clouds)
+{
+    return clouds.Cover > CloudsEdge;
+}
+
+// Which of the clouds' tones a light is in, and the middle of that tone
+float CloudTone(float light)
+{
+    return floor(log2(light) / CloudToneStops);
+}
+
+float CloudToneLight(float light)
+{
+    return exp2((CloudTone(light) + 0.5) * CloudToneStops);
+}
+
+// How much ink the clouds' lines give a pixel (0 to 1): round their edge, where a neighbour is clear; and, as much as
+// the detail asks, between their tones, on the brighter side, and along the sharpest of a change in their light; as
+// much as the planet's own lines get from up high
+float CloudLinesAt(float2 uv)
+{
+    SmoothedClouds here = SmoothClouds(uv);
+    if (!Clouded(here)) return 0;
+    float tone = CloudTone(here.Light);
+    float2 around[4] =
+    {
+        float2(-_MunShotPixel.x, 0), float2(_MunShotPixel.x, 0), float2(0, -_MunShotPixel.y), float2(0, _MunShotPixel.y)
+    };
+    float edge = 0;
+    float between = 0;
+    float changes[4];
+    [unroll]
+    for (int i = 0; i < 4; i++)
+    {
+        SmoothedClouds next = SmoothClouds(uv + around[i] * LinePixels);
+        changes[i] = length(next.Change);
+        if (!Clouded(next)) edge = 1;
+        else if (CloudTone(next.Light) < tone) between = 1;
+    }
+    // A change is drawn only where it's sharper than at its neighbours either side across it, so its line stays thin
+    float change = length(here.Change);
+    bool sideways = abs(here.Change.x) >= abs(here.Change.y);
+    float sides = sideways ? max(changes[0], changes[1]) : max(changes[2], changes[3]);
+    float sharp = 0;
+    if (change > CloudChangeStops && change >= sides)
+    {
+        float2 across = normalize(here.Change) * _MunShotPixel.xy * CloudChangeGapPixels;
+        SmoothedClouds before = SmoothClouds(uv - across);
+        SmoothedClouds after = SmoothClouds(uv + across);
+        bool lined = !Clouded(before) || !Clouded(after) || CloudTone(before.Light) != CloudTone(after.Light);
+        sharp = lined ? 0 : 1;
+    }
+    return max(edge, max(between, sharp) * saturate(_MunShotLineDetail)) * PlanetInk();
 }
 
 // Where in the faraway view's world a pixel of the picture shows, somewhere along that view's camera's look through it

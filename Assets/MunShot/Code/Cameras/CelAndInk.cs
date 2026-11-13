@@ -105,6 +105,8 @@ namespace MunShot.Cameras
             _inkBeforeEffects.IsOn = ink || cel;
             _inkEffects.IsOn = ink || cel;
             _ink.IsOn = ink;
+            // The paper is drawn after the game clears its clouds, so it reads a copy
+            _inkEffects.KeepsClouds = ink && _ink.CloudsShown > 0f;
             if (ink || cel)
             {
                 // Either side of Redux's exhaust and smoke, whenever it draws them

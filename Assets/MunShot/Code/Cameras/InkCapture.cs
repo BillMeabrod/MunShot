@@ -60,6 +60,12 @@ namespace MunShot.Cameras
         /// </summary>
         public TextureHandle Effects;
 
+        /// <summary>
+        /// A copy of the game's volume clouds (their light, and how much they cover each pixel), as the game clears its
+        /// own after the post-processing, where the paper is drawn.
+        /// </summary>
+        public TextureHandle Clouds;
+
         /// <summary>Whether the deferred pass's depth and colours were taken, for the ground lines.</summary>
         public bool HasGround => SceneDepth.IsValid() && Albedo.IsValid();
 
@@ -77,6 +83,7 @@ namespace MunShot.Cameras
             Bodies = TextureHandle.nullHandle;
             BeforeEffects = TextureHandle.nullHandle;
             Effects = TextureHandle.nullHandle;
+            Clouds = TextureHandle.nullHandle;
         }
     }
 
@@ -94,7 +101,8 @@ namespace MunShot.Cameras
     ///   nor the visor in front changes them.
     /// - <see cref="Stage.BeforeEffects"/> and <see cref="Stage.Effects"/>, just before and just after Redux draws the
     ///   engines' exhaust and smoke (its volumetric plumes, their smoke trails and the ground flow, all in one pass at
-    ///   AfterRenderingTransparents): a copy of the picture, then how much drawing them changed each pixel.
+    ///   AfterRenderingTransparents): a copy of the picture, then how much drawing them changed each pixel; and with
+    ///   <see cref="KeepsClouds"/>, a copy of the game's volume clouds.
     /// </summary>
     internal sealed class InkCapture : IFilterHook
     {
@@ -134,6 +142,12 @@ namespace MunShot.Cameras
             public int Pass;
         }
 
+        private sealed class CloudsData
+        {
+            public Material Material;
+            public int Pass;
+        }
+
         private sealed class KerbalInkData
         {
             public TextureHandle OpaqueDepth;
@@ -148,6 +162,7 @@ namespace MunShot.Cameras
         private readonly int _kerbalInkPass;
         private readonly int _effectsPass;
         private readonly int _bodiesPass;
+        private readonly int _cloudsPass;
 
         // The pupils' material for each eye texture (kerbals share a few), the dark hair's, and the parts drawn this
         // frame
@@ -169,6 +184,7 @@ namespace MunShot.Cameras
             _kerbalInkPass = FilterPasses.Find(_material, "KerbalInk");
             _effectsPass = FilterPasses.Find(_material, "Effects");
             _bodiesPass = FilterPasses.Find(_material, "Bodies");
+            _cloudsPass = FilterPasses.Find(_material, "Clouds");
         }
 
         /// <summary>The camera drawn from, and whether a filter that needs this is on; nothing is taken otherwise.</summary>
@@ -193,6 +209,9 @@ namespace MunShot.Cameras
         /// <see cref="Stage.Effects"/>: AfterRenderingTransparents, or later under the ocean's fog.
         /// </summary>
         public RenderPassEvent EffectsEvent { get; set; } = RenderPassEvent.AfterRenderingTransparents;
+
+        /// <summary>Whether the game's volume clouds are copied, for the paper (<see cref="Stage.Effects"/> only).</summary>
+        public bool KeepsClouds { get; set; }
 
         public RenderPassEvent Event
         {
@@ -251,6 +270,7 @@ namespace MunShot.Cameras
             if (_stage == Stage.Effects)
             {
                 if (ink.BeforeEffects.IsValid()) ink.Effects = DrawChange(renderGraph, color, ink.BeforeEffects, color, "MunShot Ink Effects");
+                if (KeepsClouds) ink.Clouds = KeepClouds(renderGraph, color);
                 return;
             }
 
@@ -304,6 +324,28 @@ namespace MunShot.Cameras
                 });
             }
             return effects;
+        }
+
+        // A copy of the game's volume clouds, the size of the picture
+        private TextureHandle KeepClouds(RenderGraph renderGraph, TextureHandle color)
+        {
+            const string name = "MunShot Ink Clouds";
+            TextureHandle clouds = renderGraph.CreateTexture(Like(renderGraph, color, name, GraphicsFormat.R16G16B16A16_SFloat));
+            using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass(name, out CloudsData passData))
+            {
+                passData.Material = _material;
+                passData.Pass = _cloudsPass;
+                // The game sets its clouds as a global texture
+                draw.UseAllGlobalTextures(true);
+                draw.SetRenderAttachment(clouds, 0, AccessFlags.WriteAll);
+                draw.SetRenderFunc((CloudsData data, RasterGraphContext context) =>
+                {
+                    MaterialPropertyBlock properties = context.renderGraphPool.GetTempMaterialPropertyBlock();
+                    properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
+                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
+                });
+            }
+            return clouds;
         }
 
         private sealed class BodiesData

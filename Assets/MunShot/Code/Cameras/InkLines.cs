@@ -21,7 +21,8 @@ namespace MunShot.Cameras
     /// Both draw the engines' exhaust and smoke as a cartoon cloud (<see cref="InkFrame.Effects"/>): no lines inside,
     /// an outline round it; over the picture, <see cref="CelEffects"/> has drawn it in flat tones; on paper, it's
     /// washed lightly with the ink. Both fade the lines behind the planet's clouds (the game's own cloud texture, as
-    /// much as <see cref="CloudsShown"/>).
+    /// much as <see cref="CloudsShown"/>; on paper, the copy in <see cref="InkFrame.Clouds"/>, as the game clears its own
+    /// by then) and draw their own lines.
     /// </summary>
     internal sealed class InkLines : IFilterHook
     {
@@ -56,6 +57,7 @@ namespace MunShot.Cameras
         private static readonly int BodiesId = Shader.PropertyToID("_MunShotBodies");
         private static readonly int HasBodiesId = Shader.PropertyToID("_MunShotHasBodies");
         private static readonly int CloudsShownId = Shader.PropertyToID("_MunShotCloudsShown");
+        private static readonly int CloudTexId = Shader.PropertyToID("_CloudTex");
         private static readonly int LineDetailId = Shader.PropertyToID("_MunShotLineDetail");
         private static readonly int DepthId = Shader.PropertyToID("_CameraDepthTexture");
         private static readonly int NormalsId = Shader.PropertyToID("_CameraNormalsTexture");
@@ -73,6 +75,7 @@ namespace MunShot.Cameras
             public TextureHandle Effects;
             public TextureHandle Terrain;
             public TextureHandle Bodies;
+            public TextureHandle Clouds;
             public float CloudsShown;
             public float LineDetail;
             public bool Taken;
@@ -224,6 +227,7 @@ namespace MunShot.Cameras
             // frame (without all of which there are just the lines and the black), and where lines crowd, worked out first
             inputs.Picture = FilterPasses.CopyOf(renderGraph, color, "MunShot Ink Picture");
 
+            if (ink != null) inputs.Clouds = ink.Clouds;
             inputs.Taken = ink != null && ink.IsComplete;
             if (inputs.Taken)
             {
@@ -311,6 +315,7 @@ namespace MunShot.Cameras
                 passData.Effects = inputs.Effects;
                 passData.Terrain = inputs.Terrain;
                 passData.Bodies = inputs.Bodies;
+                passData.Clouds = inputs.Clouds;
                 passData.CloudsShown = inputs.CloudsShown;
                 passData.LineDetail = inputs.LineDetail;
                 passData.Taken = inputs.Taken;
@@ -341,6 +346,7 @@ namespace MunShot.Cameras
                 UseIfThere(draw, inputs.Effects);
                 UseIfThere(draw, inputs.Terrain);
                 UseIfThere(draw, inputs.Bodies);
+                UseIfThere(draw, inputs.Clouds);
                 // For the game's water depth and its clouds, which it sets as global textures
                 draw.UseAllGlobalTextures(true);
                 // The outlines are laid over the picture (blended by their coverage); every other pass covers all of
@@ -378,6 +384,8 @@ namespace MunShot.Cameras
                     properties.SetFloat(HasTerrainId, data.Terrain.IsValid() ? 1f : 0f);
                     SetIfThere(properties, BodiesId, data.Bodies);
                     properties.SetFloat(HasBodiesId, data.Bodies.IsValid() ? 1f : 0f);
+                    // In place of the game's own, which it has cleared by the paper
+                    SetIfThere(properties, CloudTexId, data.Clouds);
                     properties.SetFloat(CloudsShownId, data.CloudsShown);
                     properties.SetFloat(LineDetailId, data.LineDetail);
                     properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
