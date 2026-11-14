@@ -1,6 +1,6 @@
 // What the Ink filter's paper knows of the picture, for the CelShading shader's Paper pass, beyond the lines
 // (InkLines.hlsl) and the ground lines (InkGround.hlsl): the fisheye, the finished picture, the kerbals' own ink, and
-// where a tree's leaves are (MunShot.Cameras.InkLines' Leaves pass, just before the paper).
+// where a tree's leaves are (from MunShot.Cameras.InkLines' Leaves pass, just before the paper).
 //
 // Needs URP's Core, DeclareDepthTexture and DeclareNormalsTexture, and InkLines.hlsl, included first.
 #ifndef MUNSHOT_INK_PAPER_INCLUDED
@@ -23,9 +23,6 @@ TEXTURE2D_X(_MunShotKerbalInk);
 // The finished picture, bent by the fisheye as the screen is
 TEXTURE2D_X(_MunShotPicture);
 
-// Drawn just before the paper: where lines crowd (a tree's leaves), unbent
-TEXTURE2D_X(_MunShotLeaves);
-
 // Among leaves: most of what's within LeafyPixels of a pixel is where lines crowd
 static const float LeafyPixels = 2;
 // Solid black wherever the finished picture is darker than NearBlack (its brightness as stored), fading out by
@@ -44,12 +41,7 @@ float2 Unbend(float2 uv)
     return 0.5 + fromMiddle * (tan(r * _MunShotLens.x) / (r * _MunShotLens.y));
 }
 
-float LeavesAt(float2 uv)
-{
-    return SAMPLE_TEXTURE2D_X_LOD(_MunShotLeaves, sampler_LinearClamp, uv, 0).r;
-}
-
-// Whether a pixel is among a tree's leaves
+// Whether a pixel is among a tree's leaves (where lines crowd: InkLines.hlsl's LeavesAt)
 bool Leafy(float2 uv)
 {
     float2 x = float2(_MunShotPixel.x * LeafyPixels, 0);

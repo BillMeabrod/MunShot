@@ -263,13 +263,17 @@ namespace MunShot.Posing
         /// <summary>Something surface searches should look through, e.g. the manipulation handles.</summary>
         public void SetIgnoredInSurfaceSearch(Transform ignored) => _ignoredInSurfaceSearch = ignored;
 
+        // BoundsOf's list of a double's renderers, reused so it allocates nothing (it's called every frame)
+        private static readonly List<Renderer> _renderers = new List<Renderer>();
+
         /// <summary>The box around a double's visible body, if it has one yet.</summary>
         public static bool BoundsOf(Entry entry, out Bounds bounds)
         {
             bounds = default;
             bool any = false;
             if (entry?.Root == null) return false;
-            foreach (Renderer renderer in entry.Root.GetComponentsInChildren<Renderer>())
+            entry.Root.GetComponentsInChildren(_renderers);
+            foreach (Renderer renderer in _renderers)
             {
                 if (!renderer.enabled || renderer is ParticleSystemRenderer) continue;
                 if (!any) bounds = renderer.bounds;

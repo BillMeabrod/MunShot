@@ -21,12 +21,12 @@ namespace MunShot.UI
         private const string TitleKey = "MunShot/UI/PoseControls";
         private const float FigureWidth = 340f;
 
-        private static readonly Color Text = new Color32(0xC0, 0xC7, 0xD5, 0xFF);
-        private static readonly Color DimText = new Color32(0x70, 0x75, 0x80, 0xFF);
 
         private readonly PhotoMode _photoMode;
         private readonly PanelRenderer _renderer;
         private readonly Texture2D _kerbal;
+        // Photo mode's own stylesheet (PhotoModeWindow.uss), whose pose- classes lay this window out
+        private readonly StyleSheet _styles;
 
         private AppShell _shell;
         private KerbalFigure _figure;
@@ -44,10 +44,11 @@ namespace MunShot.UI
 
         public bool IsOpen { get; private set; }
 
-        public PoseControlsWindow(PhotoMode photoMode, Texture2D kerbal)
+        public PoseControlsWindow(PhotoMode photoMode, Texture2D kerbal, StyleSheet styles)
         {
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _kerbal = kerbal;
+            _styles = styles;
             var options = new WindowOptions
             {
                 WindowId = WindowId,
@@ -173,45 +174,30 @@ namespace MunShot.UI
         {
             _shell = new AppShell { Title = Localization.Translate(TitleKey) };
             _shell.CloseClicked += Close;
-            _shell.style.width = 900;
+            if (_styles != null) _shell.styleSheets.Add(_styles);
+            _shell.AddToClassList("pose-window");
 
-            var body = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            var body = Styled(new VisualElement(), "pose-body");
             _figure = new KerbalFigure(FigureWidth, _kerbal);
-            _figure.style.marginRight = 20;
             _figure.JointClicked += ShowJoint;
             body.Add(_figure);
 
-            var side = new VisualElement { style = { flexGrow = 1, flexShrink = 1 } };
-            _jointName = new Label { style = { color = Color.white, marginBottom = 4 } };
-            _jointName.AddToClassList("uppercase");
+            var side = Styled(new VisualElement(), "pose-side");
+            _jointName = Styled(new Label(), "pose-joint-name", "uppercase");
             side.Add(_jointName);
-            _hint = new Label(Localization.Translate("MunShot/UI/PickAJoint"))
-            {
-                style = { color = DimText, whiteSpace = WhiteSpace.Normal }
-            };
+            _hint = Styled(new Label(Localization.Translate("MunShot/UI/PickAJoint")), "pose-hint", "pm-dim");
             side.Add(_hint);
-            _controls = new ScrollView(ScrollViewMode.Vertical) { style = { maxHeight = 460, flexGrow = 1 } };
+            _controls = Styled(new ScrollView(ScrollViewMode.Vertical), "pose-controls");
             side.Add(_controls);
-            _resetJoint = new OabButton { text = Localization.Translate("MunShot/UI/ResetJoint") };
+            _resetJoint = Styled(new OabButton { text = Localization.Translate("MunShot/UI/ResetJoint") }, "pose-reset-joint");
             _resetJoint.clicked += ResetJoint;
-            _resetJoint.style.marginTop = 8;
-            _resetJoint.style.alignSelf = Align.FlexStart;
-            _resetJoint.style.minWidth = 200;
             side.Add(_resetJoint);
             body.Add(side);
             _shell.Add(body);
 
-            var bar = new VisualElement
-            {
-                style =
-                {
-                    flexDirection = FlexDirection.Row, marginTop = 8, paddingTop = 8, borderTopWidth = 1,
-                    borderTopColor = (Color)new Color32(0x2A, 0x32, 0x3C, 0xFF)
-                }
-            };
-            _resetAll = new OabButton { text = Localization.Translate("MunShot/UI/ResetAll") };
+            var bar = Styled(new VisualElement(), "pose-bar");
+            _resetAll = Styled(new OabButton { text = Localization.Translate("MunShot/UI/ResetAll") }, "pose-reset-all");
             _resetAll.clicked += ResetAll;
-            _resetAll.style.minWidth = 200;
             bar.Add(_resetAll);
             _shell.Add(bar);
 
@@ -237,12 +223,7 @@ namespace MunShot.UI
             {
                 if (group.HeadingKey != null)
                 {
-                    var heading = new Label(Localization.Translate(group.HeadingKey))
-                    {
-                        style = { color = DimText, marginTop = 8, marginBottom = 2 }
-                    };
-                    heading.AddToClassList("uppercase");
-                    _controls.Add(heading);
+                    _controls.Add(Styled(new Label(Localization.Translate(group.HeadingKey)), "pose-heading", "pm-dim", "uppercase"));
                 }
                 foreach (PoseJoints.Control control in group.Controls)
                     _controls.Add(SliderRow(control, selected?.Edits.Get(control.Id) ?? 0f));
@@ -251,14 +232,21 @@ namespace MunShot.UI
 
         // A slider with a box beside it for typing an exact number: dragging moves in whole steps, the box takes
         // tenths; a number past either end goes to that end, anything else puts the box back as it was
+        // An element with these style classes added
+        private static T Styled<T>(T element, params string[] classes) where T : VisualElement
+        {
+            foreach (string name in classes) element.AddToClassList(name);
+            return element;
+        }
+
         private VisualElement SliderRow(PoseJoints.Control control, float setting)
         {
-            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginTop = 6 } };
-            row.Add(new Label(Localization.Translate(control.NameKey)) { style = { width = 190, color = Text } });
-            var slider = new Slider(control.Min, control.Max) { style = { flexGrow = 1, flexShrink = 1 } };
+            var row = Styled(new VisualElement(), "pm-row");
+            row.Add(Styled(new Label(Localization.Translate(control.NameKey)), "pose-control-name"));
+            var slider = Styled(new Slider(control.Min, control.Max), "pose-slider");
             // Only taken when Enter is pressed or the box is left, not on every key
-            var box = new TextField { isDelayed = true, style = { width = 70, marginLeft = 8 } };
-            var unit = new Label(control.Unit == PoseJoints.Unit.Percent ? "%" : "°") { style = { width = 18, color = Text } };
+            var box = Styled(new TextField { isDelayed = true }, "pose-number");
+            var unit = Styled(new Label(control.Unit == PoseJoints.Unit.Percent ? "%" : "°"), "pose-unit");
             ShowValue(slider, box, setting);
             slider.RegisterValueChangedCallback(change =>
             {

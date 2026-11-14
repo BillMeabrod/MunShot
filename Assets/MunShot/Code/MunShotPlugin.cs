@@ -90,7 +90,7 @@ namespace MunShot
         {
             if (_photoMode.IsOpen && _window != null && _window.ClosePoseControls())
             {
-                GameManager.Instance?.Game?.UI?.EscapeMenu?.ResumeGame();
+                Game?.UI?.EscapeMenu?.ResumeGame();
                 return;
             }
             _photoMode.Close();

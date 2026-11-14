@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using UnityEngine;
+
 namespace MunShot.Posing
 {
     /// <summary>Names on the game's kerbal rig.</summary>
@@ -22,22 +25,21 @@ namespace MunShot.Posing
         // Tools/RigDiscovery/out/body_spacesuit_01.prefab.axes.txt), beside the open hand; the outer joints bent 10°
         // each, where the prefab has them bent about 25° (a hook once the thumb is spread out) and straight looks too
         // long
-        private static readonly System.Collections.Generic.Dictionary<string, UnityEngine.Vector3> RestEulers =
-            new System.Collections.Generic.Dictionary<string, UnityEngine.Vector3>
+        private static readonly Dictionary<string, Vector3> RestEulers = new Dictionary<string, Vector3>
             {
-                ["l_thumb_01"] = new UnityEngine.Vector3(3.34f, 50.18f, 15.06f),
-                ["l_thumb_02"] = new UnityEngine.Vector3(0f, 350f, 0f),
-                ["l_thumb_03"] = new UnityEngine.Vector3(0f, 350f, 0f),
-                ["r_thumb_01"] = new UnityEngine.Vector3(356.66f, 309.82f, 15.06f),
-                ["r_thumb_02"] = new UnityEngine.Vector3(0f, 10f, 0f),
-                ["r_thumb_03"] = new UnityEngine.Vector3(0f, 10f, 0f),
+                ["l_thumb_01"] = new Vector3(3.34f, 50.18f, 15.06f),
+                ["l_thumb_02"] = new Vector3(0f, 350f, 0f),
+                ["l_thumb_03"] = new Vector3(0f, 350f, 0f),
+                ["r_thumb_01"] = new Vector3(356.66f, 309.82f, 15.06f),
+                ["r_thumb_02"] = new Vector3(0f, 10f, 0f),
+                ["r_thumb_03"] = new Vector3(0f, 10f, 0f),
             };
 
         /// <summary>A bone's rest rotation (relative to its parent), for the bones that have one listed.</summary>
-        public static bool TryGetRest(string bone, out UnityEngine.Quaternion rest)
+        public static bool TryGetRest(string bone, out Quaternion rest)
         {
-            bool known = RestEulers.TryGetValue(bone, out UnityEngine.Vector3 euler);
-            rest = known ? UnityEngine.Quaternion.Euler(euler) : UnityEngine.Quaternion.identity;
+            bool known = RestEulers.TryGetValue(bone, out Vector3 euler);
+            rest = known ? Quaternion.Euler(euler) : Quaternion.identity;
             return known;
         }
     }

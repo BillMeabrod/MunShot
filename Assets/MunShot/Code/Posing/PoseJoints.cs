@@ -140,13 +140,13 @@ namespace MunShot.Posing
                 // (neck_ach), which the helmet hangs from. The suit's air hose is attached to the neck bone, so it's
                 // kept where the pose has it whatever these do (PosePlayer)
                 new Joint("head", JointKey + "Head", new Vector2(100, 36), new Group(null,
-                    new Control("head.nod", ControlKey + "Nod", -35, 35, new Part("head", Z)),
-                    new Control("head.turn", ControlKey + "Turn", -60, 60, new Part("head", X)),
-                    new Control("head.tilt", ControlKey + "Tilt", -25, 25, new Part("head", Y)))),
+                    new Control("head.nod", ControlKey + "Nod", -35, 35, new Part(KerbalRig.Head, Z)),
+                    new Control("head.turn", ControlKey + "Turn", -60, 60, new Part(KerbalRig.Head, X)),
+                    new Control("head.tilt", ControlKey + "Tilt", -25, 25, new Part(KerbalRig.Head, Y)))),
                 new Joint("neck", JointKey + "Neck", new Vector2(100, 133), new Group(null,
-                    new Control("neck.nod", ControlKey + "Nod", -35, 35, new Part("neck_ach", X)),
-                    new Control("neck.turn", ControlKey + "Turn", -60, 60, new Part("neck_ach", Z)),
-                    new Control("neck.tilt", ControlKey + "Tilt", -25, 25, new Part("neck_ach", Y)))),
+                    new Control("neck.nod", ControlKey + "Nod", -35, 35, new Part(KerbalRig.NeckBase, X)),
+                    new Control("neck.turn", ControlKey + "Turn", -60, 60, new Part(KerbalRig.NeckBase, Z)),
+                    new Control("neck.tilt", ControlKey + "Tilt", -25, 25, new Part(KerbalRig.NeckBase, Y)))),
                 // Each eye on its own: where it looks, and each lid closing and slanting on its own (they rest slanted,
                 // so closing alone would bring them over the eye at an angle). Closing turns about the eye's
                 // side-to-side axis, slanting about its gaze; the right eye's frame is turned round, so its lids turn

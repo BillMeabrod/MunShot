@@ -29,6 +29,7 @@ namespace MunShot
         private readonly Func<IReadOnlyList<PosePreset>> _loadPresets;
         private readonly GamePause _pause;
         private readonly UiHider _uiHider;
+        private readonly SharpTextures _sharpTextures;
         private readonly HelmetLightAssets _helmetLights;
         private readonly PhotoModeInputLock _inputLock;
         private InputAction _screenshotKey;
@@ -89,6 +90,7 @@ namespace MunShot
             Capture = capture ?? throw new ArgumentNullException(nameof(capture));
             _pause = new GamePause(Info, Warn);
             _uiHider = new UiHider(Info, Warn);
+            _sharpTextures = new SharpTextures(Info);
             _inputLock = new PhotoModeInputLock(Info, Warn);
             Look = new PhotoLook(Info, Warn);
             Lights = new PhotoLights(() => session.KerbalLayer, Info, Warn);
@@ -138,6 +140,7 @@ namespace MunShot
             _pause.Engage();
             _inputLock.Engage();
             _uiHider.Engage();
+            _sharpTextures.Engage();
             Look.Engage();
             ListenToScreenshotKey(true);
 
@@ -176,6 +179,7 @@ namespace MunShot
             // After the doubles are gone (Session.Close), which used them
             _helmetLights.Release();
             _uiHider.Release();
+            _sharpTextures.Release();
             _inputLock.Release();
             _pause.Release();
             PartHoverOutlines.Suppressed = false;
@@ -198,6 +202,7 @@ namespace MunShot
             Session.Tick();
             if (!IsOpen) return;
             Look.Tick(CurrentCamera());
+            _sharpTextures.Tick(CurrentCamera());
             Camera.UpClose = IsUpClose(CurrentCamera());
             // The lights' and effects' markers are for placing them: not in the photo, nor while the UI is hidden to frame it
             bool markers = !UiHidden && !Capture.IsCapturing;

@@ -3,7 +3,6 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
-using UnityEngine.Rendering.RenderGraphModule.Util;
 using UnityEngine.Rendering.Universal;
 
 namespace MunShot.Cameras
@@ -19,16 +18,14 @@ namespace MunShot.Cameras
     ///   picture; among a tree's leaves, only the outlines. With what <see cref="InkCapture"/> took earlier in the
     ///   frame, also ground lines (road markings, kerbs) and the kerbals' pupils and dark hair; and solid black wherever
     ///   the finished picture (copied just before) was near black.
-    /// Both draw the engines' exhaust and smoke as a cartoon cloud (<see cref="InkFrame.Effects"/>): no lines inside,
+    /// Both draw the engines' exhaust and smoke as a cartoon cloud (<see cref="InkFrame.Smoke"/>): no lines inside,
     /// an outline round it; over the picture, <see cref="CelEffects"/> has drawn it in flat tones; on paper, it's
     /// washed lightly with the ink. Both fade the lines behind the planet's clouds (the game's own cloud texture, as
-    /// much as <see cref="CloudsShown"/>).
+    /// <see cref="InkFrame.Clouds"/>, evened out) and draw their own lines. Where lines crowd (a tree's leaves) is
+    /// worked out first, from where the edges are.
     /// </summary>
-    internal sealed class InkLines : ICameraRenderHook
+    internal sealed class InkLines : IFilterHook
     {
-        // Sizes are in pixels of a picture 1080 high, and as big for the picture's size at others
-        private const float ReferenceHeight = 1080f;
-
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
         private static readonly int LensId = Shader.PropertyToID("_MunShotLens");
         private static readonly int UpId = Shader.PropertyToID("_MunShotUp");
@@ -37,6 +34,7 @@ namespace MunShot.Cameras
         private static readonly int AlbedoId = Shader.PropertyToID("_MunShotAlbedo");
         private static readonly int OpaqueDepthId = Shader.PropertyToID("_MunShotOpaqueDepth");
         private static readonly int KerbalInkId = Shader.PropertyToID("_MunShotKerbalInk");
+        private static readonly int EdgesId = Shader.PropertyToID("_MunShotEdges");
         private static readonly int LeavesId = Shader.PropertyToID("_MunShotLeaves");
         private static readonly int InkColorId = Shader.PropertyToID("_MunShotInkColor");
         private static readonly int PaperColorId = Shader.PropertyToID("_MunShotPaperColor");
@@ -53,20 +51,18 @@ namespace MunShot.Cameras
         private static readonly int PackedMapId = Shader.PropertyToID("_PackedMap");
         private static readonly int NormalMapId = Shader.PropertyToID("_NormalMap");
         private static readonly int PictureId = Shader.PropertyToID("_MunShotPicture");
-        private static readonly int EffectsId = Shader.PropertyToID("_MunShotEffects");
-        private static readonly int HasEffectsId = Shader.PropertyToID("_MunShotHasEffects");
+        private static readonly int SmokeId = Shader.PropertyToID("_MunShotSmoke");
+        private static readonly int HasSmokeId = Shader.PropertyToID("_MunShotHasSmoke");
         private static readonly int TerrainId = Shader.PropertyToID("_MunShotTerrain");
         private static readonly int HasTerrainId = Shader.PropertyToID("_MunShotHasTerrain");
-        private static readonly int CloudsShownId = Shader.PropertyToID("_MunShotCloudsShown");
+        private static readonly int BodiesId = Shader.PropertyToID("_MunShotBodies");
+        private static readonly int HasBodiesId = Shader.PropertyToID("_MunShotHasBodies");
+        private static readonly int CloudsId = Shader.PropertyToID("_MunShotClouds");
+        private static readonly int CloudDistanceId = Shader.PropertyToID("_MunShotCloudDistance");
+        private static readonly int HasCloudsId = Shader.PropertyToID("_MunShotHasClouds");
         private static readonly int LineDetailId = Shader.PropertyToID("_MunShotLineDetail");
         private static readonly int DepthId = Shader.PropertyToID("_CameraDepthTexture");
         private static readonly int NormalsId = Shader.PropertyToID("_CameraNormalsTexture");
-        private static readonly int BlitScaleBiasId = Shader.PropertyToID("_BlitScaleBias");
-
-        private const int OutlinesPass = 1;
-        private const int PaperPass = 2;
-        private const int LeavesPass = 5;
-        private const int FarSurfacePass = 6;
 
         private sealed class PassData
         {
@@ -76,11 +72,14 @@ namespace MunShot.Cameras
             public TextureHandle Albedo;
             public TextureHandle OpaqueDepth;
             public TextureHandle KerbalInk;
+            public TextureHandle Edges;
             public TextureHandle Leaves;
             public TextureHandle Picture;
-            public TextureHandle Effects;
+            public TextureHandle Smoke;
             public TextureHandle Terrain;
-            public float CloudsShown;
+            public TextureHandle Bodies;
+            public TextureHandle Clouds;
+            public TextureHandle CloudDistance;
             public float LineDetail;
             public bool Taken;
             public Material Material;
@@ -104,6 +103,11 @@ namespace MunShot.Cameras
         // The faraway planet's surface is drawn with this, the planet's own packed map set on it
         private readonly Material _farMaterial;
         private readonly bool _onPaper;
+        private readonly int _outlinesPass;
+        private readonly int _paperPass;
+        private readonly int _edgesPass;
+        private readonly int _leavesPass;
+        private readonly int _farSurfacePass;
 
         /// <param name="onPaper">The lines alone on white (the Ink filter), rather than over the picture.</param>
         public InkLines(Shader shader, bool onPaper)
@@ -111,6 +115,11 @@ namespace MunShot.Cameras
             _material = CoreUtils.CreateEngineMaterial(shader);
             _farMaterial = CoreUtils.CreateEngineMaterial(shader);
             _onPaper = onPaper;
+            _outlinesPass = FilterPasses.Find(_material, "Outlines");
+            _paperPass = FilterPasses.Find(_material, "Paper");
+            _edgesPass = FilterPasses.Find(_material, "Edges");
+            _leavesPass = FilterPasses.Find(_material, "Leaves");
+            _farSurfacePass = FilterPasses.Find(_material, "FarSurface");
         }
 
         /// <summary>The camera drawn over, and whether the filter is on; nothing is drawn otherwise.</summary>
@@ -150,17 +159,14 @@ namespace MunShot.Cameras
         /// <summary>
         /// The faraway planet itself (its renderer in that view), whether it has a sea, and that view's camera's view and
         /// projection, as drawn into a texture: where its surface is seen, how smooth it is there and which way it leans
-        /// is drawn, for its coasts (with a sea) and its relief (crater rims, ridges).
+        /// is drawn, for its coasts (with a sea) and its slopes (crater walls, ridges).
         /// </summary>
         public Renderer FarBody { get; set; }
         public bool FarSea { get; set; }
-
-        /// <summary>How much the game's volume clouds show (0 to 1), so the lines behind them fade.</summary>
-        public float CloudsShown { get; set; }
+        public Matrix4x4 FarViewProjection { get; set; } = Matrix4x4.identity;
 
         /// <summary>How much detail the lines show: 1 all of it, 0 only outlines, coasts and the planet's edge.</summary>
         public float LineDetail { get; set; } = 1f;
-        public Matrix4x4 FarViewProjection { get; set; } = Matrix4x4.identity;
 
         public RenderPassEvent Event => _onPaper ? RenderPassEvent.AfterRenderingPostProcessing : RenderPassEvent.BeforeRenderingPostProcessing;
         public ScriptableRenderPassInput Inputs => ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal;
@@ -175,14 +181,12 @@ namespace MunShot.Cameras
             TextureHandle normals = resources.cameraNormalsTexture;
             if (!color.IsValid() || !depth.IsValid() || !normals.IsValid()) return;
 
-            RenderTargetInfo size = renderGraph.GetRenderTargetInfo(color);
-            float pixel = Mathf.Max(1f, size.height / ReferenceHeight);
             var inputs = new PassData
             {
                 Depth = depth,
                 Normals = normals,
                 Material = _material,
-                Pixel = new Vector4(pixel / Mathf.Max(1, size.width), pixel / Mathf.Max(1, size.height), 0f, 0f),
+                Pixel = FilterPasses.PixelOf(renderGraph, color),
                 Lens = Lens,
                 Up = Up,
                 InkColor = InkColor,
@@ -194,7 +198,6 @@ namespace MunShot.Cameras
                 FarPlanet = FarPlanet,
                 FarMetres = FarMetres,
                 FarSea = FarSea,
-                CloudsShown = CloudsShown,
                 LineDetail = LineDetail
             };
 
@@ -203,9 +206,22 @@ namespace MunShot.Cameras
             InkFrame ink = frameData.Contains<InkFrame>() ? frameData.Get<InkFrame>() : null;
             if (ink != null)
             {
-                inputs.Effects = ink.Effects;
+                inputs.Smoke = ink.Smoke;
+                inputs.Clouds = ink.Clouds;
+                inputs.CloudDistance = ink.CloudDistance;
                 inputs.Terrain = ink.Terrain;
+                inputs.Bodies = ink.Bodies;
             }
+
+            // Where lines crowd (a tree's leaves): where the edges are, then where most round a pixel are
+            // (each drawn before it's an input, so no pass reads what it draws)
+            TextureHandle edges = Mask(renderGraph, color, "MunShot Ink Edges");
+            Draw(renderGraph, "MunShot Ink Edges", _edgesPass, edges, inputs);
+            inputs.Edges = edges;
+            TextureHandle leaves = Mask(renderGraph, color, "MunShot Ink Leaves");
+            Draw(renderGraph, "MunShot Ink Leaves", _leavesPass, leaves, inputs);
+            inputs.Leaves = leaves;
+
             if (!_onPaper)
             {
                 // The ground lines, with the depth now as the depth once everything solid is drawn
@@ -216,13 +232,13 @@ namespace MunShot.Cameras
                     inputs.Albedo = ink.Albedo;
                     inputs.OpaqueDepth = depth;
                 }
-                Draw(renderGraph, "MunShot Cel Shading Outlines", OutlinesPass, color, inputs);
+                Draw(renderGraph, "MunShot Cel Shading Outlines", _outlinesPass, color, inputs);
                 return;
             }
 
             // On paper, the finished picture is copied first, as it's then drawn over; with what was taken earlier in the
-            // frame (without all of which there are just the lines and the black), and where lines crowd, worked out first
-            inputs.Picture = CopyOf(renderGraph, color, "MunShot Ink Picture");
+            // frame (without all of which there are just the lines and the black)
+            inputs.Picture = FilterPasses.CopyOf(renderGraph, color, "MunShot Ink Picture");
 
             inputs.Taken = ink != null && ink.IsComplete;
             if (inputs.Taken)
@@ -233,27 +249,14 @@ namespace MunShot.Cameras
                 inputs.KerbalInk = ink.KerbalInk;
             }
 
-            inputs.Leaves = Mask(renderGraph, color, "MunShot Ink Leaves");
-            Draw(renderGraph, "MunShot Ink Leaves", LeavesPass, inputs.Leaves, inputs);
-            Draw(renderGraph, "MunShot Ink", PaperPass, color, inputs);
-        }
-
-        /// <summary>A copy of the picture as it is now.</summary>
-        internal static TextureHandle CopyOf(RenderGraph renderGraph, TextureHandle color, string name)
-        {
-            TextureDesc pictureDesc = renderGraph.GetTextureDesc(color);
-            pictureDesc.name = name;
-            pictureDesc.clearBuffer = false;
-            pictureDesc.depthBufferBits = DepthBits.None;
-            TextureHandle picture = renderGraph.CreateTexture(pictureDesc);
-            renderGraph.AddBlitPass(color, picture, Vector2.one, Vector2.zero, passName: name);
-            return picture;
+            Draw(renderGraph, "MunShot Ink", _paperPass, color, inputs);
         }
 
         private sealed class FarSurfaceData
         {
             public Renderer Body;
             public Material Material;
+            public int Pass;
         }
 
         // Where the faraway planet's surface is seen, how smooth it is there and which way it leans from the smooth sphere,
@@ -284,10 +287,11 @@ namespace MunShot.Cameras
             {
                 passData.Body = FarBody;
                 passData.Material = _farMaterial;
+                passData.Pass = _farSurfacePass;
                 draw.SetRenderAttachment(mask, 0, AccessFlags.Write);
                 draw.SetRenderFunc((FarSurfaceData data, RasterGraphContext context) =>
                 {
-                    context.cmd.DrawRenderer(data.Body, data.Material, 0, FarSurfacePass);
+                    context.cmd.DrawRenderer(data.Body, data.Material, 0, data.Pass);
                 });
             }
             return mask;
@@ -306,7 +310,7 @@ namespace MunShot.Cameras
         }
 
         // One of the shader's passes over the whole of target, with everything in inputs that's there
-        private static void Draw(RenderGraph renderGraph, string name, int pass, TextureHandle target, PassData inputs)
+        private void Draw(RenderGraph renderGraph, string name, int pass, TextureHandle target, PassData inputs)
         {
             using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass(name, out PassData passData))
             {
@@ -316,11 +320,14 @@ namespace MunShot.Cameras
                 passData.Albedo = inputs.Albedo;
                 passData.OpaqueDepth = inputs.OpaqueDepth;
                 passData.KerbalInk = inputs.KerbalInk;
+                passData.Edges = inputs.Edges;
                 passData.Leaves = inputs.Leaves;
                 passData.Picture = inputs.Picture;
-                passData.Effects = inputs.Effects;
+                passData.Smoke = inputs.Smoke;
                 passData.Terrain = inputs.Terrain;
-                passData.CloudsShown = inputs.CloudsShown;
+                passData.Bodies = inputs.Bodies;
+                passData.Clouds = inputs.Clouds;
+                passData.CloudDistance = inputs.CloudDistance;
                 passData.LineDetail = inputs.LineDetail;
                 passData.Taken = inputs.Taken;
                 passData.Material = inputs.Material;
@@ -338,18 +345,26 @@ namespace MunShot.Cameras
                 passData.FarMetres = inputs.FarMetres;
                 passData.FarSurface = inputs.FarSurface;
                 passData.FarSea = inputs.FarSea;
-                foreach (TextureHandle input in new[]
-                         {
-                             inputs.Depth, inputs.Normals, inputs.SceneDepth, inputs.Albedo, inputs.OpaqueDepth,
-                             inputs.KerbalInk, inputs.Leaves, inputs.Picture, inputs.FarSurface, inputs.Effects,
-                             inputs.Terrain
-                         })
-                    if (input.IsValid()) draw.UseTexture(input);
+                UseIfThere(draw, inputs.Depth);
+                UseIfThere(draw, inputs.Normals);
+                UseIfThere(draw, inputs.SceneDepth);
+                UseIfThere(draw, inputs.Albedo);
+                UseIfThere(draw, inputs.OpaqueDepth);
+                UseIfThere(draw, inputs.KerbalInk);
+                UseIfThere(draw, inputs.Edges);
+                UseIfThere(draw, inputs.Leaves);
+                UseIfThere(draw, inputs.Picture);
+                UseIfThere(draw, inputs.FarSurface);
+                UseIfThere(draw, inputs.Smoke);
+                UseIfThere(draw, inputs.Terrain);
+                UseIfThere(draw, inputs.Bodies);
+                UseIfThere(draw, inputs.Clouds);
+                UseIfThere(draw, inputs.CloudDistance);
                 // For the game's water depth and its clouds, which it sets as global textures
                 draw.UseAllGlobalTextures(true);
                 // The outlines are laid over the picture (blended by their coverage); every other pass covers all of
-                // its target (the paper reads the picture's copy, not the picture)
-                draw.SetRenderAttachment(target, 0, pass == OutlinesPass ? AccessFlags.ReadWrite : AccessFlags.Write);
+                // its target (the paper reads the picture's copy, not the picture), so what's there needn't be loaded
+                draw.SetRenderAttachment(target, 0, pass == _outlinesPass ? AccessFlags.ReadWrite : AccessFlags.WriteAll);
                 draw.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
                     MaterialPropertyBlock properties = context.renderGraphPool.GetTempMaterialPropertyBlock();
@@ -374,18 +389,28 @@ namespace MunShot.Cameras
                     SetIfThere(properties, AlbedoId, data.Albedo);
                     SetIfThere(properties, OpaqueDepthId, data.OpaqueDepth);
                     SetIfThere(properties, KerbalInkId, data.KerbalInk);
+                    SetIfThere(properties, EdgesId, data.Edges);
                     SetIfThere(properties, LeavesId, data.Leaves);
                     SetIfThere(properties, PictureId, data.Picture);
-                    SetIfThere(properties, EffectsId, data.Effects);
-                    properties.SetFloat(HasEffectsId, data.Effects.IsValid() ? 1f : 0f);
+                    SetIfThere(properties, SmokeId, data.Smoke);
+                    properties.SetFloat(HasSmokeId, data.Smoke.IsValid() ? 1f : 0f);
                     SetIfThere(properties, TerrainId, data.Terrain);
                     properties.SetFloat(HasTerrainId, data.Terrain.IsValid() ? 1f : 0f);
-                    properties.SetFloat(CloudsShownId, data.CloudsShown);
+                    SetIfThere(properties, BodiesId, data.Bodies);
+                    properties.SetFloat(HasBodiesId, data.Bodies.IsValid() ? 1f : 0f);
+                    SetIfThere(properties, CloudsId, data.Clouds);
+                    SetIfThere(properties, CloudDistanceId, data.CloudDistance);
+                    properties.SetFloat(HasCloudsId, data.Clouds.IsValid() && data.CloudDistance.IsValid() ? 1f : 0f);
                     properties.SetFloat(LineDetailId, data.LineDetail);
-                    properties.SetVector(BlitScaleBiasId, new Vector4(1f, 1f, 0f, 0f));
+                    properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
                     context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
                 });
             }
+        }
+
+        private static void UseIfThere(IRasterRenderGraphBuilder draw, TextureHandle texture)
+        {
+            if (texture.IsValid()) draw.UseTexture(texture);
         }
 
         private static void SetIfThere(MaterialPropertyBlock properties, int id, TextureHandle texture)
@@ -393,7 +418,7 @@ namespace MunShot.Cameras
             if (texture.IsValid()) properties.SetTexture(id, texture);
         }
 
-        /// <summary>Lets go of the material.</summary>
+        /// <summary>Lets go of the materials.</summary>
         public void Destroy()
         {
             CoreUtils.Destroy(_material);
