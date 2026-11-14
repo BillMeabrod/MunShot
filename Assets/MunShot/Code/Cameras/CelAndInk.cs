@@ -105,8 +105,6 @@ namespace MunShot.Cameras
             _inkBeforeEffects.IsOn = ink || cel;
             _inkEffects.IsOn = ink || cel;
             _ink.IsOn = ink;
-            // The paper is drawn after the game clears its clouds, so it reads a copy
-            _inkEffects.KeepsClouds = ink && _ink.CloudsShown > 0f;
             if (ink || cel)
             {
                 // Either side of Redux's exhaust and smoke, whenever it draws them
@@ -155,11 +153,9 @@ namespace MunShot.Cameras
                 : atmosphere <= 0 ? 1f
                 : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SkyBandsFrom * (float)atmosphere, (float)atmosphere, height));
 
-            // The game's volume clouds, so the lines behind them fade and Cel shaded puts them in flat tones
-            float cloudsShown = Planet.CloudsShown(camera);
-            _celOutlines.CloudsShown = cloudsShown;
-            _ink.CloudsShown = cloudsShown;
-            _celEffects.CloudsShown = cloudsShown;
+            // The game's volume clouds, evened out once for every pass that draws from them: the lines behind them fade, and
+            // Cel shaded puts them in flat tones
+            _inkEffects.CloudsShown = Planet.CloudsShown(camera);
 
             // The planet as Redux's faraway view draws it, clouds and all, for its edge; only from above its clouds, as
             // from among them the edge would hang in the sky over the horizon

@@ -30,16 +30,19 @@
 //
 // CelEffects pass: Cel shaded's exhaust and smoke, right after Redux draws them, as a cartoon smoke cloud: in flat
 // tones inside its hard edge, the picture as it was before them outside. The Outlines and Paper passes draw nothing of
-// what's behind that cloud, and an outline round it; on paper, it's washed lightly with the ink. All from the Effects
+// what's behind that cloud, and an outline round it; on paper, it's washed lightly with the ink. All from the Smoke
 // pass. CelEffects also draws the planet's clouds in flat tones, distant planets and moons, and the clear sky from
-// orbit; both passes fade the lines behind the clouds (from the game's own cloud texture), and outline distant planets
-// and moons (where InkCapture's Bodies pass found them in Redux's faraway view).
+// orbit; both passes fade the lines behind the clouds (the Clouds pass's), and outline distant planets and moons (where
+// InkCapture's Bodies pass found them in Redux's faraway view).
 //
-// KeepDepth, KerbalInk, Effects, Bodies and Clouds passes: InkCapture's, for the above (Effects: how much what was drawn
-// between two copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain among the
-// surfaces' colours; Bodies: where the faraway view shows distant planets and moons; Clouds: a copy of the game's
-// clouds, which it clears after the post-processing, for the paper). Leaves pass: InkLines', just before the paper (where lines crowd). FarSurface pass: InkLines', the faraway
-// planet's surface, for its coasts and slopes. CelEffects pass: MunShot.Cameras.CelEffects'.
+// KeepDepth, KerbalInk, Effects, Smoke, Bodies, Clouds and CloudDistance passes: InkCapture's, for the above (Effects: how much what
+// was drawn between two copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain
+// among the surfaces' colours; Smoke: the cartoon smoke cloud, from the exhaust's and smoke's; Bodies: where the faraway
+// view shows distant planets and moons; Clouds: the game's clouds evened out, once for every pass that draws from them;
+// CloudDistance: how far off they are, so they fade only what's behind them).
+// Edges and Leaves passes: InkLines', just before the outlines or the paper (where the edges are, then where lines
+// crowd). FarSurface pass: InkLines', the faraway planet's surface, for its coasts and slopes. CelEffects pass:
+// MunShot.Cameras.CelEffects'.
 Shader "Hidden/MunShot/CelShading"
 {
     SubShader
@@ -223,13 +226,14 @@ Shader "Hidden/MunShot/CelShading"
             float4 OutlinesFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-                bool crowded = Crowded(input.texcoord);
+                bool crowded = LeavesAt(input.texcoord) > 0.5;
                 float ink = max(LinesAt(input.texcoord, crowded), PaintLineAt(input.texcoord, crowded));
                 ink *= 1 - CloudsAt(input.texcoord);
                 ink = max(ink, CloudLinesAt(input.texcoord));
                 if (InSmoke(input.texcoord)) ink = 0;
                 ink = max(ink, SmokeOutlineAt(input.texcoord));
-                ink = max(ink, BodyOutlineAt(input.texcoord));
+                // Distant planets and moons, as much as the clouds in front let them show
+                ink = max(ink, BodyOutlineAt(input.texcoord) * (1 - CloudsAt(input.texcoord)));
                 if (ink <= 0) discard;
                 return float4(Ink, ink);
             }
@@ -276,7 +280,8 @@ Shader "Hidden/MunShot/CelShading"
                 ink = max(ink, CloudLinesAt(uv));
                 ink = InSmoke(uv) ? Wash : max(ink, Fill(input.texcoord));
                 ink = max(ink, SmokeOutlineAt(uv));
-                ink = max(ink, BodyOutlineAt(uv));
+                // Distant planets and moons, as much as the clouds in front let them show
+                ink = max(ink, BodyOutlineAt(uv) * (1 - CloudsAt(uv)));
                 return float4(lerp(_MunShotPaperColor.rgb, _MunShotInkColor.rgb, ink), 1);
             }
             ENDHLSL
@@ -369,6 +374,31 @@ Shader "Hidden/MunShot/CelShading"
 
         Pass
         {
+            Name "Edges"
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment EdgesFragment
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
+            #include "InkLines.hlsl"
+
+            // 1 on an edge (unbent, as the depth)
+            float4 EdgesFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                return OnEdge(input.texcoord) ? 1 : 0;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
             Name "Leaves"
 
             HLSLPROGRAM
@@ -383,7 +413,7 @@ Shader "Hidden/MunShot/CelShading"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
             #include "InkLines.hlsl"
 
-            // 1 where lines crowd (unbent, as the depth)
+            // 1 where lines crowd (unbent, as the depth), from the Edges pass's
             float4 LeavesFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -549,7 +579,7 @@ Shader "Hidden/MunShot/CelShading"
                 if (!InSmoke(uv))
                 {
                     SmoothedClouds clouds = SmoothClouds(uv);
-                    if (Clouded(clouds)) return float4(own.rgb * (CloudToneLight(clouds.Light) / clouds.Light), own.a);
+                    if (Clouded(clouds) && CloudsBefore(uv, InverseDepth(SampleSceneDepth(uv)))) return float4(own.rgb * (CloudToneLight(clouds.Light) / clouds.Light), own.a);
                     if (IsSky(SampleSceneDepth(uv)))
                         return float4(BodyAt(uv) ? Toned(own.rgb) : lerp(own.rgb, Toned(own.rgb), _MunShotSkyBands), own.a);
                     return SAMPLE_TEXTURE2D_X_LOD(_MunShotBeforeEffects, sampler_PointClamp, uv, 0);
@@ -620,14 +650,67 @@ Shader "Hidden/MunShot/CelShading"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
+            #include "InkLines.hlsl"
 
-            // The game's volume clouds (KSP.VolumeCloud's, set for every shader)
-            TEXTURE2D(_CloudTex);
-
+            // The game's volume clouds round each pixel, evened out (InkLines.hlsl's SmoothedClouds: xy its Cover and
+            // Light, zw its Change)
             float4 CloudsFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-                return SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, input.texcoord, 0);
+                SmoothedClouds clouds = SmoothGameClouds(input.texcoord);
+                return float4(clouds.Cover, clouds.Light, clouds.Change);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "Smoke"
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment SmokeFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
+            #include "InkLines.hlsl"
+
+            // 1 inside the cartoon smoke cloud, from the Effects pass's
+            float4 SmokeFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                return SmokeCovers(input.texcoord) ? 1 : 0;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "CloudDistance"
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment CloudDistanceFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+
+            // The game's volume clouds' depth (KSP.VolumeCloud's, set for every shader, as coarse as the clouds): g how
+            // far off they are (metres), 0 where there are none
+            TEXTURE2D_FLOAT(formerDepthTex);
+            float _MunShotCloudsShown;
+
+            // How far off the clouds are at a pixel (metres), 0 where there are none
+            float4 CloudDistanceFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                return _MunShotCloudsShown > 0 ? SAMPLE_TEXTURE2D_LOD(formerDepthTex, sampler_PointClamp, input.texcoord, 0).g : 0;
             }
             ENDHLSL
         }

@@ -156,16 +156,14 @@ bool Shore(float2 uv, float2 x, float2 y, bool water)
     return shore;
 }
 
-// How strongly a pixel is on an edge (0 to 1): the depth bending, the surface turning (not on water) or the shore, and
-// how much the depth bends there
-float Edge(float2 uv, float2 x, float2 y, out float bend)
+// How strongly a pixel is on an edge (0 to 1): the depth bending, the surface turning (not on water) or the shore
+float Edge(float2 uv, float2 x, float2 y)
 {
     bool water;
     float raw = RawDepth(uv, water);
-    bend = 0;
     if (IsSky(raw)) return 0;
     if (Shore(uv, x, y, water)) return 1;
-    bend = Bend(uv, x, y);
+    float bend = Bend(uv, x, y);
     float turn = 0;
     if (!water)
     {
@@ -175,39 +173,54 @@ float Edge(float2 uv, float2 x, float2 y, out float bend)
     return max(smoothstep(DepthBend, DepthBend * 1.5, bend), smoothstep(Crease, Crease * 1.3, turn));
 }
 
+// Whether a pixel is on an edge, for where lines crowd (MunShot.Cameras.InkLines' Edges pass draws it for every pixel)
+bool OnEdge(float2 uv)
+{
+    return Edge(uv, float2(_MunShotPixel.x * LinePixels, 0), float2(0, _MunShotPixel.y * LinePixels)) >= 0.5;
+}
+
+// What the Edges pass drew, and where lines crowd as the Leaves pass drew it from that (1, 0 elsewhere): both unbent,
+// as the depth
+TEXTURE2D_X(_MunShotEdges);
+TEXTURE2D_X(_MunShotLeaves);
+
 // Whether lines would crowd round a pixel: more than Busy of the points BusyPixels round it are on an edge too, as
-// inside a tree's leaves
+// inside a tree's leaves (the Leaves pass's)
 bool Crowded(float2 uv)
 {
-    float2 x = float2(_MunShotPixel.x * LinePixels, 0);
-    float2 y = float2(0, _MunShotPixel.y * LinePixels);
     float crowd = 0;
     [unroll]
     for (int i = 0; i < BusyPoints; i++)
     {
         float angle = i * (6.2831853 / BusyPoints);
-        float unused;
-        crowd += step(0.5, Edge(uv + float2(cos(angle), sin(angle)) * BusyPixels * _MunShotPixel.xy, x, y, unused));
+        float2 at = uv + float2(cos(angle), sin(angle)) * BusyPixels * _MunShotPixel.xy;
+        crowd += SAMPLE_TEXTURE2D_X_LOD(_MunShotEdges, sampler_PointClamp, at, 0).r;
     }
     return crowd > Busy * BusyPoints;
 }
 
-// How much the engines' exhaust and smoke cover each pixel (MunShot.Cameras.InkCapture's), when it was taken
-TEXTURE2D_X(_MunShotEffects);
-float _MunShotHasEffects;
-
-// How much the exhaust and smoke cover a pixel, so the lines behind them don't show through
-float EffectsAt(float2 uv)
+float LeavesAt(float2 uv)
 {
-    return _MunShotHasEffects > 0 ? SAMPLE_TEXTURE2D_X_LOD(_MunShotEffects, sampler_LinearClamp, uv, 0).r : 0;
+    return SAMPLE_TEXTURE2D_X_LOD(_MunShotLeaves, sampler_LinearClamp, uv, 0).r;
 }
 
+// How much the engines' exhaust and smoke cover each pixel (MunShot.Cameras.InkCapture's Effects pass), for its Smoke
+// pass; and where the cartoon smoke cloud is as that drew it (1 inside), when it was taken
+TEXTURE2D_X(_MunShotEffects);
+TEXTURE2D_X(_MunShotSmoke);
+float _MunShotHasSmoke;
+
 // The exhaust and smoke are drawn as a cartoon smoke cloud with a hard edge: inside it where they cover more than
-// SmokeEdge, evened out over SmokeEdgePixels round the pixel so the edge is smooth rather than grainy
+// SmokeEdge, evened out over SmokeEdgePixels round the pixel so the edge is smooth rather than grainy (the Smoke pass's)
 static const float SmokeEdge = 0.5;
 static const float SmokeEdgePixels = 2;
 
-bool InSmoke(float2 uv)
+float EffectsAt(float2 uv)
+{
+    return SAMPLE_TEXTURE2D_X_LOD(_MunShotEffects, sampler_LinearClamp, uv, 0).r;
+}
+
+bool SmokeCovers(float2 uv)
 {
     float2 d = _MunShotPixel.xy * SmokeEdgePixels;
     float cover = (2 * EffectsAt(uv) + EffectsAt(uv + d) + EffectsAt(uv - d)
@@ -215,11 +228,17 @@ bool InSmoke(float2 uv)
     return cover > SmokeEdge;
 }
 
+// Whether a pixel is inside the smoke cloud, so the lines behind it don't show through
+bool InSmoke(float2 uv)
+{
+    return _MunShotHasSmoke > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotSmoke, sampler_PointClamp, uv, 0).r > 0.5;
+}
+
 // How much ink the smoke cloud's outline gives a pixel (0 to 1): every pixel within half an outline's width of its
 // edge, as LinesAt draws an outline
 float SmokeOutlineAt(float2 uv)
 {
-    if (_MunShotHasEffects <= 0) return 0;
+    if (_MunShotHasSmoke <= 0) return 0;
     bool inside[5][5];
     [unroll]
     for (int i = 0; i < 5; i++)
@@ -286,9 +305,16 @@ float BodyOutlineAt(float2 uv)
 // the smoke's so a cloud deck's gentle shading still shows), and both filters draw a line round them and, as much as
 // the detail asks, between their tones and where their light changes by more than CloudChangeStops across
 // CloudSmoothPixels either side (a nearer cloud before a brighter one), too gently for a tone of its own, unless a
-// tone's line or their edge is within CloudChangeGapPixels across it, as that already draws it
+// tone's line or their edge is within CloudChangeGapPixels across it, as that already draws it. MunShot.Cameras.
+// InkCapture's Clouds pass evens them out once a frame (SmoothGameClouds), and the filters' passes read that
+// (_MunShotClouds, SmoothClouds; _MunShotHasClouds 0 when there are none). All of it only where the clouds are in front
+// of what's there (its CloudDistance pass, from the game's own cloud depth): the game works its clouds out coarser than
+// the picture, so they spill over the edges of what's before them
 TEXTURE2D(_CloudTex);
 float _MunShotCloudsShown;
+TEXTURE2D_X(_MunShotClouds);
+TEXTURE2D_X_FLOAT(_MunShotCloudDistance);
+float _MunShotHasClouds;
 static const float CloudsEdge = 0.5;
 static const float CloudToneStops = 0.5;
 // The clouds are evened out over 3 by 3 points CloudSmoothPixels apart (the middle counting most) before their edge and
@@ -296,15 +322,13 @@ static const float CloudToneStops = 0.5;
 static const float CloudSmoothPixels = 4;
 static const float CloudChangeStops = 0.2;
 static const float CloudChangeGapPixels = 5;
+// The clouds' lines are lighter than the rest, CloudInk of the way from the paper to the ink, so they don't weigh on
+// something as soft
+static const float CloudInk = 0.4;
 
 float4 CloudsSample(float2 uv)
 {
     return _MunShotCloudsShown > 0 ? SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_LinearClamp, uv, 0) : 0;
-}
-
-float CloudsAt(float2 uv)
-{
-    return saturate(CloudsSample(uv).a) * _MunShotCloudsShown;
 }
 
 bool Clouded(float4 clouds)
@@ -330,7 +354,7 @@ struct SmoothedClouds
     float2 Change;
 };
 
-SmoothedClouds SmoothClouds(float2 uv)
+SmoothedClouds SmoothGameClouds(float2 uv)
 {
     float4 samples[3][3];
     float4 sum = 0;
@@ -361,6 +385,37 @@ SmoothedClouds SmoothClouds(float2 uv)
     return clouds;
 }
 
+// The clouds round a pixel as the Clouds pass evened them out (xy its Cover and Light, zw its Change)
+SmoothedClouds SmoothClouds(float2 uv)
+{
+    float4 kept = _MunShotHasClouds > 0 ? SAMPLE_TEXTURE2D_X_LOD(_MunShotClouds, sampler_LinearClamp, uv, 0) : 0;
+    SmoothedClouds clouds;
+    clouds.Cover = kept.x;
+    clouds.Light = max(kept.y, 1e-6);
+    clouds.Change = kept.zw;
+    return clouds;
+}
+
+// Whether the clouds at a pixel are in front of what's there, given as 1 / its distance (0 for the sky)
+bool CloudsBefore(float2 uv, float w)
+{
+    float cloud = _MunShotHasClouds > 0 ? SAMPLE_TEXTURE2D_X_LOD(_MunShotCloudDistance, sampler_PointClamp, uv, 0).r : 0;
+    return cloud > 0 && cloud * w < 1;
+}
+
+// How much the clouds cover a pixel, so the lines behind them fade: none where they're behind the nearest thing within a
+// line's reach (an outline against the sky is its object's, and stays whole in front of a cloud)
+float CloudsAt(float2 uv)
+{
+    float2 x = float2(_MunShotPixel.x * LinePixels, 0);
+    float2 y = float2(0, _MunShotPixel.y * LinePixels);
+    bool water;
+    float w = max(InverseDepth(RawDepth(uv, water)),
+                  max(max(InverseDepth(RawDepth(uv - x, water)), InverseDepth(RawDepth(uv + x, water))),
+                      max(InverseDepth(RawDepth(uv - y, water)), InverseDepth(RawDepth(uv + y, water)))));
+    return CloudsBefore(uv, w) ? SmoothClouds(uv).Cover : 0;
+}
+
 bool Clouded(SmoothedClouds clouds)
 {
     return clouds.Cover > CloudsEdge;
@@ -378,10 +433,12 @@ float CloudToneLight(float light)
 }
 
 // How much ink the clouds' lines give a pixel (0 to 1): round their edge, where a neighbour is clear; and, as much as
-// the detail asks, between their tones, on the brighter side, and along the sharpest of a change in their light; as
-// much as the planet's own lines get from up high
+// the detail asks, between their tones, on the brighter side, and along the sharpest of a change in their light; at
+// CloudInk, and as much as the planet's own lines get from up high
 float CloudLinesAt(float2 uv)
 {
+    bool water;
+    if (!CloudsBefore(uv, InverseDepth(RawDepth(uv, water)))) return 0;
     SmoothedClouds here = SmoothClouds(uv);
     if (!Clouded(here)) return 0;
     float tone = CloudTone(here.Light);
@@ -413,7 +470,7 @@ float CloudLinesAt(float2 uv)
         bool lined = !Clouded(before) || !Clouded(after) || CloudTone(before.Light) != CloudTone(after.Light);
         sharp = lined ? 0 : 1;
     }
-    return max(edge, max(between, sharp) * saturate(_MunShotLineDetail)) * PlanetInk();
+    return max(edge, max(between, sharp) * saturate(_MunShotLineDetail)) * CloudInk * PlanetInk();
 }
 
 // Where in the faraway view's world a pixel of the picture shows, somewhere along that view's camera's look through it
