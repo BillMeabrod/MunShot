@@ -84,8 +84,8 @@ Shader "Hidden/MunShot/CelShading"
 
             // How far round each pixel its colour and facing are evened out (in pixels), in rings of samples
             static const float FlatRadius = 32;
-            static const int FlatRings = 4;
-            static const int FlatDirections = 16;
+            static const int FlatRings = 3;
+            static const int FlatDirections = 12;
             // A neighbour counts as the same surface when it's this near in depth (for its distance) and faces within
             // about 35 degrees the same way; its colour counts when it's within Similar of the pixel's, as each looks (0 to
             // 1 a channel, its square root: so a red ring on a grey wall stays apart, not smeared into it)
