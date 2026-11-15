@@ -20,8 +20,7 @@ float4 _MunShotPaperColor;
 // dark hair), unbent. Without all of it (_MunShotTaken 0), the paper has the outlines alone
 TEXTURE2D_X(_MunShotKerbalInk);
 
-// The finished picture, bent by the fisheye as the screen is
-TEXTURE2D_X(_MunShotPicture);
+// _MunShotPicture (InkLines.hlsl) is the finished picture, bent by the fisheye as the screen is
 
 // Among leaves: most of what's within LeafyPixels of a pixel is where lines crowd
 static const float LeafyPixels = 2;

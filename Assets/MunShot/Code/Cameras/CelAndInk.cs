@@ -36,6 +36,8 @@ namespace MunShot.Cameras
         private static readonly int HairColorId = Shader.PropertyToID("_RandomColor");
         private const float DarkHair = 0.4f;
         private const float KerbalSearchSeconds = 1f;
+        // The game's particle effects come and go (an explosion lasts seconds), so they're looked for again this often
+        private const float ParticleSearchSeconds = 0.5f;
 
         private readonly CelShading _celShading;
         private readonly InkLines _celOutlines;
@@ -61,6 +63,8 @@ namespace MunShot.Cameras
         private readonly List<(Renderer, bool)> _kerbalParts = new List<(Renderer, bool)>();
         private readonly MaterialPropertyBlock _hairProperties = new MaterialPropertyBlock();
         private float _nextKerbalSearch;
+        private readonly List<ParticleSystemRenderer> _particles = new List<ParticleSystemRenderer>();
+        private float _nextParticleSearch;
 
         /// <summary>Makes the filters' passes with MunShot's CelShading shader and registers their hooks.</summary>
         public CelAndInk(Shader shader, Action<string> logInfo)
@@ -121,6 +125,7 @@ namespace MunShot.Cameras
             _ink.InkColor = inkColor;
             _ink.PaperColor = paperColor;
             if (ink) _inkOpaque.KerbalParts = FindKerbalParts();
+            if (ink || cel) _inkEffects.Particles = FindParticles();
         }
 
         /// <summary>Takes the filters away: unregisters their hooks, puts Redux's own back as it was, and lets go of them.</summary>
@@ -131,6 +136,7 @@ namespace MunShot.Cameras
             foreach (IFilterHook hook in _hooks) hook.Destroy();
             _hooks.Clear();
             _kerbalParts.Clear();
+            _particles.Clear();
         }
 
         // Where the camera and the planet are, for every pass that draws from them
@@ -200,6 +206,17 @@ namespace MunShot.Cameras
             lines.FarBody = body;
             lines.FarSea = sea;
             lines.FarViewProjection = viewProjection;
+        }
+
+        // The game's particle effects in the scene that draw anything, looked for again every ParticleSearchSeconds
+        private IReadOnlyList<ParticleSystemRenderer> FindParticles()
+        {
+            if (Time.unscaledTime < _nextParticleSearch) return _particles;
+            _nextParticleSearch = Time.unscaledTime + ParticleSearchSeconds;
+            _particles.Clear();
+            foreach (ParticleSystemRenderer particles in UnityEngine.Object.FindObjectsByType<ParticleSystemRenderer>(FindObjectsInactive.Exclude))
+                if (particles.renderMode != ParticleSystemRenderMode.None) _particles.Add(particles);
+            return _particles;
         }
 
         // Every kerbal's eyeballs and dark hair in the scene (doubles and originals: a hidden one isn't drawn), looked for

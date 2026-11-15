@@ -30,14 +30,16 @@
 //
 // CelEffects pass: Cel shaded's exhaust and smoke, right after Redux draws them, as a cartoon smoke cloud: in flat
 // tones inside its hard edge, the picture as it was before them outside. The Outlines and Paper passes draw nothing of
-// what's behind that cloud, and an outline round it; on paper, it's washed lightly with the ink. All from the Smoke
-// pass. CelEffects also draws the planet's clouds in flat tones, distant planets and moons, and the clear sky from
-// orbit; both passes fade the lines behind the clouds (the Clouds pass's), and outline distant planets and moons (where
+// what's behind that cloud, and a light outline round its particle smoke (not the exhaust: that's a glow), with light
+// lines inside it where Cel shaded's tones step; on paper, it's washed lightly with the ink. All from the Smoke pass.
+// CelEffects also draws the planet's clouds in flat tones, distant planets and moons, and the clear sky from orbit; both passes fade the lines behind the clouds (the Clouds pass's), and outline distant planets and moons (where
 // InkCapture's Bodies pass found them in Redux's faraway view).
 //
-// KeepDepth, KerbalInk, Effects, Smoke, Bodies, Clouds and CloudDistance passes: InkCapture's, for the above (Effects: how much what
-// was drawn between two copies changed each pixel: Redux's exhaust and smoke on the picture, or the planet's terrain
-// among the surfaces' colours; Smoke: the cartoon smoke cloud, from the exhaust's and smoke's; Bodies: where the faraway
+// KeepDepth, KerbalInk, Effects, Particles, Smoke, Bodies, Clouds and CloudDistance passes: InkCapture's, for the above
+// (Effects: how much what was drawn between two copies changed each pixel: Redux's exhaust and smoke on the picture, or
+// the planet's terrain among the surfaces' colours; Particles: how much of each pixel the game's particle effects make
+// (explosions and debris smoke among them, drawn again on their own), added to that; ParticlePuffs: how much their
+// see-through puffs cover each pixel (launch smoke among them), added too; Smoke: the cartoon smoke cloud, from the exhaust's and smoke's; Bodies: where the faraway
 // view shows distant planets and moons; Clouds: the game's clouds evened out, once for every pass that draws from them;
 // CloudDistance: how far off they are, so they fade only what's behind them).
 // Edges and Leaves passes: InkLines', just before the outlines or the paper (where the edges are, then where lines
@@ -231,7 +233,7 @@ Shader "Hidden/MunShot/CelShading"
                 ink *= 1 - CloudsAt(input.texcoord);
                 ink = max(ink, CloudLinesAt(input.texcoord));
                 if (InSmoke(input.texcoord)) ink = 0;
-                ink = max(ink, SmokeOutlineAt(input.texcoord));
+                ink = max(ink, max(SmokeOutlineAt(input.texcoord), SmokeToneLinesAt(input.texcoord, input.texcoord)));
                 // Distant planets and moons, as much as the clouds in front let them show
                 ink = max(ink, BodyOutlineAt(input.texcoord) * (1 - CloudsAt(input.texcoord)));
                 if (ink <= 0) discard;
@@ -279,7 +281,7 @@ Shader "Hidden/MunShot/CelShading"
                 ink *= 1 - CloudsAt(uv);
                 ink = max(ink, CloudLinesAt(uv));
                 ink = InSmoke(uv) ? Wash : max(ink, Fill(input.texcoord));
-                ink = max(ink, SmokeOutlineAt(uv));
+                ink = max(ink, max(SmokeOutlineAt(uv), SmokeToneLinesAt(input.texcoord, uv)));
                 // Distant planets and moons, as much as the clouds in front let them show
                 ink = max(ink, BodyOutlineAt(uv) * (1 - CloudsAt(uv)));
                 return float4(lerp(_MunShotPaperColor.rgb, _MunShotInkColor.rgb, ink), 1);
@@ -501,12 +503,16 @@ Shader "Hidden/MunShot/CelShading"
             TEXTURE2D_X(_MunShotBeforeEffects);
             TEXTURE2D_X(_MunShotAfterEffects);
 
+            // How much a pixel must change at the least, however dark it is, to be counted at all (faint glow isn't)
+            float _MunShotMinChange;
+
             // How much a pixel must change, for how bright it is, to be just touched by what was drawn, and wholly
             // covered
             static const float EffectsFaint = 0.05;
             static const float EffectsThick = 0.5;
 
-            // How much what was drawn covers the pixel: how much it changed it, for how bright it is either way
+            // How much what was drawn covers the pixel: how much it changed it, for how bright it is either way (in red;
+            // the Particles and ParticlePuffs passes add the particle smoke in green)
             float4 EffectsFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -514,8 +520,9 @@ Shader "Hidden/MunShot/CelShading"
                 float3 after = SAMPLE_TEXTURE2D_X_LOD(_MunShotAfterEffects, sampler_PointClamp, input.texcoord, 0).rgb;
                 float3 change = abs(after - before);
                 float brightest = max(Max3(before.r, before.g, before.b), Max3(after.r, after.g, after.b));
-                float covered = Max3(change.r, change.g, change.b) / max(brightest, 1e-4);
-                return smoothstep(EffectsFaint, EffectsThick, covered);
+                float changed = Max3(change.r, change.g, change.b);
+                if (changed < _MunShotMinChange) return 0;
+                return float4(smoothstep(EffectsFaint, EffectsThick, changed / max(brightest, 1e-4)), 0, 0, 0);
             }
             ENDHLSL
         }
@@ -537,33 +544,23 @@ Shader "Hidden/MunShot/CelShading"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
             #include "InkLines.hlsl"
 
-            // The picture just before Redux draws the engines' exhaust and smoke, and a copy of it just after
+            // The picture just before Redux draws the engines' exhaust and smoke (_MunShotPicture, InkLines.hlsl, is a
+            // copy of it just after)
             TEXTURE2D_X(_MunShotBeforeEffects);
-            TEXTURE2D_X(_MunShotPicture);
 
             // How much of the flat tones the clear sky gets (0 to 1): none near the ground, all of them from orbit
             float _MunShotSkyBands;
-
-
-            // The smoke's colour is evened out over SmokeRings rings of SmokeDirections out to SmokePixels round each
-            // pixel (only what's in the cloud), so its grain doesn't show, then split into tones ToneStops apart (each
-            // twice as bright as the last: as many for a dim cloud as a bright one)
-            static const float SmokePixels = 6;
-            static const int SmokeRings = 2;
-            static const int SmokeDirections = 8;
-            static const float ToneStops = 1;
 
             float4 Picture(float2 uv)
             {
                 return SAMPLE_TEXTURE2D_X_LOD(_MunShotPicture, sampler_PointClamp, uv, 0);
             }
 
-            // A colour in flat tones: its brightness to the middle of its tone, its hue kept
+            // A colour in flat tones: its brightness to the middle of its tone (Tone's), its hue kept
             float3 Toned(float3 color)
             {
                 float brightness = max(Luminance(color), 1e-6);
-                float tone = exp2((floor(log2(brightness) / ToneStops) + 0.5) * ToneStops);
-                return color * (tone / brightness);
+                return color * (exp2((Tone(color) + 0.5) * ToneStops) / brightness);
             }
 
             // Inside the smoke cloud, the smoke and fire in flat tones. Outside it: the planet's clouds in flat tones,
@@ -584,24 +581,7 @@ Shader "Hidden/MunShot/CelShading"
                         return float4(BodyAt(uv) ? Toned(own.rgb) : lerp(own.rgb, Toned(own.rgb), _MunShotSkyBands), own.a);
                     return SAMPLE_TEXTURE2D_X_LOD(_MunShotBeforeEffects, sampler_PointClamp, uv, 0);
                 }
-
-                float3 sum = own.rgb;
-                float weight = 1;
-                [unroll]
-                for (int ring = 1; ring <= SmokeRings; ring++)
-                {
-                    float radius = SmokePixels * ring / SmokeRings;
-                    [unroll]
-                    for (int d = 0; d < SmokeDirections; d++)
-                    {
-                        float angle = (d + 0.5 * (ring & 1)) * (6.2831853 / SmokeDirections);
-                        float2 at = uv + float2(cos(angle), sin(angle)) * radius * _MunShotPixel.xy;
-                        if (!InSmoke(at)) continue;
-                        sum += Picture(at).rgb;
-                        weight += 1;
-                    }
-                }
-                return float4(Toned(sum / weight), own.a);
+                return float4(Toned(SmokeColorAt(uv, uv)), own.a);
             }
             ENDHLSL
         }
@@ -680,11 +660,12 @@ Shader "Hidden/MunShot/CelShading"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
             #include "InkLines.hlsl"
 
-            // 1 inside the cartoon smoke cloud, from the Effects pass's
+            // Red 1 inside the cartoon smoke cloud, and green 1 inside its particle smoke part, from the Effects step's
             float4 SmokeFragment(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-                return SmokeCovers(input.texcoord) ? 1 : 0;
+                bool particles = SmokeCovers(input.texcoord, 1, SmokeEdge);
+                return float4(particles || SmokeCovers(input.texcoord, 0, PlumeEdge) ? 1 : 0, particles ? 1 : 0, 0, 0);
             }
             ENDHLSL
         }
@@ -711,6 +692,98 @@ Shader "Hidden/MunShot/CelShading"
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 return _MunShotCloudsShown > 0 ? SAMPLE_TEXTURE2D_LOD(formerDepthTex, sampler_PointClamp, input.texcoord, 0).g : 0;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "Particles"
+            BlendOp Max
+            Blend One One
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex Vert
+            #pragma fragment ParticlesFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+
+            // The game's particle effects drawn on their own over black, with their own materials, and the picture
+            TEXTURE2D_X(_MunShotParticles);
+            TEXTURE2D_X(_MunShotPicture);
+
+            // How much of a pixel's brightness must be the particles' for it to be just touched by them, and wholly
+            // covered (as the Effects pass judges the exhaust and smoke)
+            static const float ParticlesFaint = 0.05;
+            static const float ParticlesThick = 0.5;
+
+            // How much the particles cover the pixel: how much of its brightness is theirs, kept where it's more than
+            // the exhaust's and smoke's already there
+            float4 ParticlesFragment(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+                float3 particles = SAMPLE_TEXTURE2D_X_LOD(_MunShotParticles, sampler_PointClamp, input.texcoord, 0).rgb;
+                float3 picture = SAMPLE_TEXTURE2D_X_LOD(_MunShotPicture, sampler_PointClamp, input.texcoord, 0).rgb;
+                float share = Max3(particles.r, particles.g, particles.b) / max(Max3(picture.r, picture.g, picture.b), 1e-4);
+                return float4(0, smoothstep(ParticlesFaint, ParticlesThick, share), 0, 0);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "ParticlePuffs"
+            Blend One One
+            ZTest LEqual
+            ZWrite Off
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex PuffsVertex
+            #pragma fragment PuffsFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            // The puff's own texture (from the particle's material): its alpha is the puff's shape
+            TEXTURE2D(_MainTex);
+            SAMPLER(sampler_MainTex);
+            float4 _MainTex_ST;
+
+            // How much of the smoke mask a puff's full coverage adds: more than 1, so smoke only fairly thick still
+            // counts as the cartoon cloud
+            static const float PuffCover = 2;
+
+            struct PuffAttributes
+            {
+                float4 positionOS : POSITION;
+                float4 color : COLOR;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct PuffVaryings
+            {
+                float4 positionCS : SV_POSITION;
+                float4 color : COLOR;
+                float2 uv : TEXCOORD0;
+            };
+
+            PuffVaryings PuffsVertex(PuffAttributes input)
+            {
+                PuffVaryings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.color = input.color;
+                output.uv = TRANSFORM_TEX(input.uv, _MainTex);
+                return output;
+            }
+
+            // How much a see-through puff of smoke covers the pixel, added to the smoke mask (MunShot.Cameras.InkCapture's
+            // Effects step, in green): its texture's alpha and its own fade, where it's in front of what's there
+            float4 PuffsFragment(PuffVaryings input) : SV_Target
+            {
+                return float4(0, SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).a * input.color.a * PuffCover, 0, 0);
             }
             ENDHLSL
         }
