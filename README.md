@@ -1,6 +1,6 @@
 # MunShot
 
-**A photo mode for [KSP2 Redux](https://github.com/KSP2Redux/Redux).** Pause the game, bring any kerbal into the shot, pose them, light the scene, add effects, frame it with a free or orbiting camera, and take the picture.
+**A photo mode for [KSP2 Redux](https://github.com/KSP2Redux/Redux).** Pause the game, bring any kerbal into the shot, pose them, light the scene, add effects and filters, frame it with a free or orbiting camera, and take the picture.
 
 > 🚧 Pre-release (0.5.0): early, but working. Please report problems on the [issues page](https://github.com/BillMeabrod/MunShot/issues).
 
@@ -11,11 +11,13 @@
 - **Photo mode.** Open it in flight from Redux's app tray, the **Photo Mode** button in the pause menu, or **Left Alt+P**. The game pauses and its UI hides; MunShot's own panel sits on the left edge of the screen, with its tabs as icons down its side (hover one for its name).
 - **Any kerbal, anywhere.** Bring in kerbals from the scene or from anywhere in your roster. They appear in front of the camera as stand-ins, so the real kerbals are never moved: closing photo mode puts everything back exactly as it was.
 - **Poses.** 29 in all: 17 of the game's own animations, held at their best moment, and 12 made for MunShot (Rock on, Anime Girl, Hanging On, Superman, Floating Asleep, Spacewalk Tumble, Thumbs Up, Victory Jump, Running Away, Sitting on the Edge, Dramatic Point and Cheerleader). The **Jetpack** switch picks the ground or jetpack version, helmets and visors come off with a switch, and **Helmet lights** switches on the helmet lamps for night shots.
+- **Pose editor.** Switch on **Customize pose** to bend any joint over the chosen pose: **Pose controls** opens a window with a kerbal figure, where clicking a joint shows its sliders, each with a box for an exact number. Covers the head and neck, each eye and its eyelids, the mouth and tongue, spine, arms, wrists, every finger and the thumb, legs and feet.
 - **Placing.** The VAB's own move and rotate handles, with angle snap. Select several kerbals with a drag box or Shift+click and move or turn them together. **Snap to surface** stands them on the ground, **Stand upright** turns them upright on screen, and **Delete** takes them out of the shot.
 - **Camera.** Fly freely with WASD and the mouse, holding Shift to pick up speed for long distances, or orbit around your ship or a kerbal. Roll and field of view (up to 140°) are yours to set. Every movement is the camera's own, as in space: left is always left on screen, even rolled or upside down, and **R** brings back a level horizon.
 - **Lens.** **Depth of field** blurs what's nearer and further than the focus, with **Focus on selected kerbal** to put them sharp, and a **Fisheye** that bulges the picture like an action camera.
 - **Framing.** A **Vignette** that darkens the picture towards its corners, **Grid** guides (rule of thirds, golden ratio or a centre cross) to line the shot up, and a **Frame** shape (16:9, 3:2, 4:3, square, 21:9 or 9:16 portrait) that the saved photo is cropped to, with what's cut off shaded on screen.
 - **Color.** Exposure, contrast, saturation (down to black and white) and warmth, with **Reset** to go back to the game's own picture.
+- **Filters.** One look at a time over the whole picture: **Old film**, an aged sepia print; **Space age**, 1970s 16 mm colour film; **Cel shaded**, flat colours in two tones with ink outlines; and **Ink**, the scene drawn as ink lines on paper, in the ink and paper colours you choose. Cel shaded and Ink draw smoke, exhaust, clouds, coasts and distant planets in their own style, and **Line detail** sets how many lines they draw.
 - **Light.** Up to four lights of your own: point or spot, any color, brightness and range, lighting kerbals only or everything. Click a light's marker and move or aim it with the same handles as kerbals; the markers never show in the photo.
 - **Effects.** Up to eight of the game's own effects: explosions in air and in space, a solid booster blowing up, a crash into the ground, launch smoke, fire, steam, sparks and a puff of gas. Each is held still at the moment you choose with **Moment**, sized with **Size**, and moved with the same handles as kerbals and lights; their markers never show in the photo.
 - **Taking the photo.** Press **F1** (the game's screenshot key) or the shutter button. Photo mode's UI hides for the shot, and Redux saves it to the game's `Screenshots` folder with your screenshot settings.
@@ -25,6 +27,9 @@
 
 ![Two kerbals on Duna's orange plain, one striking the Anime Girl pose with bright blue eyes, a capsule lying behind them](Screenshots/DunaAnimeGirl.png)
 *The Anime Girl pose on Duna.*
+
+![The Pose controls window beside a kerbal on Duna, the right eye's sliders open and the kerbal glancing sideways](Screenshots/DunaPoseControls.png)
+*Pose controls: click a joint on the figure and bend it with its sliders*
 
 ![A kerbal sitting on a rock on Duna, sharp in the foreground, with a capsule softly blurred behind](Screenshots/DunaDepthOfField.png)
 *Depth of field: focused on the kerbal, the capsule behind blurs away.*
@@ -46,6 +51,24 @@
 
 ![A kerbal grinning wide with arms out, lit orange by a wall of fire and smoke, a radar dish behind](Screenshots/KSCFireGrin.png)
 *FIRE! MWAHAHAHAHHAHA*
+
+![A white jet banking past the space center's buildings, drawn in flat colours with black ink outlines](Screenshots/KSCCelJet.png)
+*Cel Shade makes KSC look like straight from an Anime!*
+
+![A kerbal with closed eyes leaning into yellow flowers on a green hillside, drawn in flat colours with black ink outlines](Screenshots/KerbinCelFlowers.png)
+*Cel Shaded is great for capturing vibrant color!*
+
+![A rocket and its exhaust drawn as black ink on white paper, with stars as dots](Screenshots/OrbitInkRocket.png)
+*Ink lets you choose your ink color and paper color. Allowing you to create really cool high contrast screen shots*
+
+![A wide-eyed kerbal floating in space, drawn in black and cream ink, a planet's glow behind](Screenshots/InkKerbal.png)
+*Ink*
+
+![A ship in orbit over a cloudy planet in faded sepia, the sun on the horizon](Screenshots/OrbitOldFilmShip.png)
+*Old film can make your adventures look like a silent sci-fi film adventure!*
+
+![Three kerbals posing in front of the space center's kerbal statue, in washed-out film colours](Screenshots/KSCSpaceAgeTrio.png)
+*The OGs Bill, Bob, and Jeb! Space age is the perfect filter to document historic missions*
 
 ![A kerbal hanging on to the side of a rocket during launch, high above the space center, with two crewmates looking out of the window](Screenshots/LaunchHangingOn.png)
 *Hanging On, during a launch.*
@@ -76,7 +99,7 @@ All of these can be changed on MunShot's page in the game's settings.
 
 ## Requirements
 
-- Kerbal Space Program 2 with [KSP2 Redux](https://github.com/KSP2Redux/Redux) **0.2.9-26w43b or newer**.
+- Kerbal Space Program 2 with [KSP2 Redux](https://github.com/KSP2Redux/Redux) **0.2.9-26w44a or newer**.
 - Keyboard and mouse. Gamepads aren't supported yet.
 
 ## Installing
