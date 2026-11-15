@@ -34,7 +34,7 @@ namespace MunShot.Cameras
     /// Just after Redux draws the engines' exhaust and smoke (one later than <see cref="BeforeEffectsCapture"/>, as Redux
     /// registers its pass again whenever an engine starts): where drawing them changed the picture, with the game's own
     /// particle effects (<see cref="Particles"/>) added, as a cartoon smoke cloud (<see cref="InkFrame.Smoke"/>: red the
-    /// exhaust, green the particle smoke); and while the planet's clouds show (<see cref="CloudsShown"/>), the game's
+    /// whole cloud, green its particle smoke part); and while the planet's clouds show (<see cref="CloudsShown"/>), the game's
     /// volume clouds evened out, and how far off they are (<see cref="InkFrame.Clouds"/>,
     /// <see cref="InkFrame.CloudDistance"/>).
     /// </summary>
@@ -183,11 +183,14 @@ namespace MunShot.Cameras
         // drawn (depth); then how much of each pixel of the picture (color) is theirs
         private void DrawParticles(RenderGraph renderGraph, TextureHandle color, TextureHandle effects, TextureHandle depth)
         {
-            // Each one as the camera sees it, baked into a mesh (Unity's way to draw particles again: drawing their
-            // renderer a second time would upset their own drawing)
+            // Each one the camera draws (isVisible is any camera's, and drawing a mesh doesn't check the camera's
+            // layers) as it sees it, baked into a mesh (Unity's way to draw particles again: drawing their renderer a
+            // second time would upset their own drawing)
             _particlesDrawn.Clear();
+            int layers = Camera.cullingMask;
             foreach (ParticleSystemRenderer particles in Particles)
-                if (particles != null && particles.enabled && particles.isVisible && particles.sharedMaterial != null)
+                if (particles != null && particles.enabled && particles.isVisible && particles.sharedMaterial != null
+                    && (layers & (1 << particles.gameObject.layer)) != 0)
                 {
                     if (_particleMeshes.Count == _particlesDrawn.Count)
                         _particleMeshes.Add((new Mesh { name = "MunShot particles" }, new MaterialPropertyBlock()));

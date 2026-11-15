@@ -5,14 +5,17 @@ using KSP.UI;
 namespace MunShot.Capture
 {
     /// <summary>
-    /// Hides the game's UI while photo mode is open, the way F2 does: by switching the UI to the game's own
-    /// photo-mode view (<see cref="UIStateViews.PhotoModeView"/>, the same view F2 shows). Switching to it also tells
-    /// Redux, which hides mods' windows that hide on F2, and parts of the game that check for it (part outlines and
-    /// info, Redux's impact prediction and resource scanner) step back too.
+    /// Hides the game's UI while photo mode is open: by switching the UI to the game's own photo-mode view
+    /// (<see cref="UIStateViews.PhotoModeView"/>, as the game's own metrics mode does). Switching to it also tells Redux,
+    /// which hides mods' windows that hide on F2, and parts of the game that check for it (part outlines and info,
+    /// Redux's impact prediction and resource scanner) step back too.
     ///
     /// While engaged, anything that switches the UI back (pressing F2, the game changing views) is undone on the next
-    /// frame and logged. Released, the UI goes back to the view it was in, unless that was already the hidden view
-    /// (the player had pressed F2 before opening photo mode).
+    /// frame and logged. Released, the UI goes back to the view it was in, unless the UI was already hidden (the player
+    /// had pressed F2 before opening photo mode).
+    ///
+    /// The view controller reports the photo-mode view as <see cref="UIStateViews.UIHiddenView"/> (Redux 26w46a on),
+    /// so either of the two counts as hidden here.
     /// </summary>
     public sealed class UiHider
     {
@@ -55,7 +58,7 @@ namespace MunShot.Capture
         {
             if (!IsEngaged || !_viewChangedByOthers) return;
             _viewChangedByOthers = false;
-            if (_viewController == null || _viewController.CurrentView == UIStateViews.PhotoModeView) return;
+            if (_viewController == null || IsHidden(_viewController.CurrentView)) return;
 
             // The game's newer view is the one to come back to
             _restoreView = _viewController.CurrentView;
@@ -74,10 +77,11 @@ namespace MunShot.Capture
             if (_viewController == null) return;
 
             _viewController.CurrentViewChanged -= OnViewChanged;
-            if (_restoreView != null && _restoreView != UIStateViews.PhotoModeView
-                && _viewController.CurrentView == UIStateViews.PhotoModeView)
+            if (_restoreView != null && !IsHidden(_restoreView) && IsHidden(_viewController.CurrentView))
+            {
                 _viewController.PushView(_restoreView);
-            _logInfo("Photo mode: UI shown again.");
+                _logInfo("Photo mode: UI shown again.");
+            }
             _viewController = null;
             _restoreView = null;
         }
@@ -86,7 +90,9 @@ namespace MunShot.Capture
         // undone next frame rather than inside the game's own view change
         private void OnViewChanged(UIView view)
         {
-            if (view != UIStateViews.PhotoModeView) _viewChangedByOthers = true;
+            if (!IsHidden(view)) _viewChangedByOthers = true;
         }
+
+        private static bool IsHidden(UIView view) => view == UIStateViews.PhotoModeView || view == UIStateViews.UIHiddenView;
     }
 }
