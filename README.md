@@ -2,7 +2,7 @@
 
 **A photo mode for [KSP2 Redux](https://github.com/KSP2Redux/Redux).** Pause the game, bring any kerbal into the shot, pose them, light the scene, add effects, frame it with a free or orbiting camera, and take the picture.
 
-> 🚧 Pre-release (0.4.0): early, but working. Please report problems on the [issues page](https://github.com/BillMeabrod/MunShot/issues).
+> 🚧 Pre-release (0.5.0): early, but working. Please report problems on the [issues page](https://github.com/BillMeabrod/MunShot/issues).
 
 ![A kerbal standing on a rocket in orbit, with the sun flaring behind it and the planet below](Screenshots/Orbit.png)
 
