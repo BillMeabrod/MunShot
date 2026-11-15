@@ -10,7 +10,8 @@ namespace MunShot.Cameras
     /// <summary>
     /// Solid ink lines: heavier where the depth jumps (an outline, a step) or the water meets the land, lighter where the
     /// surface turns at a corner (only near enough), read from the camera's depth, with the game's water surface laid
-    /// over it so the seabed gets none, and its normals texture (MunShot's CelShading shader, InkLines.hlsl). A Redux camera render hook, which <see cref="PhotoLook"/> registers twice:
+    /// over it so the seabed gets none, and its normals texture (MunShot's CelShading shader, InkLines.hlsl). A Redux
+    /// camera render hook, which <see cref="CelAndInk"/> registers twice:
     /// - Over the picture, for Cel shaded: drawn before the post-processing, so a fisheye bends them with the rest; with
     ///   what <see cref="InkCapture"/> took of the ground, lines where its own colour changes sharply (a path's kerb).
     /// - On paper, for the Ink filter: the lines alone on white, drawn after the post-processing so the game's
@@ -109,6 +110,9 @@ namespace MunShot.Cameras
         private readonly int _leavesPass;
         private readonly int _farSurfacePass;
 
+        // What every pass of a frame draws from, gathered once and reused each frame
+        private readonly PassData _inputs = new PassData();
+
         /// <param name="onPaper">The lines alone on white (the Ink filter), rather than over the picture.</param>
         public InkLines(Shader shader, bool onPaper)
         {
@@ -181,37 +185,41 @@ namespace MunShot.Cameras
             TextureHandle normals = resources.cameraNormalsTexture;
             if (!color.IsValid() || !depth.IsValid() || !normals.IsValid()) return;
 
-            var inputs = new PassData
-            {
-                Depth = depth,
-                Normals = normals,
-                Material = _material,
-                Pixel = FilterPasses.PixelOf(renderGraph, color),
-                Lens = Lens,
-                Up = Up,
-                InkColor = InkColor,
-                PaperColor = PaperColor,
-                Planet = Planet,
-                Eye = Camera.transform.position,
-                FarLook = FarLook,
-                FarEye = FarEye,
-                FarPlanet = FarPlanet,
-                FarMetres = FarMetres,
-                FarSea = FarSea,
-                LineDetail = LineDetail
-            };
+            // Every input set afresh each frame (the passes copy them into their own data as they're added)
+            PassData inputs = _inputs;
+            inputs.Depth = depth;
+            inputs.Normals = normals;
+            inputs.Material = _material;
+            inputs.Pixel = FilterPasses.PixelOf(renderGraph, color);
+            inputs.Lens = Lens;
+            inputs.Up = Up;
+            inputs.InkColor = InkColor;
+            inputs.PaperColor = PaperColor;
+            inputs.Planet = Planet;
+            inputs.Eye = Camera.transform.position;
+            inputs.FarLook = FarLook;
+            inputs.FarEye = FarEye;
+            inputs.FarPlanet = FarPlanet;
+            inputs.FarMetres = FarMetres;
+            inputs.FarSea = FarSea;
+            inputs.LineDetail = LineDetail;
+            inputs.Taken = false;
+            inputs.SceneDepth = TextureHandle.nullHandle;
+            inputs.Albedo = TextureHandle.nullHandle;
+            inputs.OpaqueDepth = TextureHandle.nullHandle;
+            inputs.KerbalInk = TextureHandle.nullHandle;
+            inputs.Edges = TextureHandle.nullHandle;
+            inputs.Leaves = TextureHandle.nullHandle;
+            inputs.Picture = TextureHandle.nullHandle;
 
-            if (FarBody != null && FarPlanet.w > 0f) inputs.FarSurface = DrawFarSurface(renderGraph, color);
+            inputs.FarSurface = FarBody != null && FarPlanet.w > 0f ? DrawFarSurface(renderGraph, color) : TextureHandle.nullHandle;
 
             InkFrame ink = frameData.Contains<InkFrame>() ? frameData.Get<InkFrame>() : null;
-            if (ink != null)
-            {
-                inputs.Smoke = ink.Smoke;
-                inputs.Clouds = ink.Clouds;
-                inputs.CloudDistance = ink.CloudDistance;
-                inputs.Terrain = ink.Terrain;
-                inputs.Bodies = ink.Bodies;
-            }
+            inputs.Smoke = ink?.Smoke ?? TextureHandle.nullHandle;
+            inputs.Clouds = ink?.Clouds ?? TextureHandle.nullHandle;
+            inputs.CloudDistance = ink?.CloudDistance ?? TextureHandle.nullHandle;
+            inputs.Terrain = ink?.Terrain ?? TextureHandle.nullHandle;
+            inputs.Bodies = ink?.Bodies ?? TextureHandle.nullHandle;
 
             // Where lines crowd (a tree's leaves): where the edges are, then where most round a pixel are
             // (each drawn before it's an input, so no pass reads what it draws)

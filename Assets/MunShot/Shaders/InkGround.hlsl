@@ -6,9 +6,9 @@
 #ifndef MUNSHOT_INK_GROUND_INCLUDED
 #define MUNSHOT_INK_GROUND_INCLUDED
 
-// Taken by InkCapture: the depth once the deferred pass has drawn the ground, buildings, trees and parts, and the colour
-// of each of those surfaces before any light; and the depth once everything solid is drawn. All unbent, as the depth
-// and normals are
+// Taken by SceneCapture: the depth once the deferred pass has drawn the ground, buildings, trees and parts, and the
+// colour of each of those surfaces before any light; and by KerbalCapture, the depth once everything solid is drawn.
+// All unbent, as the depth and normals are
 TEXTURE2D_X_FLOAT(_MunShotSceneDepth);
 TEXTURE2D_X(_MunShotAlbedo);
 TEXTURE2D_X_FLOAT(_MunShotOpaqueDepth);

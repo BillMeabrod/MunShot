@@ -1,0 +1,23 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uitk="UitkForKsp2.Controls" editor-extension-mode="False">
+    <!-- MunShot's pose controls window (PoseControlsWindow): a movable window like the game's others. On the left, the
+         kerbal drawing with a dot on each joint (KerbalFigure, put in figure-spot); on the right, the chosen joint's name
+         and its sliders, which PoseControlsWindow builds in the controls list from PoseJoints. Texts starting with # are
+         localization keys (Copied/localizations/munshot_localization.csv). It shares photo mode's own classes (pm-row,
+         pm-dim) from PhotoModeWindow.uss; PoseControlsWindow.uss lays out its own. -->
+    <Style src="PhotoModeWindow.uss" />
+    <Style src="PoseControlsWindow.uss" />
+    <uitk:AppShell name="pose-window" class="pose-window" title="#MunShot/UI/PoseControls">
+        <ui:VisualElement class="pose-body">
+            <ui:VisualElement name="figure-spot" />
+            <ui:VisualElement class="pose-side">
+                <ui:Label name="joint-name" class="pose-joint-name uppercase" />
+                <ui:Label name="hint" class="pose-hint pm-dim" text="#MunShot/UI/PickAJoint" />
+                <ui:ScrollView name="controls" class="pose-controls" mode="Vertical" />
+                <uitk:OabButton name="reset-joint" class="pose-reset-joint" text="#MunShot/UI/ResetJoint" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="pose-bar">
+            <uitk:OabButton name="reset-all" class="pose-reset-all" text="#MunShot/UI/ResetAll" />
+        </ui:VisualElement>
+    </uitk:AppShell>
+</ui:UXML>

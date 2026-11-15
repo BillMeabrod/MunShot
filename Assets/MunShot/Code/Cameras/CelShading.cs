@@ -12,7 +12,7 @@ namespace MunShot.Cameras
     /// parts and buildings drawn deferred) is drawn again as a cartoon from the G-buffer, URP's per-pixel store of each
     /// surface's own colour and facing: the colour evened out over the surface, lit by the sun in two tones with a
     /// hard edge between (MunShot's CelShading shader). What's drawn after (kerbals, glass, water, the atmosphere's
-    /// haze) goes over it as usual. A Redux camera render hook; <see cref="PhotoLook"/> registers it while photo mode
+    /// haze) goes over it as usual. A Redux camera render hook; <see cref="CelAndInk"/> registers it while photo mode
     /// is open and says each frame which camera and whether it's on.
     /// </summary>
     internal sealed class CelShading : IFilterHook
@@ -27,7 +27,6 @@ namespace MunShot.Cameras
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
         private static readonly int UpId = Shader.PropertyToID("_MunShotUp");
         private static readonly int ShadeId = Shader.PropertyToID("_MunShotShade");
-
 
         private sealed class PassData
         {

@@ -261,26 +261,6 @@ namespace MunShot.Posing
             new Control(id, ControlKey + "Curl", -20, 45,
                 new Part(finger + "_01", Z, 0.9f), new Part(finger + "_02", Z, 1.1f), new Part(finger + "_03", Z, 0.9f));
 
-        /// <summary>The joint a slider belongs to, or null.</summary>
-        public static Joint JointOf(string controlId)
-        {
-            foreach (Joint joint in All)
-                foreach (Group group in joint.Groups)
-                    foreach (Control control in group.Controls)
-                        if (control.Id == controlId) return joint;
-            return null;
-        }
-
-        /// <summary>The slider with this id, or null.</summary>
-        public static Control Find(string controlId)
-        {
-            foreach (Joint joint in All)
-                foreach (Group group in joint.Groups)
-                    foreach (Control control in group.Controls)
-                        if (control.Id == controlId) return control;
-            return null;
-        }
-
         /// <summary>Every slider of a joint.</summary>
         public static IEnumerable<Control> ControlsOf(Joint joint)
         {

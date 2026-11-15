@@ -25,8 +25,8 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: c0b3b5f335636ac4faaada02259b3db9
-    m_Address: MunShot/pose-kerbal.png
+  - m_GUID: ef2eaa90229944669162a97b02ad7a03
+    m_Address: MunShot/PoseControlsWindow.uxml
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

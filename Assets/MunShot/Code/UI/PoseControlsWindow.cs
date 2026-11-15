@@ -10,31 +10,25 @@ using UnityEngine.UIElements;
 namespace MunShot.UI
 {
     /// <summary>
-    /// The pose controls window, opened from the Pose tab once Customize pose is on: a kerbal with a dot on each joint;
-    /// clicking a dot shows that joint's sliders, which bend the selected kerbal live over its pose. A movable window
-    /// like the game's others. It closes when photo mode closes or Customize pose goes off, and hides with the rest of
-    /// photo mode's UI and while a photo is taken.
+    /// The pose controls window (PoseControlsWindow.uxml), opened from the Pose tab once Customize pose is on: a kerbal
+    /// with a dot on each joint; clicking a dot shows that joint's sliders, which bend the selected kerbal live over its
+    /// pose. A movable window like the game's others. It closes when photo mode closes or Customize pose goes off, and
+    /// hides with the rest of photo mode's UI and while a photo is taken. The UXML's own texts are translated by
+    /// UitkForKsp2; the joint's name and sliders, built here, by <see cref="Relocalize"/>.
     /// </summary>
     internal sealed class PoseControlsWindow : IDisposable
     {
         private const string WindowId = "MunShot_PoseControls";
-        private const string TitleKey = "MunShot/UI/PoseControls";
-        private const float FigureWidth = 340f;
-
 
         private readonly PhotoMode _photoMode;
         private readonly PanelRenderer _renderer;
-        private readonly Texture2D _kerbal;
-        // Photo mode's own stylesheet (PhotoModeWindow.uss), whose pose- classes lay this window out
-        private readonly StyleSheet _styles;
 
         private AppShell _shell;
         private KerbalFigure _figure;
         private Label _jointName;
-        private VisualElement _controls;
+        private ScrollView _controls;
         private Label _hint;
         private Button _resetJoint;
-        private Button _resetAll;
 
         private PoseJoints.Joint _joint;
         private PhotoSession.Entry _shownFor;
@@ -44,11 +38,10 @@ namespace MunShot.UI
 
         public bool IsOpen { get; private set; }
 
-        public PoseControlsWindow(PhotoMode photoMode, Texture2D kerbal, StyleSheet styles)
+        public PoseControlsWindow(PhotoMode photoMode, VisualTreeAsset uxml)
         {
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
-            _kerbal = kerbal;
-            _styles = styles;
+            if (uxml == null) throw new ArgumentNullException(nameof(uxml));
             var options = new WindowOptions
             {
                 WindowId = WindowId,
@@ -61,7 +54,9 @@ namespace MunShot.UI
                 BlockGameInput = true,
                 MoveOptions = new MoveOptions { IsMovingEnabled = true, CheckScreenBounds = true }
             };
-            _renderer = Window.Create(options, BuildContent());
+            _renderer = Window.Create(options, uxml);
+            _renderer.OnPanelRoot(Bind);
+            _renderer.EnableLocalization();
             _renderer.EnableUiSounds();
             _renderer.Hide();
 
@@ -116,15 +111,11 @@ namespace MunShot.UI
             }
         }
 
-        /// <summary>Text built here, in the current language.</summary>
+        /// <summary>Text built here (the joint's name and sliders, the dots' names), in the current language.</summary>
         public void Relocalize()
         {
             if (_shell == null) return;
-            _shell.Title = Localization.Translate(TitleKey);
             _figure.Relocalize();
-            _resetJoint.text = Localization.Translate("MunShot/UI/ResetJoint");
-            _resetAll.text = Localization.Translate("MunShot/UI/ResetAll");
-            _hint.text = Localization.Translate("MunShot/UI/PickAJoint");
             ShowJoint(_joint);
         }
 
@@ -150,7 +141,7 @@ namespace MunShot.UI
             // Closed for good when photo mode closes or Customize pose goes off; a kerbal still being built keeps it
             bool building = _photoMode.IsOpen && selected != null && !selected.IsReady;
             if (IsOpen && !customizable && !building) IsOpen = false;
-            bool shown = IsOpen && customizable && !_photoMode.UiHidden && !_hiddenForCapture;
+            bool shown = IsOpen && customizable && !_photoMode.UiHidden && !_hiddenForCapture && _shell != null;
             if (shown) _renderer.Show();
             else _renderer.Hide();
             if (!shown) return;
@@ -170,45 +161,36 @@ namespace MunShot.UI
 
         // ---- Building ----
 
-        private VisualElement BuildContent()
+        // The window's elements from its UXML, with the kerbal drawing put in its spot
+        private void Bind(VisualElement root)
         {
-            _shell = new AppShell { Title = Localization.Translate(TitleKey) };
+            _shell = Required<AppShell>(root, "pose-window");
+            _jointName = Required<Label>(root, "joint-name");
+            _hint = Required<Label>(root, "hint");
+            _controls = Required<ScrollView>(root, "controls");
+            _resetJoint = Required<Button>(root, "reset-joint");
+            Button resetAll = Required<Button>(root, "reset-all");
+            VisualElement figureSpot = Required<VisualElement>(root, "figure-spot");
+
             _shell.CloseClicked += Close;
-            if (_styles != null) _shell.styleSheets.Add(_styles);
-            _shell.AddToClassList("pose-window");
-
-            var body = Styled(new VisualElement(), "pose-body");
-            _figure = new KerbalFigure(FigureWidth, _kerbal);
-            _figure.JointClicked += ShowJoint;
-            body.Add(_figure);
-
-            var side = Styled(new VisualElement(), "pose-side");
-            _jointName = Styled(new Label(), "pose-joint-name", "uppercase");
-            side.Add(_jointName);
-            _hint = Styled(new Label(Localization.Translate("MunShot/UI/PickAJoint")), "pose-hint", "pm-dim");
-            side.Add(_hint);
-            _controls = Styled(new ScrollView(ScrollViewMode.Vertical), "pose-controls");
-            side.Add(_controls);
-            _resetJoint = Styled(new OabButton { text = Localization.Translate("MunShot/UI/ResetJoint") }, "pose-reset-joint");
             _resetJoint.clicked += ResetJoint;
-            side.Add(_resetJoint);
-            body.Add(side);
-            _shell.Add(body);
-
-            var bar = Styled(new VisualElement(), "pose-bar");
-            _resetAll = Styled(new OabButton { text = Localization.Translate("MunShot/UI/ResetAll") }, "pose-reset-all");
-            _resetAll.clicked += ResetAll;
-            bar.Add(_resetAll);
-            _shell.Add(bar);
-
-            ShowJoint(null);
-            return _shell;
+            resetAll.clicked += ResetAll;
+            _figure = new KerbalFigure();
+            _figure.JointClicked += ShowJoint;
+            figureSpot.parent.Insert(figureSpot.parent.IndexOf(figureSpot), _figure);
+            figureSpot.RemoveFromHierarchy();
+            ShowJoint(_joint);
         }
+
+        // An element the UXML must have; a mismatch between the two is a bug, so it throws
+        private static T Required<T>(VisualElement root, string name) where T : VisualElement =>
+            root.Q<T>(name) ?? throw new InvalidOperationException($"PoseControlsWindow.uxml has no {typeof(T).Name} named '{name}'.");
 
         // Shows only this joint's sliders (and their headings), set as the selected kerbal has them
         private void ShowJoint(PoseJoints.Joint joint)
         {
             _joint = joint;
+            if (_shell == null) return;
             _figure.Select(joint);
             _controls.Clear();
             _sliders.Clear();
@@ -230,8 +212,6 @@ namespace MunShot.UI
             }
         }
 
-        // A slider with a box beside it for typing an exact number: dragging moves in whole steps, the box takes
-        // tenths; a number past either end goes to that end, anything else puts the box back as it was
         // An element with these style classes added
         private static T Styled<T>(T element, params string[] classes) where T : VisualElement
         {
@@ -239,6 +219,8 @@ namespace MunShot.UI
             return element;
         }
 
+        // A slider with a box beside it for typing an exact number: dragging moves in whole steps, the box takes
+        // tenths; a number past either end goes to that end, anything else puts the box back as it was
         private VisualElement SliderRow(PoseJoints.Control control, float setting)
         {
             var row = Styled(new VisualElement(), "pm-row");

@@ -91,9 +91,8 @@ namespace MunShot.UI
         private Toggle _customizePose;
         private Button _openPoseControls;
         private PoseControlsWindow _poseControls;
-        private readonly Texture2D _poseKerbal;
-        // The window's stylesheet (PhotoModeWindow.uss), which the pose controls window shares
-        private readonly StyleSheet _styles;
+        // The pose controls window's layout (PoseControlsWindow.uxml), or null if it didn't load
+        private readonly VisualTreeAsset _poseControlsUxml;
         // The handle tool's buttons, on the Pose tab and again on the Light tab
         private Button _move;
         private Button _rotate;
@@ -141,13 +140,12 @@ namespace MunShot.UI
         /// </summary>
         public bool IsAlive => _renderer != null;
 
-        public PhotoModeWindow(PhotoMode photoMode, VisualTreeAsset uxml, Texture2D poseKerbal, ILogger logger)
+        public PhotoModeWindow(PhotoMode photoMode, VisualTreeAsset uxml, VisualTreeAsset poseControlsUxml, ILogger logger)
         {
-            _poseKerbal = poseKerbal;
+            _poseControlsUxml = poseControlsUxml;
             _photoMode = photoMode ?? throw new ArgumentNullException(nameof(photoMode));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             if (uxml == null) throw new ArgumentNullException(nameof(uxml));
-            _styles = uxml.stylesheets.FirstOrDefault();
             _model = new PhotoModeViewModel(photoMode, ShowTab, OpenKerbalMenu, OpenEffectMenu, OpenFilterMenu);
 
             var options = new WindowOptions
@@ -663,7 +661,8 @@ namespace MunShot.UI
         // The pose controls window, made the first time it's opened
         private void OpenPoseControls()
         {
-            _poseControls ??= new PoseControlsWindow(_photoMode, _poseKerbal, _styles);
+            if (_poseControlsUxml == null) return;
+            _poseControls ??= new PoseControlsWindow(_photoMode, _poseControlsUxml);
             _poseControls.Open();
         }
 
@@ -674,7 +673,7 @@ namespace MunShot.UI
             bool customized = ready && selected.Customized;
             _customizePose?.SetEnabled(ready);
             _customizePose?.SetValueWithoutNotify(customized);
-            _openPoseControls?.SetEnabled(customized);
+            _openPoseControls?.SetEnabled(customized && _poseControlsUxml != null);
             if (_poseList == null) return;
             _poseList.Clear();
             PosePreset current = ready ? selected.Preset : null;

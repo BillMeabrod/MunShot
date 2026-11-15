@@ -21,6 +21,19 @@ namespace MunShot.Posing
         /// <summary>The suit's hardware (air hose, chest box), skinned to the spine, pelvis and neck.</summary>
         public const string HoseMesh = "mesh_spacesuit_01_hardware";
 
+        /// <summary>
+        /// The eyes' meshes start with this, and the eyeballs among them have <see cref="EyeballPart"/> in their name
+        /// ("mesh_eye_m_ball_l_original").
+        /// </summary>
+        public const string EyeMeshPrefix = "mesh_eye_";
+        public const string EyeballPart = "_ball_";
+
+        /// <summary>The hair's meshes start with this ("hairstyle_m_01"), coloured by <see cref="HairColorProperty"/>.</summary>
+        public const string HairMeshPrefix = "hairstyle_";
+
+        /// <summary>The hair's colour on its material or renderer (KSP2/KerbalHair2's _RandomColor).</summary>
+        public const string HairColorProperty = "_RandomColor";
+
         // The thumbs' rest rotations: the base as in body_spacesuit_01.prefab (local euler angles, from
         // Tools/RigDiscovery/out/body_spacesuit_01.prefab.axes.txt), beside the open hand; the outer joints bent 10°
         // each, where the prefab has them bent about 25° (a hook once the thumb is spread out) and straight looks too

@@ -34,6 +34,13 @@ namespace MunShot.Posing
         private Animator _animator;
         private BonePoseDriver _driver;
         private PoseEdits.BoneEdits _edits;
+
+        // The kerbal's bones by name (without the prefix) and its air hose, kept between a slider's steps, as one being
+        // dragged updates the driver on every step
+        private Animator _rigOf;
+        private readonly Dictionary<string, Transform> _bonesByName = new Dictionary<string, Transform>(StringComparer.Ordinal);
+        private SkinnedMeshRenderer _hose;
+
         private EyeOverlay _eyes;
         private EyeLashes _lashes;
         private bool _baseFrozen;
@@ -171,6 +178,9 @@ namespace MunShot.Posing
             SetEyes(null);
             SetLashes(false);
             _animator = null;
+            _rigOf = null;
+            _bonesByName.Clear();
+            _hose = null;
         }
 
         /// <summary>
@@ -181,10 +191,12 @@ namespace MunShot.Posing
         public void SetEdits(Animator animator, PoseEdits.BoneEdits edits)
         {
             if (animator == null) return;
-            if (_animator != animator) Release();
+            bool sameAnimator = _animator == animator;
+            if (!sameAnimator) Release();
             _animator = animator;
             _edits = edits != null && edits.Turns.Count + edits.Slides.Count > 0 ? edits : null;
-            UpdateDriver();
+            // A slider being dragged changes only the edits: the pose's bones stay as the driver has them
+            UpdateDriver(poseChanged: !sameAnimator);
         }
 
         /// <summary>Turns <see cref="FreezeBaseAnimation"/> on or off, taking effect at once if a pose is held.</summary>
@@ -238,9 +250,9 @@ namespace MunShot.Posing
             UpdateDriver();
         }
 
-        // Finds the pose's and the edits' bones on the kerbal and hands them to the driver; with neither, the driver
-        // goes
-        private void UpdateDriver()
+        // Finds the edits' bones on the kerbal, and the pose's too unless only the edits changed, and hands them to the
+        // driver; with neither, the driver goes
+        private void UpdateDriver(bool poseChanged = true)
         {
             BonePose bones = CurrentBones;
             if ((bones == null && _edits == null) || _animator == null)
@@ -256,10 +268,10 @@ namespace MunShot.Posing
                 return;
             }
 
-            var byName = new Dictionary<string, Transform>(StringComparer.Ordinal);
-            foreach (Transform t in _animator.GetComponentsInChildren<Transform>(true))
-                if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
-                    byName[t.name.Substring(KerbalRig.BonePrefix.Length)] = t;
+            // Looked for afresh with every new pose (the game can add to a kerbal after it's built), but not on every
+            // step of a slider
+            FindRig(again: poseChanged);
+            Dictionary<string, Transform> byName = _bonesByName;
 
             var missing = new List<string>();
             List<(Transform, T)> Find<T>(IReadOnlyDictionary<string, T> list)
@@ -273,8 +285,19 @@ namespace MunShot.Posing
                 }
                 return found;
             }
-            List<(Transform, Quaternion)> set = Find(bones?.Rotations), turned = Find(bones?.Turns);
-            List<(Transform, Vector3)> moved = Find(bones?.Moves), placed = Find(bones?.Positions);
+            bool newDriver = _driver == null;
+            if (newDriver)
+            {
+                BonePoseDriver existing = _animator.GetComponent<BonePoseDriver>();
+                _driver = existing != null && existing.enabled ? existing : _animator.gameObject.AddComponent<BonePoseDriver>();
+            }
+            if (poseChanged || newDriver)
+            {
+                List<(Transform, Quaternion)> set = Find(bones?.Rotations), turned = Find(bones?.Turns);
+                List<(Transform, Vector3)> moved = Find(bones?.Moves), placed = Find(bones?.Positions);
+                _driver.Set(set, turned, moved, placed);
+            }
+
             var edits = new List<(Transform, Quaternion, Quaternion)>();
             foreach ((Transform bone, (Quaternion parent, Quaternion own) turns) in Find(_edits?.Turns))
                 edits.Add((bone, turns.parent, turns.own));
@@ -288,30 +311,33 @@ namespace MunShot.Posing
                 _logError($"Pose on '{_animator.name}': no bones named {string.Join(", ", missing)} (without the "
                           + $"'{KerbalRig.BonePrefix}' prefix); those parts keep their animation.");
 
-            if (_driver == null)
-            {
-                BonePoseDriver existing = _animator.GetComponent<BonePoseDriver>();
-                _driver = existing != null && existing.enabled ? existing : _animator.gameObject.AddComponent<BonePoseDriver>();
-            }
-            _driver.Set(set, turned, moved, placed);
             _driver.SetEdits(edits, slides, rests);
 
             // With edits: the helmet goes with the head (even unturned, so resetting the head brings both back in the
             // same frame), and the air hose stays as the pose has it
             var followers = new List<(Transform, Transform)>();
-            SkinnedMeshRenderer hose = null;
-            if (_edits != null)
-            {
-                if (byName.TryGetValue(KerbalRig.Helmet, out Transform helmet)
-                    && byName.TryGetValue(KerbalRig.Head, out Transform head))
-                    followers.Add((helmet, head));
-                foreach (SkinnedMeshRenderer mesh in _animator.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                    if (mesh.name == KerbalRig.HoseMesh) hose = mesh;
-            }
+            if (_edits != null
+                && byName.TryGetValue(KerbalRig.Helmet, out Transform helmet)
+                && byName.TryGetValue(KerbalRig.Head, out Transform head))
+                followers.Add((helmet, head));
             _driver.SetFollowers(followers);
             byName.TryGetValue(KerbalRig.NeckBase, out Transform neckBase);
             byName.TryGetValue(KerbalRig.Neck, out Transform neck);
-            _driver.KeepUnedited(hose, neckBase, neck);
+            _driver.KeepUnedited(_edits != null ? _hose : null, neckBase, neck);
+        }
+
+        // Finds the kerbal's bones and air hose, if it hasn't for this Animator yet or is told to again
+        private void FindRig(bool again)
+        {
+            if (!again && _rigOf != null && _rigOf == _animator) return;
+            _rigOf = _animator;
+            _bonesByName.Clear();
+            _hose = null;
+            foreach (Transform t in _animator.GetComponentsInChildren<Transform>(true))
+                if (t.name.StartsWith(KerbalRig.BonePrefix, StringComparison.Ordinal))
+                    _bonesByName[t.name.Substring(KerbalRig.BonePrefix.Length)] = t;
+            foreach (SkinnedMeshRenderer mesh in _animator.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (mesh.name == KerbalRig.HoseMesh) _hose = mesh;
         }
 
         // Gives the kerbal eyelashes, or its own lids back
