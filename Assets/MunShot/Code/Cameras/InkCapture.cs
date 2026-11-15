@@ -127,10 +127,13 @@ namespace MunShot.Cameras
 
         private static readonly int DepthId = Shader.PropertyToID("_MunShotDepth");
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
+        private static readonly int ParticlesId = Shader.PropertyToID("_MunShotParticles");
+        private static readonly int PictureId = Shader.PropertyToID("_MunShotPicture");
         private static readonly int SolidId = Shader.PropertyToID("_MunShotSolid");
         private static readonly int OpaqueDepthId = Shader.PropertyToID("_MunShotOpaqueDepth");
         private static readonly int BeforeEffectsId = Shader.PropertyToID("_MunShotBeforeEffects");
         private static readonly int AfterEffectsId = Shader.PropertyToID("_MunShotAfterEffects");
+        private static readonly int MinChangeId = Shader.PropertyToID("_MunShotMinChange");
         private static readonly int FarViewProjectionId = Shader.PropertyToID("_MunShotFarViewProjection");
         private static readonly int BodyShownId = Shader.PropertyToID("_MunShotBodyShown");
         private static readonly int PixelId = Shader.PropertyToID("_MunShotPixel");
@@ -151,6 +154,7 @@ namespace MunShot.Cameras
         {
             public TextureHandle Before;
             public TextureHandle After;
+            public float MinChange;
             public Material Material;
             public int Pass;
         }
@@ -178,6 +182,8 @@ namespace MunShot.Cameras
         private readonly int _kerbalInkPass;
         private readonly int _effectsPass;
         private readonly int _bodiesPass;
+        private readonly int _particlesPass;
+        private readonly int _puffsPass;
         private readonly int _smokePass;
         private readonly int _cloudsPass;
         private readonly int _cloudDistancePass;
@@ -185,6 +191,16 @@ namespace MunShot.Cameras
         // The pupils' material for each eye texture (kerbals share a few), the dark hair's, and the parts drawn this
         // frame
         private readonly Dictionary<Texture, Material> _pupilMaterials = new Dictionary<Texture, Material>();
+        // The particle effects drawn this frame, baked into meshes (one kept for each, reused every frame) with their
+        // own materials and settings
+        private readonly List<(Mesh, Matrix4x4, Material, MaterialPropertyBlock)> _particlesDrawn = new List<(Mesh, Matrix4x4, Material, MaterialPropertyBlock)>();
+        private readonly List<(Mesh mesh, MaterialPropertyBlock properties)> _particleMeshes = new List<(Mesh, MaterialPropertyBlock)>();
+        // The same meshes again with MunShot's puff material for each particle texture
+        private readonly List<(Mesh, Matrix4x4, Material, MaterialPropertyBlock)> _puffsDrawn = new List<(Mesh, Matrix4x4, Material, MaterialPropertyBlock)>();
+        private readonly Dictionary<Texture, Material> _puffMaterials = new Dictionary<Texture, Material>();
+        // A camera never drawn with, put where Camera is as seen from a particle system's own space, to bake that
+        // system's particles facing Camera
+        private Camera _bakeCamera;
         private Material _hairMaterial;
 
         // The distant planets and moons are drawn with the first, the body the vessel orbits (hiding what's behind it)
@@ -202,6 +218,8 @@ namespace MunShot.Cameras
             _kerbalInkPass = FilterPasses.Find(_material, "KerbalInk");
             _effectsPass = FilterPasses.Find(_material, "Effects");
             _bodiesPass = FilterPasses.Find(_material, "Bodies");
+            _particlesPass = FilterPasses.Find(_material, "Particles");
+            _puffsPass = FilterPasses.Find(_material, "ParticlePuffs");
             _smokePass = FilterPasses.Find(_material, "Smoke");
             _cloudsPass = FilterPasses.Find(_material, "Clouds");
             _cloudDistancePass = FilterPasses.Find(_material, "CloudDistance");
@@ -232,6 +250,13 @@ namespace MunShot.Cameras
 
         /// <summary>How much the game's volume clouds show (0 to 1; <see cref="Stage.Effects"/> only, none taken at 0).</summary>
         public float CloudsShown { get; set; }
+
+        /// <summary>
+        /// The game's particle effects showing (explosions, debris smoke, RCS puffs), added to how much the exhaust and
+        /// smoke cover each pixel: they're drawn among URP's see-through things, before Redux's (<see cref="Stage.Effects"/>
+        /// only).
+        /// </summary>
+        public IReadOnlyList<ParticleSystemRenderer> Particles { get; set; }
 
         public RenderPassEvent Event
         {
@@ -277,7 +302,8 @@ namespace MunShot.Cameras
                 ink.SceneDepth = KeepDepth(renderGraph, color, depth, "MunShot Ink Scene Depth");
                 if (FarBodies != null && FarBodies.Count > 0) ink.Bodies = DrawBodies(renderGraph, color);
                 if (ink.BeforeTerrain.IsValid())
-                    ink.Terrain = DrawChange(renderGraph, color, ink.BeforeTerrain, ink.Albedo, "MunShot Ink Terrain");
+                    ink.Terrain = DrawChange(renderGraph, color, ink.BeforeTerrain, ink.Albedo, "MunShot Ink Terrain",
+                                             GraphicsFormat.R8_UNorm, 0f);
                 return;
             }
 
@@ -291,8 +317,11 @@ namespace MunShot.Cameras
             {
                 if (ink.BeforeEffects.IsValid())
                 {
-                    TextureHandle change = DrawChange(renderGraph, color, ink.BeforeEffects, color, "MunShot Ink Effects");
-                    ink.Smoke = DrawWhole(renderGraph, color, "MunShot Ink Smoke", GraphicsFormat.R8_UNorm, _smokePass, change);
+                    // Red: how much the exhaust covers each pixel; green: how much the game's particle smoke does
+                    TextureHandle change = DrawChange(renderGraph, color, ink.BeforeEffects, color, "MunShot Ink Effects",
+                                                      GraphicsFormat.R8G8_UNorm, ExhaustMinChange);
+                    if (Particles != null && Particles.Count > 0) DrawParticles(renderGraph, color, change, depth);
+                    ink.Smoke = DrawWhole(renderGraph, color, "MunShot Ink Smoke", GraphicsFormat.R8G8_UNorm, _smokePass, change);
                 }
                 if (CloudsShown > 0f)
                 {
@@ -330,15 +359,22 @@ namespace MunShot.Cameras
             return kept;
         }
 
-        // How much what was drawn between before and after (the exhaust and smoke on the picture, or the terrain among
-        // the surfaces' colours) changed each pixel, the size of the picture
-        private TextureHandle DrawChange(RenderGraph renderGraph, TextureHandle color, TextureHandle before, TextureHandle after, string name)
+        // How little the exhaust may change a pixel and still be counted, however dark the pixel: less is faint glow
+        // (from the engines or re-entry), not exhaust to draw as a cartoon cloud
+        private const float ExhaustMinChange = 0.03f;
+
+        // How much what was drawn between before and after (the exhaust on the picture, or the terrain among the
+        // surfaces' colours) changed each pixel, the size of the picture in the given format; a change under minChange
+        // isn't counted
+        private TextureHandle DrawChange(RenderGraph renderGraph, TextureHandle color, TextureHandle before, TextureHandle after, string name,
+                                         GraphicsFormat format, float minChange)
         {
-            TextureHandle effects = renderGraph.CreateTexture(Like(renderGraph, color, name, GraphicsFormat.R8_UNorm));
+            TextureHandle effects = renderGraph.CreateTexture(Like(renderGraph, color, name, format));
             using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass(name, out EffectsData passData))
             {
                 passData.Before = before;
                 passData.After = after;
+                passData.MinChange = minChange;
                 passData.Material = _material;
                 passData.Pass = _effectsPass;
                 draw.UseTexture(before);
@@ -349,6 +385,7 @@ namespace MunShot.Cameras
                     MaterialPropertyBlock properties = context.renderGraphPool.GetTempMaterialPropertyBlock();
                     properties.SetTexture(BeforeEffectsId, data.Before);
                     properties.SetTexture(AfterEffectsId, data.After);
+                    properties.SetFloat(MinChangeId, data.MinChange);
                     properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
                     context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
                 });
@@ -470,6 +507,143 @@ namespace MunShot.Cameras
             return kerbalInk;
         }
 
+        private sealed class ParticlesData
+        {
+            public List<(Mesh mesh, Matrix4x4 place, Material material, MaterialPropertyBlock properties)> Parts;
+            public int Pass;
+        }
+
+        private sealed class ParticleShareData
+        {
+            public TextureHandle Particles;
+            public TextureHandle Picture;
+            public Material Material;
+            public int Pass;
+        }
+
+        // The game's particle effects (drawn among URP's see-through things, before the copy the exhaust and smoke are
+        // judged against), added to how much the exhaust and smoke cover each pixel (effects): drawn again on their own
+        // over black, with their own materials so they look as the game draws them, where they're in front of what's
+        // drawn (depth); then how much of each pixel of the picture (color) is theirs
+        private void DrawParticles(RenderGraph renderGraph, TextureHandle color, TextureHandle effects, TextureHandle depth)
+        {
+            // Each one as the camera sees it, baked into a mesh (Unity's way to draw particles again: drawing their
+            // renderer a second time would upset their own drawing)
+            _particlesDrawn.Clear();
+            foreach (ParticleSystemRenderer particles in Particles)
+                if (particles != null && particles.enabled && particles.isVisible && particles.sharedMaterial != null)
+                {
+                    if (_particleMeshes.Count == _particlesDrawn.Count)
+                        _particleMeshes.Add((new Mesh { name = "MunShot particles" }, new MaterialPropertyBlock()));
+                    (Mesh mesh, MaterialPropertyBlock properties) = _particleMeshes[_particlesDrawn.Count];
+                    // Particles kept in their system's own space (launch smoke) are baked there and placed with it
+                    // (baking them into the world puts them in the wrong place), facing the camera as seen from there
+                    // (else, once placed, they're turned away from it)
+                    bool local = particles.TryGetComponent(out ParticleSystem system)
+                                 && system.main.simulationSpace == ParticleSystemSimulationSpace.Local;
+                    if (local) particles.BakeMesh(mesh, BakeCameraFor(particles.transform), 0);
+                    else particles.BakeMesh(mesh, Camera, ParticleSystemBakeMeshOptions.Default);
+                    particles.GetPropertyBlock(properties);
+                    _particlesDrawn.Add((mesh, local ? particles.transform.localToWorldMatrix : Matrix4x4.identity,
+                                         particles.sharedMaterial, properties));
+                }
+            if (_particlesDrawn.Count == 0) return;
+
+            TextureDesc alone = renderGraph.GetTextureDesc(color);
+            alone.name = "MunShot Ink Particles Alone";
+            alone.depthBufferBits = DepthBits.None;
+            alone.clearBuffer = true;
+            alone.clearColor = Color.clear;
+            alone.msaaSamples = MSAASamples.None;
+            TextureHandle particlesAlone = renderGraph.CreateTexture(alone);
+            using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass("MunShot Ink Particles Alone", out ParticlesData passData))
+            {
+                passData.Parts = _particlesDrawn;
+                draw.SetRenderAttachment(particlesAlone, 0, AccessFlags.Write);
+                draw.SetRenderAttachmentDepth(depth, AccessFlags.Read);
+                // Their materials may read the camera's depth (soft particles), which URP sets as a global texture
+                draw.UseAllGlobalTextures(true);
+                draw.SetRenderFunc((ParticlesData data, RasterGraphContext context) =>
+                {
+                    // Where they are in the world; their materials' first pass, a particle shader's own, as drawn
+                    // among the see-through things
+                    foreach ((Mesh mesh, Matrix4x4 place, Material material, MaterialPropertyBlock properties) in data.Parts)
+                        context.cmd.DrawMesh(mesh, place, material, 0, 0, properties);
+                });
+            }
+
+            using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass("MunShot Ink Particles", out ParticleShareData passData))
+            {
+                passData.Particles = particlesAlone;
+                passData.Picture = color;
+                passData.Material = _material;
+                passData.Pass = _particlesPass;
+                draw.UseTexture(particlesAlone);
+                draw.UseTexture(color);
+                draw.SetRenderAttachment(effects, 0, AccessFlags.ReadWrite);
+                draw.SetRenderFunc((ParticleShareData data, RasterGraphContext context) =>
+                {
+                    MaterialPropertyBlock properties = context.renderGraphPool.GetTempMaterialPropertyBlock();
+                    properties.SetTexture(ParticlesId, data.Particles);
+                    properties.SetTexture(PictureId, data.Picture);
+                    properties.SetVector(FilterPasses.BlitScaleBiasId, FilterPasses.WholePicture);
+                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, data.Pass, MeshTopology.Triangles, 3, 1, properties);
+                });
+            }
+
+            // And their see-through puffs (launch smoke): what the redraw above can miss, as their own shader may want
+            // more of each particle than a baked mesh keeps
+            _puffsDrawn.Clear();
+            for (int i = 0; i < _particlesDrawn.Count; i++)
+            {
+                (Mesh mesh, Matrix4x4 place, Material material, MaterialPropertyBlock _) = _particlesDrawn[i];
+                Material puffs = PuffMaterial(material);
+                if (puffs != null) _puffsDrawn.Add((mesh, place, puffs, null));
+            }
+            if (_puffsDrawn.Count == 0) return;
+            using (IRasterRenderGraphBuilder draw = renderGraph.AddRasterRenderPass("MunShot Ink Particle Puffs", out ParticlesData passData))
+            {
+                passData.Parts = _puffsDrawn;
+                passData.Pass = _puffsPass;
+                draw.SetRenderAttachment(effects, 0, AccessFlags.ReadWrite);
+                draw.SetRenderAttachmentDepth(depth, AccessFlags.Read);
+                draw.SetRenderFunc((ParticlesData data, RasterGraphContext context) =>
+                {
+                    foreach ((Mesh mesh, Matrix4x4 place, Material material, MaterialPropertyBlock _) in data.Parts)
+                        context.cmd.DrawMesh(mesh, place, material, 0, data.Pass);
+                });
+            }
+        }
+
+        // _bakeCamera, put where Camera is as seen from space's own space
+        private Camera BakeCameraFor(Transform space)
+        {
+            if (_bakeCamera == null)
+            {
+                var holder = new GameObject("MunShot particle bake camera") { hideFlags = HideFlags.HideAndDontSave };
+                _bakeCamera = holder.AddComponent<Camera>();
+                _bakeCamera.enabled = false;
+            }
+            Transform camera = Camera.transform;
+            _bakeCamera.transform.SetPositionAndRotation(space.InverseTransformPoint(camera.position),
+                                                         Quaternion.Inverse(space.rotation) * camera.rotation);
+            return _bakeCamera;
+        }
+
+        // A puff's material for a particle's: MunShot's shader, with the particle's texture (none without one)
+        private Material PuffMaterial(Material particleMaterial)
+        {
+            Texture texture = particleMaterial.HasTexture(MainTexId) ? particleMaterial.GetTexture(MainTexId) : null;
+            if (texture == null) return null;
+            if (_puffMaterials.TryGetValue(texture, out Material material) && material != null) return material;
+            material = CoreUtils.CreateEngineMaterial(_shader);
+            material.SetTexture(MainTexId, texture);
+            material.SetTextureScale(MainTexId, particleMaterial.GetTextureScale(MainTexId));
+            material.SetTextureOffset(MainTexId, particleMaterial.GetTextureOffset(MainTexId));
+            _puffMaterials[texture] = material;
+            return material;
+        }
+
         // The pupils' material for an eye's: MunShot's shader, with the eye's texture
         private Material PupilMaterial(Material eyeMaterial)
         {
@@ -514,6 +688,12 @@ namespace MunShot.Cameras
             _pupilMaterials.Clear();
             CoreUtils.Destroy(_hairMaterial);
             _hairMaterial = null;
+            foreach ((Mesh mesh, MaterialPropertyBlock _) in _particleMeshes) CoreUtils.Destroy(mesh);
+            _particleMeshes.Clear();
+            foreach (Material material in _puffMaterials.Values) CoreUtils.Destroy(material);
+            _puffMaterials.Clear();
+            if (_bakeCamera != null) CoreUtils.Destroy(_bakeCamera.gameObject);
+            _bakeCamera = null;
             CoreUtils.Destroy(_bodyMaterial);
             CoreUtils.Destroy(_orbitedMaterial);
             _bodyMaterial = null;

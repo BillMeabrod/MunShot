@@ -204,28 +204,32 @@ float LeavesAt(float2 uv)
     return SAMPLE_TEXTURE2D_X_LOD(_MunShotLeaves, sampler_LinearClamp, uv, 0).r;
 }
 
-// How much the engines' exhaust and smoke cover each pixel (MunShot.Cameras.InkCapture's Effects pass), for its Smoke
-// pass; and where the cartoon smoke cloud is as that drew it (1 inside), when it was taken
+// How much the engines' exhaust (red) and the game's particle smoke (green) cover each pixel (MunShot.Cameras.InkCapture's
+// Effects step), for its Smoke pass; and where the cartoon smoke cloud is as that drew it (red 1 inside it, green 1
+// inside the particle smoke's part of it), when it was taken
 TEXTURE2D_X(_MunShotEffects);
 TEXTURE2D_X(_MunShotSmoke);
 float _MunShotHasSmoke;
 
-// The exhaust and smoke are drawn as a cartoon smoke cloud with a hard edge: inside it where they cover more than
-// SmokeEdge, evened out over SmokeEdgePixels round the pixel so the edge is smooth rather than grainy (the Smoke pass's)
+// The exhaust and smoke are drawn as a cartoon smoke cloud with a hard edge: inside it where the particle smoke covers
+// more than SmokeEdge, or the exhaust more than PlumeEdge (only where it's dense: thin exhaust is see-through, and
+// toning it shows up blotchy over what's behind), evened out over SmokeEdgePixels round the pixel so the edge is smooth
+// rather than grainy (the Smoke pass's)
 static const float SmokeEdge = 0.5;
+static const float PlumeEdge = 0.75;
 static const float SmokeEdgePixels = 2;
 
-float EffectsAt(float2 uv)
+float EffectsAt(float2 uv, int channel)
 {
-    return SAMPLE_TEXTURE2D_X_LOD(_MunShotEffects, sampler_LinearClamp, uv, 0).r;
+    return SAMPLE_TEXTURE2D_X_LOD(_MunShotEffects, sampler_LinearClamp, uv, 0)[channel];
 }
 
-bool SmokeCovers(float2 uv)
+bool SmokeCovers(float2 uv, int channel, float edge)
 {
     float2 d = _MunShotPixel.xy * SmokeEdgePixels;
-    float cover = (2 * EffectsAt(uv) + EffectsAt(uv + d) + EffectsAt(uv - d)
-                   + EffectsAt(uv + float2(d.x, -d.y)) + EffectsAt(uv + float2(-d.x, d.y))) / 6;
-    return cover > SmokeEdge;
+    float cover = (2 * EffectsAt(uv, channel) + EffectsAt(uv + d, channel) + EffectsAt(uv - d, channel)
+                   + EffectsAt(uv + float2(d.x, -d.y), channel) + EffectsAt(uv + float2(-d.x, d.y), channel)) / 6;
+    return cover > edge;
 }
 
 // Whether a pixel is inside the smoke cloud, so the lines behind it don't show through
@@ -234,8 +238,58 @@ bool InSmoke(float2 uv)
     return _MunShotHasSmoke > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotSmoke, sampler_PointClamp, uv, 0).r > 0.5;
 }
 
-// How much ink the smoke cloud's outline gives a pixel (0 to 1): every pixel within half an outline's width of its
-// edge, as LinesAt draws an outline
+// The picture with the exhaust and smoke drawn (for the Outlines pass, in Cel shaded's flat tones; for the Paper pass,
+// finished and bent by the fisheye as the screen is)
+TEXTURE2D_X(_MunShotPicture);
+
+// The smoke's colour is evened out over SmokeRings rings of SmokeDirections out to SmokePixels round each pixel (only
+// what's in the cloud), so its grain doesn't show, then split into tones ToneStops apart (each twice as bright as the
+// last: as many for a dim cloud as a bright one)
+static const float SmokePixels = 6;
+static const int SmokeRings = 2;
+static const int SmokeDirections = 8;
+static const float ToneStops = 1;
+
+// The smoke's colour evened out round a pixel: at in the picture, mask in the smoke cloud (the same pixel, but for the
+// fisheye's bend)
+float3 SmokeColorAt(float2 at, float2 mask)
+{
+    float3 sum = SAMPLE_TEXTURE2D_X_LOD(_MunShotPicture, sampler_PointClamp, at, 0).rgb;
+    float weight = 1;
+    [unroll]
+    for (int ring = 1; ring <= SmokeRings; ring++)
+    {
+        float radius = SmokePixels * ring / SmokeRings;
+        [unroll]
+        for (int d = 0; d < SmokeDirections; d++)
+        {
+            float angle = (d + 0.5 * (ring & 1)) * (6.2831853 / SmokeDirections);
+            float2 offset = float2(cos(angle), sin(angle)) * radius * _MunShotPixel.xy;
+            if (!InSmoke(mask + offset)) continue;
+            sum += SAMPLE_TEXTURE2D_X_LOD(_MunShotPicture, sampler_PointClamp, at + offset, 0).rgb;
+            weight += 1;
+        }
+    }
+    return sum / weight;
+}
+
+// Which of the smoke's flat tones a colour is in
+float Tone(float3 color)
+{
+    return floor(log2(max(Luminance(color), 1e-6)) / ToneStops);
+}
+
+// Whether a pixel is inside the particle smoke's part of the cloud: the only part outlined
+bool InParticleSmoke(float2 uv)
+{
+    return _MunShotHasSmoke > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotSmoke, sampler_PointClamp, uv, 0).g > 0.5;
+}
+
+// How much ink the particle smoke's outline gives a pixel (0 to 1): every pixel within half an outline's width of its
+// edge, as LinesAt draws an outline, SmokeInk of the way from the paper to the ink (as light as the clouds' lines: smoke
+// is soft, not a solid thing). The exhaust has none: it's a glow, not a thing
+static const float SmokeInk = 0.4;
+
 float SmokeOutlineAt(float2 uv)
 {
     if (_MunShotHasSmoke <= 0) return 0;
@@ -245,7 +299,7 @@ float SmokeOutlineAt(float2 uv)
     {
         [unroll]
         for (int j = 0; j < 5; j++)
-            inside[i][j] = InSmoke(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
+            inside[i][j] = InParticleSmoke(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
     }
     float ink = 0;
     [unroll]
@@ -258,7 +312,22 @@ float SmokeOutlineAt(float2 uv)
             if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
         }
     }
-    return ink;
+    return ink * SmokeInk;
+}
+
+// How much ink the particle smoke's tone lines give a pixel (0 or SmokeInk): where its flat tones would step down, as the
+// Cel shaded look draws them, on the brighter side, as light as its outline (at and mask as SmokeColorAt's), in both
+// looks
+float SmokeToneLinesAt(float2 at, float2 mask)
+{
+    if (!InParticleSmoke(mask)) return 0;
+    float tone = Tone(SmokeColorAt(at, mask));
+    float2 d = _MunShotPixel.xy * LinePixels;
+    float2 steps[4] = { float2(d.x, 0), float2(-d.x, 0), float2(0, d.y), float2(0, -d.y) };
+    [unroll]
+    for (int i = 0; i < 4; i++)
+        if (InParticleSmoke(mask + steps[i]) && Tone(SmokeColorAt(at + steps[i], mask + steps[i])) < tone) return SmokeInk;
+    return 0;
 }
 
 // Where Redux's faraway view shows a distant planet or moon (MunShot.Cameras.InkCapture's), when it was taken: Cel

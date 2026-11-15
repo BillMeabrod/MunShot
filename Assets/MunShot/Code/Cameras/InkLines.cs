@@ -232,6 +232,8 @@ namespace MunShot.Cameras
                     inputs.Albedo = ink.Albedo;
                     inputs.OpaqueDepth = depth;
                 }
+                // The picture copied first, for the smoke's tone lines, as the lines are then drawn over it
+                inputs.Picture = FilterPasses.CopyOf(renderGraph, color, "MunShot Cel Shading Picture");
                 Draw(renderGraph, "MunShot Cel Shading Outlines", _outlinesPass, color, inputs);
                 return;
             }
