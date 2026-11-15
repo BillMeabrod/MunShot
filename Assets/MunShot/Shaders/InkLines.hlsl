@@ -66,7 +66,7 @@ TEXTURE2D_X(_MunShotFarSurface);
 float _MunShotHasFarSurface;
 float _MunShotFarSea;
 static const float Sea = 0.5;
-// Where the deferred pass drew the planet's own terrain (MunShot.Cameras.InkCapture's), when it was taken, so its
+// Where the deferred pass drew the planet's own terrain (MunShot.Cameras.SceneCapture's), when it was taken, so its
 // slopes are outlined and not a ship's or a building's
 TEXTURE2D_X(_MunShotTerrain);
 float _MunShotHasTerrain;
@@ -204,9 +204,9 @@ float LeavesAt(float2 uv)
     return SAMPLE_TEXTURE2D_X_LOD(_MunShotLeaves, sampler_LinearClamp, uv, 0).r;
 }
 
-// How much the engines' exhaust (red) and the game's particle smoke (green) cover each pixel (MunShot.Cameras.InkCapture's
-// Effects step), for its Smoke pass; and where the cartoon smoke cloud is as that drew it (red 1 inside it, green 1
-// inside the particle smoke's part of it), when it was taken
+// How much the engines' exhaust (red) and the game's particle smoke (green) cover each pixel (MunShot.Cameras.
+// EffectsCapture's Effects step), for its Smoke pass; and where the cartoon smoke cloud is as that drew it (red 1 inside
+// it, green 1 inside the particle smoke's part of it), when it was taken
 TEXTURE2D_X(_MunShotEffects);
 TEXTURE2D_X(_MunShotSmoke);
 float _MunShotHasSmoke;
@@ -232,10 +232,51 @@ bool SmokeCovers(float2 uv, int channel, float edge)
     return cover > edge;
 }
 
+// Whether a mask (drawn 1 inside, 0 outside, in the given channel) covers a pixel
+bool MaskAt(TEXTURE2D_X_PARAM(mask, maskSampler), float2 uv, int channel)
+{
+    return SAMPLE_TEXTURE2D_X_LOD(mask, maskSampler, uv, 0)[channel] > 0.5;
+}
+
+// How much ink a mask's outline gives a pixel (0 to 1): every pixel within half an outline's width of its edge, as
+// LinesAt draws an outline. The 5 x 5 pixels round it are looked at, but for the corners, which no edge test reads
+float MaskOutlineAt(TEXTURE2D_X_PARAM(mask, maskSampler), float2 uv, int channel)
+{
+    bool inside[5][5];
+    [unroll]
+    for (int i = 0; i < 5; i++)
+    {
+        [unroll]
+        for (int j = 0; j < 5; j++)
+        {
+            bool corner = (i == 0 || i == 4) && (j == 0 || j == 4);
+            inside[i][j] = !corner && MaskAt(TEXTURE2D_X_ARGS(mask, maskSampler), uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels, channel);
+        }
+    }
+    float ink = 0;
+    [unroll]
+    for (int a = 1; a <= 3; a++)
+    {
+        [unroll]
+        for (int b = 1; b <= 3; b++)
+        {
+            bool edge = inside[a][b] && (!inside[a - 1][b] || !inside[a + 1][b] || !inside[a][b - 1] || !inside[a][b + 1]);
+            if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
+        }
+    }
+    return ink;
+}
+
 // Whether a pixel is inside the smoke cloud, so the lines behind it don't show through
 bool InSmoke(float2 uv)
 {
-    return _MunShotHasSmoke > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotSmoke, sampler_PointClamp, uv, 0).r > 0.5;
+    return _MunShotHasSmoke > 0 && MaskAt(TEXTURE2D_X_ARGS(_MunShotSmoke, sampler_PointClamp), uv, 0);
+}
+
+// Whether a pixel is inside the particle smoke's part of the cloud: the only part outlined
+bool InParticleSmoke(float2 uv)
+{
+    return _MunShotHasSmoke > 0 && MaskAt(TEXTURE2D_X_ARGS(_MunShotSmoke, sampler_PointClamp), uv, 1);
 }
 
 // The picture with the exhaust and smoke drawn (for the Outlines pass, in Cel shaded's flat tones; for the Paper pass,
@@ -279,40 +320,13 @@ float Tone(float3 color)
     return floor(log2(max(Luminance(color), 1e-6)) / ToneStops);
 }
 
-// Whether a pixel is inside the particle smoke's part of the cloud: the only part outlined
-bool InParticleSmoke(float2 uv)
-{
-    return _MunShotHasSmoke > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotSmoke, sampler_PointClamp, uv, 0).g > 0.5;
-}
-
-// How much ink the particle smoke's outline gives a pixel (0 to 1): every pixel within half an outline's width of its
-// edge, as LinesAt draws an outline, SmokeInk of the way from the paper to the ink (as light as the clouds' lines: smoke
-// is soft, not a solid thing). The exhaust has none: it's a glow, not a thing
+// How much ink the particle smoke's outline gives a pixel (0 to SmokeInk), SmokeInk of the way from the paper to the
+// ink (as light as the clouds' lines: smoke is soft, not a solid thing). The exhaust has none: it's a glow, not a thing
 static const float SmokeInk = 0.4;
 
 float SmokeOutlineAt(float2 uv)
 {
-    if (_MunShotHasSmoke <= 0) return 0;
-    bool inside[5][5];
-    [unroll]
-    for (int i = 0; i < 5; i++)
-    {
-        [unroll]
-        for (int j = 0; j < 5; j++)
-            inside[i][j] = InParticleSmoke(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
-    }
-    float ink = 0;
-    [unroll]
-    for (int a = 1; a <= 3; a++)
-    {
-        [unroll]
-        for (int b = 1; b <= 3; b++)
-        {
-            bool edge = inside[a][b] && (!inside[a - 1][b] || !inside[a + 1][b] || !inside[a][b - 1] || !inside[a][b + 1]);
-            if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
-        }
-    }
-    return ink * SmokeInk;
+    return _MunShotHasSmoke > 0 ? MaskOutlineAt(TEXTURE2D_X_ARGS(_MunShotSmoke, sampler_PointClamp), uv, 1) * SmokeInk : 0;
 }
 
 // How much ink the particle smoke's tone lines give a pixel (0 or SmokeInk): where its flat tones would step down, as the
@@ -330,41 +344,21 @@ float SmokeToneLinesAt(float2 at, float2 mask)
     return 0;
 }
 
-// Where Redux's faraway view shows a distant planet or moon (MunShot.Cameras.InkCapture's), when it was taken: Cel
+// Where Redux's faraway view shows a distant planet or moon (MunShot.Cameras.SceneCapture's), when it was taken: Cel
 // shaded puts them in flat tones, and both filters outline them where the camera sees nothing nearer (the sky)
 TEXTURE2D_X(_MunShotBodies);
 float _MunShotHasBodies;
 
 bool BodyAt(float2 uv)
 {
-    return _MunShotHasBodies > 0 && SAMPLE_TEXTURE2D_X_LOD(_MunShotBodies, sampler_PointClamp, uv, 0).r > 0.5;
+    return _MunShotHasBodies > 0 && MaskAt(TEXTURE2D_X_ARGS(_MunShotBodies, sampler_PointClamp), uv, 0);
 }
 
-// How much ink a distant planet's or moon's outline gives a pixel (0 to 1): every pixel within half an outline's width
-// of its edge, as LinesAt draws an outline, where nothing nearer is in front
+// How much ink a distant planet's or moon's outline gives a pixel (0 to 1), where nothing nearer is in front
 float BodyOutlineAt(float2 uv)
 {
     if (_MunShotHasBodies <= 0 || !IsSky(SampleSceneDepth(uv))) return 0;
-    bool inside[5][5];
-    [unroll]
-    for (int i = 0; i < 5; i++)
-    {
-        [unroll]
-        for (int j = 0; j < 5; j++)
-            inside[i][j] = BodyAt(uv + float2(i - 2, j - 2) * _MunShotPixel.xy * LinePixels);
-    }
-    float ink = 0;
-    [unroll]
-    for (int a = 1; a <= 3; a++)
-    {
-        [unroll]
-        for (int b = 1; b <= 3; b++)
-        {
-            bool edge = inside[a][b] && (!inside[a - 1][b] || !inside[a + 1][b] || !inside[a][b - 1] || !inside[a][b + 1]);
-            if (edge) ink = max(ink, saturate(OutlineWidth * 0.5 + 0.5 - length(float2(a - 2, b - 2))));
-        }
-    }
-    return ink;
+    return MaskOutlineAt(TEXTURE2D_X_ARGS(_MunShotBodies, sampler_PointClamp), uv, 0);
 }
 
 // The game's volume clouds, as it draws them for the picture (KSP.VolumeCloud's, set for every shader): their light,
@@ -375,7 +369,7 @@ float BodyOutlineAt(float2 uv)
 // the detail asks, between their tones and where their light changes by more than CloudChangeStops across
 // CloudSmoothPixels either side (a nearer cloud before a brighter one), too gently for a tone of its own, unless a
 // tone's line or their edge is within CloudChangeGapPixels across it, as that already draws it. MunShot.Cameras.
-// InkCapture's Clouds pass evens them out once a frame (SmoothGameClouds), and the filters' passes read that
+// EffectsCapture's Clouds pass evens them out once a frame (SmoothGameClouds), and the filters' passes read that
 // (_MunShotClouds, SmoothClouds; _MunShotHasClouds 0 when there are none). All of it only where the clouds are in front
 // of what's there (its CloudDistance pass, from the game's own cloud depth): the game works its clouds out coarser than
 // the picture, so they spill over the edges of what's before them

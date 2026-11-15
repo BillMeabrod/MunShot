@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using MunShot.Posing;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace MunShot.UI
 {
     /// <summary>
-    /// The pose controls window's kerbal: a full-body drawing in the style of the Kerbals tab icon (UI/Icons/
-    /// pose-kerbal.png, made by Tools/Icons/make_pose_kerbal.ps1), facing the viewer, with a dot button on each joint of
-    /// <see cref="PoseJoints"/> at its spot on the drawing's 200 × 300 canvas (styled by PhotoModeWindow.uss's pose-dot).
+    /// The pose controls window's kerbal: a full-body drawing in the style of the Kerbals tab icon, facing the viewer
+    /// (PoseControlsWindow.uss's pose-figure draws it and sets its size), with a dot button on each joint of
+    /// <see cref="PoseJoints"/> at its spot on the drawing's 200 × 300 canvas (styled by pose-dot).
     /// </summary>
     internal sealed class KerbalFigure : VisualElement
     {
@@ -21,12 +20,9 @@ namespace MunShot.UI
         /// <summary>A dot was clicked.</summary>
         public event Action<PoseJoints.Joint> JointClicked;
 
-        public KerbalFigure(float width, Texture2D drawing)
+        public KerbalFigure()
         {
             AddToClassList("pose-figure");
-            style.width = width;
-            style.height = width * CanvasHeight / CanvasWidth;
-            if (drawing != null) style.backgroundImage = drawing;
 
             foreach (PoseJoints.Joint joint in PoseJoints.All)
             {

@@ -20,6 +20,14 @@ Tools/RigDiscovery/run.sh dump body_spacesuit_01.prefab
 
 # Read Animator layers, parameters and clips to out/<address>.animator.txt
 Tools/RigDiscovery/run.sh animator eva_kerbal.prefab
+
+# Each bone's rest rotation and which way its axes point, to out/<address>.axes.txt (and .axes.quats.txt); the pose
+# controls' axes and the thumbs' rest rotations (KerbalRig) come from these
+Tools/RigDiscovery/run.sh axes body_spacesuit_01.prefab
+
+# Render the suit's hand in its rest pose with bones turned ("bone:axis:degrees;...", x/y/z the bone's own axes,
+# X/Y/Z its parent's), from three sides, to out/hand_<name>_<view>.png: how a pose control looks without the game
+Tools/RigDiscovery/run.sh hand spread 'l_thumb_01:y:-60;l_thumb_02:z:40'
 ```
 
 The dump lists component types, game behaviours by path, Animators (avatar, controller, layers and parameters when available), skinned meshes (readability, blend shapes, weighted bones), other renderers, and the full transform tree.

@@ -21,13 +21,17 @@ namespace MunShot.Posing
         // The pose's and the edits' slides, kept apart like the rotations
         private readonly List<(Transform bone, Vector3 offset)> _moves = new List<(Transform, Vector3)>();
         private readonly List<(Transform bone, Vector3 offset)> _slides = new List<(Transform, Vector3)>();
-        private readonly Dictionary<Transform, Moved> _moved = new Dictionary<Transform, Moved>();
+        private Dictionary<Transform, Moved> _moved = new Dictionary<Transform, Moved>();
 
         // The pose's and the edits' rotations, kept apart so either can change without the other
         private readonly List<(Transform bone, Quaternion rotation)> _set = new List<(Transform, Quaternion)>();
         private readonly List<(Transform bone, Quaternion turn)> _turns = new List<(Transform, Quaternion)>();
         private readonly List<(Transform bone, Quaternion parent, Quaternion own)> _edits = new List<(Transform, Quaternion, Quaternion)>();
-        private readonly Dictionary<Transform, Rotated> _rotated = new Dictionary<Transform, Rotated>();
+        private Dictionary<Transform, Rotated> _rotated = new Dictionary<Transform, Rotated>();
+
+        // Combine's previous entries, swapped with _rotated and _moved each time so it allocates no new dictionaries
+        private Dictionary<Transform, Rotated> _rotatedBefore = new Dictionary<Transform, Rotated>();
+        private Dictionary<Transform, Moved> _movedBefore = new Dictionary<Transform, Moved>();
 
         // Edited bones that start from their rest rotation rather than the pose
         private readonly List<(Transform bone, Quaternion rest)> _rests = new List<(Transform, Quaternion)>();
@@ -205,8 +209,9 @@ namespace MunShot.Posing
         // changing a turn (a slider being dragged) doesn't take the last turn for part of the animation
         private void Combine()
         {
-            var old = new Dictionary<Transform, Rotated>(_rotated);
+            (_rotatedBefore, _rotated) = (_rotated, _rotatedBefore);
             _rotated.Clear();
+            Dictionary<Transform, Rotated> old = _rotatedBefore;
             Rotated For(Transform bone)
             {
                 if (_rotated.TryGetValue(bone, out Rotated r)) return r;
@@ -244,8 +249,9 @@ namespace MunShot.Posing
                     r.Rest = rest;
                 }
 
-            var oldMoved = new Dictionary<Transform, Moved>(_moved);
+            (_movedBefore, _moved) = (_moved, _movedBefore);
             _moved.Clear();
+            Dictionary<Transform, Moved> oldMoved = _movedBefore;
             Moved MovedFor(Transform bone)
             {
                 if (_moved.TryGetValue(bone, out Moved m)) return m;

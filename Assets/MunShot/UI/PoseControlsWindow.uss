@@ -1,0 +1,101 @@
+/* The pose controls window (PoseControlsWindow.uxml): the kerbal drawing with a dot on each joint, and the chosen
+   joint's sliders beside it. Labels take the theme's own text colour */
+.pose-window {
+    width: 900px;
+}
+
+.pose-body {
+    flex-direction: row;
+}
+
+/* The kerbal drawing (Icons/pose-kerbal.png, made by Tools/Icons/make_pose_kerbal.ps1), 200 x 300 drawn 340 wide;
+   KerbalFigure puts the dots on it */
+.pose-figure {
+    width: 340px;
+    height: 510px;
+    margin-right: 20px;
+    flex-shrink: 0;
+    background-image: url("Icons/pose-kerbal.png");
+}
+
+/* A joint's dot: a ring, filled while it's the chosen joint, thicker under the mouse */
+.pose-dot {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    margin-left: -11px;
+    margin-top: -11px;
+    padding: 0;
+    border-width: 3px;
+    border-radius: 11px;
+    border-color: rgb(0, 204, 81);
+    background-color: rgb(22, 27, 33);
+}
+
+.pose-dot:hover {
+    border-width: 5px;
+}
+
+.pose-dot--chosen {
+    background-color: rgb(0, 204, 81);
+}
+
+.pose-side {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.pose-joint-name {
+    color: rgb(255, 255, 255);
+    margin-bottom: 4px;
+}
+
+.pose-hint {
+    white-space: normal;
+}
+
+.pose-controls {
+    max-height: 460px;
+    flex-grow: 1;
+}
+
+.pose-heading {
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
+.pose-control-name {
+    width: 190px;
+}
+
+.pose-slider {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.pose-number {
+    width: 70px;
+    margin-left: 8px;
+}
+
+.pose-unit {
+    width: 18px;
+}
+
+.pose-reset-joint {
+    margin-top: 8px;
+    align-self: flex-start;
+    min-width: 200px;
+}
+
+.pose-bar {
+    flex-direction: row;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: rgb(42, 50, 60);
+}
+
+.pose-reset-all {
+    min-width: 200px;
+}

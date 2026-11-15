@@ -26,7 +26,7 @@ namespace MunShot
         private const string WindowAddress = "MunShot/PhotoModeWindow.uxml";
         // App tray icon: 48px like the stock toolbar icons (drawn by Tools/Icons/make_toolbar_icon.py)
         private const string ToolbarIconAddress = "MunShot/toolbar.png";
-        private const string PoseKerbalAddress = "MunShot/pose-kerbal.png";
+        private const string PoseControlsAddress = "MunShot/PoseControlsWindow.uxml";
         private const string CelShaderAddress = "MunShot/CelShading.shader";
 
         private const string LoadAssetsStep = "MunShot: Loading photo mode";
@@ -37,7 +37,7 @@ namespace MunShot
         private PoseLabWindow _poseLab;
         private PauseMenuButton _pauseMenuButton;
         private VisualTreeAsset _windowUxml;
-        private Texture2D _poseKerbal;
+        private VisualTreeAsset _poseControlsUxml;
         private bool _assetsRequested;
 
         public override void OnPreInitialized()
@@ -132,10 +132,10 @@ namespace MunShot
                 if (uxml == null) SWLogger.LogError($"Could not load the photo mode window '{WindowAddress}'; photo mode will open without it.");
                 Loaded();
             });
-            Assets.Load<Texture2D>(PoseKerbalAddress, texture =>
+            Assets.Load<VisualTreeAsset>(PoseControlsAddress, uxml =>
             {
-                _poseKerbal = texture;
-                if (texture == null) SWLogger.LogError($"Could not load the pose controls kerbal '{PoseKerbalAddress}'; the window shows its dots without it.");
+                _poseControlsUxml = uxml;
+                if (uxml == null) SWLogger.LogError($"Could not load the pose controls window '{PoseControlsAddress}'; Customize pose works without its sliders.");
                 Loaded();
             });
             Assets.Load<Shader>(CelShaderAddress, shader =>
@@ -201,7 +201,7 @@ namespace MunShot
                 SWLogger.LogError($"Photo mode: no window to show; '{WindowAddress}' isn't loaded. Close photo mode with the keyboard shortcut.");
                 return;
             }
-            _window = new PhotoModeWindow(_photoMode, _windowUxml, _poseKerbal, SWLogger);
+            _window = new PhotoModeWindow(_photoMode, _windowUxml, _poseControlsUxml, SWLogger);
         }
 
         private void Update()

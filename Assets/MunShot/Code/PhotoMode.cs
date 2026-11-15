@@ -774,9 +774,6 @@ namespace MunShot
             RaiseChanged();
         }
 
-        /// <summary>An Ink look's name ("Blueprint").</summary>
-        public static string InkLookName(InkLook look) => Localization.Translate("MunShot/InkLook/" + look);
-
         /// <summary>How much the picture bulges, as through a fisheye lens: 0 (flat) to 1.</summary>
         public void SetFisheye(float amount)
         {

@@ -16,7 +16,7 @@ float4 _MunShotLens;
 float4 _MunShotInkColor;
 float4 _MunShotPaperColor;
 
-// Taken earlier in the frame by MunShot.Cameras.InkCapture, with what InkGround.hlsl has: the kerbals' own ink (pupils,
+// Taken earlier in the frame by MunShot.Cameras.KerbalCapture, with what InkGround.hlsl has: the kerbals' own ink (pupils,
 // dark hair), unbent. Without all of it (_MunShotTaken 0), the paper has the outlines alone
 TEXTURE2D_X(_MunShotKerbalInk);
 

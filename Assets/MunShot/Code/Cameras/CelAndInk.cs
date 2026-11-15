@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using KSP.Game;
+using KSP.Sim.impl;
+using MunShot.Posing;
 using Redux.Rendering;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
@@ -17,9 +19,10 @@ namespace MunShot.Cameras
     /// <summary>
     /// The Cel shaded and Ink filters: MunShot's own passes, Redux camera render hooks drawing with MunShot's
     /// CelShading shader, which redraw the picture rather than recolouring it (<see cref="CelShading"/>,
-    /// <see cref="CelEffects"/>, <see cref="InkCapture"/>, <see cref="InkLines"/>). Made, and their hooks registered,
-    /// when photo mode's look is laid over the game's (<see cref="PhotoLook"/>); told each frame which filter is on and
-    /// where the camera and planet are; taken away again with the look, Redux's own state as it was.
+    /// <see cref="CelEffects"/>, <see cref="InkLines"/>, and the <see cref="InkCapture"/> hooks they draw from). Made,
+    /// and their hooks registered, when photo mode's look is laid over the game's (<see cref="PhotoLook"/>); told each
+    /// frame which filter is on and where the camera and planet are; taken away again with the look, Redux's own state
+    /// as it was.
     /// </summary>
     internal sealed class CelAndInk
     {
@@ -27,13 +30,9 @@ namespace MunShot.Cameras
         // all of them at its top (always, where there's none)
         private const float SkyBandsFrom = 0.6f;
 
-        // A kerbal's eyeballs are "mesh_eye_m_ball_l_original" and the like on the kerbal rig, and its hair
-        // "hairstyle_m_01", coloured by its material's _RandomColor (KSP2/KerbalHair2); Ink fills hair darker than
-        // DarkHair (its brightness, 0 to 1). Looked for again this often while Ink is on, as kerbals come and go
-        private const string EyePrefix = "mesh_eye_";
-        private const string EyeballName = "_ball_";
-        private const string HairPrefix = "hairstyle_";
-        private static readonly int HairColorId = Shader.PropertyToID("_RandomColor");
+        // Ink fills hair darker than this (its brightness, 0 to 1). The kerbals are looked for again this often while Ink
+        // is on, as they come and go
+        private static readonly int HairColorId = Shader.PropertyToID(KerbalRig.HairColorProperty);
         private const float DarkHair = 0.4f;
         private const float KerbalSearchSeconds = 1f;
         // The game's particle effects come and go (an explosion lasts seconds), so they're looked for again this often
@@ -41,18 +40,18 @@ namespace MunShot.Cameras
 
         private readonly CelShading _celShading;
         private readonly InkLines _celOutlines;
-        private readonly InkCapture _inkBeforeTerrain;
-        private readonly InkCapture _inkScene;
-        private readonly InkCapture _inkOpaque;
-        private readonly InkCapture _inkBeforeEffects;
-        private readonly InkCapture _inkEffects;
+        private readonly TerrainCapture _terrain;
+        private readonly SceneCapture _scene;
+        private readonly KerbalCapture _kerbals;
+        private readonly BeforeEffectsCapture _beforeEffects;
+        private readonly EffectsCapture _effects;
         private readonly CelEffects _celEffects;
         private readonly InkLines _ink;
 
-        // Every hook, in the order registered: hooks at one time go in that order (CelEffects after the effects mask)
+        // Every hook, in the order registered: hooks at one time go in that order (CelEffects after EffectsCapture)
         private readonly List<IFilterHook> _hooks = new List<IFilterHook>();
 
-        // Redux's exhaust and smoke pass, when it's been moved after _inkBeforeEffects, and what came after it before
+        // Redux's exhaust and smoke pass, when it's been moved after _beforeEffects, and what came after it before
         private ICameraRenderHook _movedPlumes;
         private readonly List<ICameraRenderHook> _afterPlumes = new List<ICameraRenderHook>();
 
@@ -61,8 +60,11 @@ namespace MunShot.Cameras
 
         // The kerbals' eyeballs and dark hair, for Ink, and when they're next looked for
         private readonly List<(Renderer, bool)> _kerbalParts = new List<(Renderer, bool)>();
+        private readonly List<Renderer> _kerbalRenderers = new List<Renderer>();
         private readonly MaterialPropertyBlock _hairProperties = new MaterialPropertyBlock();
         private float _nextKerbalSearch;
+
+        // The game's particle effects that draw anything, and when they're next looked for
         private readonly List<ParticleSystemRenderer> _particles = new List<ParticleSystemRenderer>();
         private float _nextParticleSearch;
 
@@ -71,17 +73,16 @@ namespace MunShot.Cameras
         {
             _celShading = new CelShading(shader, logInfo);
             _celOutlines = new InkLines(shader, onPaper: false);
-            _inkBeforeTerrain = new InkCapture(shader, InkCapture.Stage.BeforeTerrain);
-            _inkScene = new InkCapture(shader, InkCapture.Stage.Scene);
-            _inkOpaque = new InkCapture(shader, InkCapture.Stage.Opaque);
-            _inkBeforeEffects = new InkCapture(shader, InkCapture.Stage.BeforeEffects);
-            _inkEffects = new InkCapture(shader, InkCapture.Stage.Effects);
+            _terrain = new TerrainCapture(shader);
+            _scene = new SceneCapture(shader);
+            _kerbals = new KerbalCapture(shader);
+            _beforeEffects = new BeforeEffectsCapture(shader);
+            _effects = new EffectsCapture(shader);
             _celEffects = new CelEffects(shader);
             _ink = new InkLines(shader, onPaper: true);
             _hooks.AddRange(new IFilterHook[]
             {
-                _celShading, _celOutlines, _inkBeforeTerrain, _inkScene, _inkOpaque, _inkBeforeEffects, _inkEffects,
-                _celEffects, _ink
+                _celShading, _celOutlines, _terrain, _scene, _kerbals, _beforeEffects, _effects, _celEffects, _ink
             });
             foreach (IFilterHook hook in _hooks) CameraRenderHooks.Register(hook);
         }
@@ -97,26 +98,30 @@ namespace MunShot.Cameras
         public void Update(Camera camera, bool cel, bool ink, float shadeDarkness, float lineDetail, Color inkColor,
                            Color paperColor, Vector4 lens)
         {
-            if (camera != null && (cel || ink)) FollowCamera(camera);
+            bool either = cel || ink;
+            if (camera != null && either) FollowCamera(camera);
 
             _celShading.IsOn = cel;
             _celShading.Shade = Mathf.Clamp01(shadeDarkness);
             _celOutlines.IsOn = cel;
             _celEffects.IsOn = cel;
-            _inkBeforeTerrain.IsOn = ink || cel;
-            _inkScene.IsOn = ink || cel;
-            _inkOpaque.IsOn = ink;
-            _inkBeforeEffects.IsOn = ink || cel;
-            _inkEffects.IsOn = ink || cel;
+            _terrain.IsOn = either;
+            _scene.IsOn = either;
+            _kerbals.IsOn = ink;
+            _beforeEffects.IsOn = either;
+            _effects.IsOn = either;
             _ink.IsOn = ink;
-            if (ink || cel)
+
+            // Either side of Redux's exhaust and smoke, whenever it draws them. The picture before them is taken even
+            // while Redux has no such pass (no engine): the game's own particle effects are added to the smoke against it
+            if (either)
             {
-                // Either side of Redux's exhaust and smoke, whenever it draws them
-                RenderPassEvent plumesAt = DrawPlumesAfter(_inkBeforeEffects)?.Event ?? RenderPassEvent.AfterRenderingTransparents;
-                _inkBeforeEffects.EffectsEvent = plumesAt;
-                _inkEffects.EffectsEvent = plumesAt;
+                RenderPassEvent plumesAt = DrawPlumesAfter(_beforeEffects)?.Event ?? RenderPassEvent.AfterRenderingTransparents;
+                _beforeEffects.EffectsEvent = plumesAt;
+                _effects.EffectsEvent = plumesAt;
                 _celEffects.EffectsEvent = plumesAt;
             }
+
             _celOutlines.LineDetail = Mathf.Clamp01(lineDetail);
             _ink.LineDetail = Mathf.Clamp01(lineDetail);
             // Ink covers the whole picture after the post-processing, so it bends its lines as the fisheye has bent the
@@ -124,8 +129,8 @@ namespace MunShot.Cameras
             _ink.Lens = lens;
             _ink.InkColor = inkColor;
             _ink.PaperColor = paperColor;
-            if (ink) _inkOpaque.KerbalParts = FindKerbalParts();
-            if (ink || cel) _inkEffects.Particles = FindParticles();
+            if (ink) _kerbals.KerbalParts = FindKerbalParts();
+            if (either) _effects.Particles = FindParticles();
         }
 
         /// <summary>Takes the filters away: unregisters their hooks, puts Redux's own back as it was, and lets go of them.</summary>
@@ -139,18 +144,19 @@ namespace MunShot.Cameras
             _particles.Clear();
         }
 
-        // Where the camera and the planet are, for every pass that draws from them
+        // Where the camera and the planet are, for every pass that draws from them (the planet looked up once)
         private void FollowCamera(Camera camera)
         {
             foreach (IFilterHook hook in _hooks) hook.Camera = camera;
-            Vector3 up = Planet.UpAt(camera.transform.position, Vector3.up);
+            CelestialBodyComponent body = Planet.Orbited();
+            Vector3 up = Planet.UpAt(body, camera.transform.position, Vector3.up);
             _celShading.Up = up;
             _celOutlines.Up = up;
             _ink.Up = up;
 
             // The planet, so its coasts can be faded the higher above it the camera is, and the clear sky put in flat
             // tones from orbit
-            bool found = Planet.Find(out Vector3 centre, out double radius, out double atmosphere);
+            bool found = Planet.Find(body, out Vector3 centre, out double radius, out double atmosphere);
             Vector4 planet = found ? new Vector4(centre.x, centre.y, centre.z, (float)radius) : Vector4.zero;
             _celOutlines.Planet = planet;
             _ink.Planet = planet;
@@ -161,25 +167,28 @@ namespace MunShot.Cameras
 
             // The game's volume clouds, evened out once for every pass that draws from them: the lines behind them fade, and
             // Cel shaded puts them in flat tones
-            _inkEffects.CloudsShown = Planet.CloudsShown(camera);
+            _effects.CloudsShown = Planet.CloudsShown(camera, body);
 
             // The planet as Redux's faraway view draws it, clouds and all, for its edge; only from above its clouds, as
             // from among them the edge would hang in the sky over the horizon
+            Camera farCamera = Planet.FarCamera();
             Matrix4x4 farLook = Matrix4x4.identity;
             Vector3 farEye = Vector3.zero;
             Vector4 farPlanet = Vector4.zero;
             float farMetres = 0f;
             Renderer farBody = null;
             bool farSea = false;
-            Matrix4x4 farViewProjection = Matrix4x4.identity;
-            if (Planet.FindDrawn(out Camera farCamera, out Vector3 farCentre, out float farRadius, out farMetres, out Renderer surface, out bool sea)
+            Matrix4x4 farViewProjection = farCamera != null
+                ? GL.GetGPUProjectionMatrix(farCamera.projectionMatrix, true) * farCamera.worldToCameraMatrix
+                : Matrix4x4.identity;
+            if (farCamera != null
+                && Planet.FindDrawn(body, out Vector3 farCentre, out float farRadius, out farMetres, out Renderer surface, out bool sea)
                 && Vector3.Distance(farCamera.transform.position, farCentre) > farRadius)
             {
                 farLook = (farCamera.projectionMatrix * farCamera.worldToCameraMatrix).inverse;
                 farEye = farCamera.transform.position;
                 farPlanet = new Vector4(farCentre.x, farCentre.y, farCentre.z, farRadius);
                 // Its own surface, for its coasts (where it has a sea) and its slopes
-                farViewProjection = GL.GetGPUProjectionMatrix(farCamera.projectionMatrix, true) * farCamera.worldToCameraMatrix;
                 farBody = surface;
                 farSea = sea;
             }
@@ -187,12 +196,9 @@ namespace MunShot.Cameras
             ShowFar(_ink, farLook, farEye, farPlanet, farMetres, farBody, farSea, farViewProjection);
 
             // The distant planets and moons that view draws, from any height, for their tones and outlines
-            Camera farView = Planet.FarCamera();
-            Planet.FindDrawnBodies(_farBodies);
-            _inkScene.FarBodies = farView != null ? _farBodies : null;
-            _inkScene.FarViewProjection = farView != null
-                ? GL.GetGPUProjectionMatrix(farView.projectionMatrix, true) * farView.worldToCameraMatrix
-                : Matrix4x4.identity;
+            Planet.FindDrawnBodies(body, _farBodies);
+            _scene.FarBodies = farCamera != null ? _farBodies : null;
+            _scene.FarViewProjection = farViewProjection;
         }
 
         // The planet as Redux's faraway view draws it, for a set of lines (InkLines' Far properties)
@@ -227,14 +233,19 @@ namespace MunShot.Cameras
             _nextKerbalSearch = Time.unscaledTime + KerbalSearchSeconds;
             _kerbalParts.Clear();
             foreach (Kerbal3DModel model in UnityEngine.Object.FindObjectsByType<Kerbal3DModel>(FindObjectsInactive.Exclude))
-                foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+            {
+                model.GetComponentsInChildren(true, _kerbalRenderers);
+                foreach (Renderer renderer in _kerbalRenderers)
                 {
                     string name = renderer.gameObject.name;
-                    if (name.StartsWith(EyePrefix, StringComparison.Ordinal) && name.IndexOf(EyeballName, StringComparison.Ordinal) >= 0)
+                    if (name.StartsWith(KerbalRig.EyeMeshPrefix, StringComparison.Ordinal)
+                        && name.IndexOf(KerbalRig.EyeballPart, StringComparison.Ordinal) >= 0)
                         _kerbalParts.Add((renderer, false));
-                    else if (name.StartsWith(HairPrefix, StringComparison.Ordinal) && HairColor(renderer).grayscale < DarkHair)
+                    else if (name.StartsWith(KerbalRig.HairMeshPrefix, StringComparison.Ordinal) && HairColor(renderer).grayscale < DarkHair)
                         _kerbalParts.Add((renderer, true));
                 }
+            }
+            _kerbalRenderers.Clear();
             return _kerbalParts;
         }
 
@@ -250,30 +261,48 @@ namespace MunShot.Cameras
             return material != null && material.HasColor(HairColorId) ? material.GetColor(HairColorId) : Color.white;
         }
 
-        // Redux's exhaust and smoke pass (null while there's none), moved after copy if it's before it: copy is taken at the
-        // same time, just before it, and hooks at one time go in the order registered; Redux registers its pass when the
-        // first engine appears. What came after it is noted, so RestorePlumes can put it back where it was
+        // Redux's exhaust and smoke pass (null while there's none), drawn right after copy: copy is taken at the same
+        // time, just before it, and hooks at one time go in the order registered, so nothing else drawn then may come
+        // between them (it would be taken for smoke). Redux registers its pass when the first engine appears; when it's
+        // before copy, or something at the same time is between them, both go to the end, copy first. What came after
+        // Redux's pass is noted, so RestorePlumes can put it back where it was
         private ICameraRenderHook DrawPlumesAfter(ICameraRenderHook copy)
         {
             IReadOnlyList<ICameraRenderHook> hooks = CameraRenderHooks.Hooks;
+            int copyAt = -1;
             int at = -1;
-            bool afterCopy = false;
-            for (int i = 0; i < hooks.Count && at < 0; i++)
+            for (int i = 0; i < hooks.Count; i++)
             {
-                if (hooks[i] == copy) afterCopy = true;
-                else if (hooks[i].GetType().DeclaringType == typeof(Redux.VFX.Plume.Volumetric.VolumetricPlumeRenderer)) at = i;
+                if (hooks[i] == copy) copyAt = i;
+                else if (at < 0 && IsPlumes(hooks[i])) at = i;
             }
             if (at < 0) return null;
             ICameraRenderHook plumes = hooks[at];
-            if (afterCopy) return plumes;
+            if (copyAt >= 0 && copyAt < at && !AnyAtSameTime(hooks, copyAt + 1, at, plumes.Event)) return plumes;
+
             if (_movedPlumes == null)
             {
                 _movedPlumes = plumes;
                 for (int i = at + 1; i < hooks.Count; i++) _afterPlumes.Add(hooks[i]);
             }
+            CameraRenderHooks.Unregister(copy);
+            CameraRenderHooks.Register(copy);
             CameraRenderHooks.Unregister(plumes);
             CameraRenderHooks.Register(plumes);
             return plumes;
+        }
+
+        // Redux's exhaust and smoke pass is a private class inside VolumetricPlumeRenderer: Redux has no public handle on
+        // it, nor a way to order hooks registered for the same time
+        private static bool IsPlumes(ICameraRenderHook hook) =>
+            hook.GetType().DeclaringType == typeof(Redux.VFX.Plume.Volumetric.VolumetricPlumeRenderer);
+
+        // Whether any hook from start up to (not including) end draws at that time
+        private static bool AnyAtSameTime(IReadOnlyList<ICameraRenderHook> hooks, int start, int end, RenderPassEvent at)
+        {
+            for (int i = start; i < end; i++)
+                if (hooks[i].Event == at) return true;
+            return false;
         }
 
         // Redux's exhaust and smoke pass back where it was, once the filters' own hooks are gone: what came after it before

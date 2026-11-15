@@ -33,10 +33,10 @@
 // what's behind that cloud, and a light outline round its particle smoke (not the exhaust: that's a glow), with light
 // lines inside it where Cel shaded's tones step; on paper, it's washed lightly with the ink. All from the Smoke pass.
 // CelEffects also draws the planet's clouds in flat tones, distant planets and moons, and the clear sky from orbit; both passes fade the lines behind the clouds (the Clouds pass's), and outline distant planets and moons (where
-// InkCapture's Bodies pass found them in Redux's faraway view).
+// SceneCapture's Bodies pass found them in Redux's faraway view).
 //
-// KeepDepth, KerbalInk, Effects, Particles, Smoke, Bodies, Clouds and CloudDistance passes: InkCapture's, for the above
-// (Effects: how much what was drawn between two copies changed each pixel: Redux's exhaust and smoke on the picture, or
+// KeepDepth, KerbalInk, Effects, Particles, ParticlePuffs, Smoke, Bodies, Clouds and CloudDistance passes: the
+// InkCapture hooks', for the above (Effects: how much what was drawn between two copies changed each pixel: Redux's exhaust and smoke on the picture, or
 // the planet's terrain among the surfaces' colours; Particles: how much of each pixel the game's particle effects make
 // (explosions and debris smoke among them, drawn again on their own), added to that; ParticlePuffs: how much their
 // see-through puffs cover each pixel (launch smoke among them), added too; Smoke: the cartoon smoke cloud, from the exhaust's and smoke's; Bodies: where the faraway
@@ -779,7 +779,7 @@ Shader "Hidden/MunShot/CelShading"
                 return output;
             }
 
-            // How much a see-through puff of smoke covers the pixel, added to the smoke mask (MunShot.Cameras.InkCapture's
+            // How much a see-through puff of smoke covers the pixel, added to the smoke mask (MunShot.Cameras.EffectsCapture's
             // Effects step, in green): its texture's alpha and its own fade, where it's in front of what's there
             float4 PuffsFragment(PuffVaryings input) : SV_Target
             {
